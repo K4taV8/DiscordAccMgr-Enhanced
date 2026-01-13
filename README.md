@@ -1,4 +1,4 @@
-#  Discord Account Manager
+#  ・Discord Account Manager
 
 > Application de bureau simple et efficace pour gérer un compte Discord  
 > **Serveurs · Amis · Messages · Nettoyage rapide**
@@ -8,13 +8,13 @@
 > [!CAUTION]
 > **Discord Account Manager** est un outil **non officiel !**.  
 
-👉 Tu es responsable de ce que tu fais avec.
+👉・Tu es responsable de ce que tu fais avec.
 
-👉 Pas d’abus, pas de spam, pas de conneries.
+👉・Pas d’abus, pas de spam, pas de conneries.
 
 ---
 
-## 🧠 À quoi ça sert ?
+## 🧠・À quoi ça sert ?
 
 **Discord Account Manager** permet de gérer ton compte Discord **sans passer par l’interface officielle** :
 
@@ -34,13 +34,13 @@ Objectif : **gagner du temps**, éviter les actions répétitives, garder un com
   - rejoindre / quitter
   - recherche rapide
 
-- 👥 **Gestion des amis**
+- 👥・**Gestion des amis**
   - lister
   - ajouter
   - supprimer
   - rechercher
 
-- 🗑️ **Suppression de messages**
+- 🗑️・**Suppression de messages**
   - DMs
   - serveurs
   - sélection du nombre de messages
