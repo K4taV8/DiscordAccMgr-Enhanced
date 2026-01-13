@@ -27,7 +27,7 @@ Objectif : **gagner du temps**, éviter les actions répétitives, garder un com
 
 ---
 
-## ✨ Fonctionnalités principales
+## ✨・Fonctionnalités principales
 
 - 🌐 **Gestion des serveurs**
   - voir la liste
@@ -51,7 +51,7 @@ Objectif : **gagner du temps**, éviter les actions répétitives, garder un com
 
 ---
 
-## 🧰 Stack technique
+## 🧰・Stack technique
 
 - **Electron.js** — application desktop
 - **Node.js**
@@ -61,7 +61,7 @@ Objectif : **gagner du temps**, éviter les actions répétitives, garder un com
 
 ---
 
-## 🛠️ Prérequis
+## 🛠️・Prérequis
 
 Avant de lancer le projet en local :
 
@@ -77,7 +77,7 @@ npm -v
 
 ---
 
-## ⬇️ Installation (mode développeur)
+## ⬇️・Installation (mode développeur)
 
 ```bash
 git clone https://github.com/Bherl1/DiscordAccMgr.git
@@ -87,7 +87,7 @@ npm install
 
 ---
 
-## 🚀 Lancement
+## 🚀・Lancement
 
 ### Mode développement
 
@@ -102,35 +102,35 @@ Une fenêtre Electron s’ouvre automatiquement.
 
 ---
 
-## 📦 Version Windows (exécutable)
+## 📦・Version Windows (exécutable)
 
 Une version **.exe** est disponible.
 
-👉 Téléchargement :
+👉・Téléchargement :
 **Releases GitHub**
 
 * aucune installation Node.js requise
 * double-clic pour lancer
 
-⚠️ Windows Defender peut afficher une alerte (application non signée).
+⚠️ Windows Defender peut afficher une alerte (**application non signée**).
 
 ---
 
-## 🧭 Utilisation rapide
+## 🧭・Utilisation rapide
 
-### 🌐 Serveurs
+### 🌐・Serveurs
 
 * accès via l’onglet *Server Manager*
 * actions instantanées
 * liste mise à jour automatiquement
 
-### 👥 Amis
+### 👥・Amis
 
 * ajout / suppression
 * recherche rapide
 * nettoyage facile
 
-### 🗑️ Messages
+### 🗑️・Messages
 
 * suppression irréversible
 * barre de progression
@@ -142,7 +142,7 @@ Une version **.exe** est disponible.
 
 ---
 
-## 🤝 Contribuer
+## 🤝・Contribuer
 
 Les contributions sont bienvenues.
 
@@ -151,18 +151,6 @@ Workflow classique :
 ```bash
 fork → branch → modifs → commit → pull request
 ```
-
-Clair, propre, testé.
-
----
-
-## 🧪 Pistes d’amélioration
-
-* 🔄 Multi-comptes
-* 🔍 Recherche avancée de messages
-* 🌙 Mode sombre
-* 🍎 Build macOS
-* 🐧 Build Linux
 
 ---
 
