@@ -18,10 +18,10 @@
 
 **Discord Account Manager** permet de gérer ton compte Discord **sans passer par l’interface officielle** :
 
-- gérer tes serveurs
-- gérer ta liste d’amis
-- supprimer des messages en masse
-- tout ça via une **interface claire et centralisée**
+- Gérer tes serveurs
+- Gérer ta liste d’amis
+- Supprimer des messages en masse
+- Tout ça via une **interface claire et centralisée**
 
 Objectif : **gagner du temps**, éviter les actions répétitives, garder un compte propre.
 
