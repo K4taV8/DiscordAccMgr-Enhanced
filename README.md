@@ -8,7 +8,8 @@
 > [!CAUTION]
 > **Discord Account Manager** est un outil **non officiel !**.  
 
-👉 Tu es responsable de ce que tu fais avec.  
+👉 Tu es responsable de ce que tu fais avec.
+
 👉 Pas d’abus, pas de spam, pas de conneries.
 
 ---
