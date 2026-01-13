@@ -180,13 +180,3 @@ Utilisation libre, aucune garantie.
 * 💻 Code source : GitHub
 
 ---
-
-## 🙏 Remerciements
-
-* Electron.js
-* Node.js
-* discord.js-selfbot-v13
-
-Si le projet t’aide : ⭐ sur GitHub !
-
----
