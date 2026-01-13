@@ -8,12 +8,9 @@
 ## ⚠️ Avertissement important
 
 **Discord Account Manager** est un outil **non officiel**.  
-Son utilisation doit **respecter strictement les conditions d’utilisation de Discord**.
 
 👉 Tu es responsable de ce que tu fais avec.  
 👉 Pas d’abus, pas de spam, pas de conneries.
-
-Projet **en développement actif**.
 
 ---
 
