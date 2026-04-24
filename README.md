@@ -1,83 +1,82 @@
-#  ・Discord Account Manager
+# Discord Account Manager
 
-> Application de bureau simple et efficace pour gérer un compte Discord  
-> **Serveurs · Amis · Messages · Nettoyage rapide**
+> Gestion de compte Discord via application desktop
+> Serveurs · Amis · Messages · Nettoyage
 
 ---
 
 > [!CAUTION]
-> **Discord Account Manager** est un outil **non officiel !**.  
-
-👉・Tu es responsable de ce que tu fais avec.
-
-👉・Pas d’abus, pas de spam, pas de conneries.
-
----
-
-## 🧠・À quoi ça sert ?
-
-**Discord Account Manager** permet de gérer ton compte Discord **sans passer par l’interface officielle** :
-
-- Gérer tes serveurs
-- Gérer ta liste d’amis
-- Supprimer des messages en masse
-- Tout ça via une **interface claire et centralisée**
-
-Objectif : **gagner du temps**, éviter les actions répétitives, garder un compte propre.
+> Outil non officiel.
+>
+> Utilisation sous ta responsabilité.
+> Pas d’abus, pas de spam.
 
 ---
 
-## ✨・Fonctionnalités principales
+## Usage
 
-- 🌐 **Gestion des serveurs**
-  - voir la liste
-  - rejoindre / quitter
-  - recherche rapide
+Gestion du compte sans client Discord officiel :
 
-- 👥・**Gestion des amis**
-  - lister
-  - ajouter
-  - supprimer
-  - rechercher
+* serveurs (liste, rejoindre, quitter)
+* amis (liste, ajout, suppression)
+* messages (suppression en masse)
 
-- 🗑️・**Suppression de messages**
-  - DMs
-  - serveurs
-  - sélection du nombre de messages
-
-- ⚡ **Rapide et léger**
-- 🎨 **Interface simple**
-- 💻 **Multi-plateforme** (Windows prêt, macOS/Linux via build)
+Objectif : automatiser les actions répétitives.
 
 ---
 
-## 🧰・Stack technique
+## Fonctionnalités
 
-- **Electron.js** — application desktop
-- **Node.js**
-- **discord.js-selfbot-v13**
-- **npm**
-- **electron-builder**
+### Serveurs
+
+* liste
+* rejoindre / quitter
+* recherche
+
+### Amis
+
+* liste
+* ajout
+* suppression
+* recherche
+
+### Messages
+
+* suppression (DMs / serveurs)
+* volume configurable
+
+### Général
+
+* rapide
+* interface simple
+* multi-plateforme (Windows / macOS / Linux build)
 
 ---
 
-## 🛠️・Prérequis
+## Stack
 
-Avant de lancer le projet en local :
+* Electron
+* Node.js
+* discord.js-selfbot-v13
+* npm
+* electron-builder
 
-- Node.js (LTS recommandé)
-- npm
-- Git
+---
 
-Vérification rapide :
+## Prérequis
+
+* Node.js (LTS)
+* npm
+* Git
+
 ```bash
 node -v
 npm -v
-````
+```
 
 ---
 
-## ⬇️・Installation (mode développeur)
+## Installation
 
 ```bash
 git clone https://github.com/Bherl1/DiscordAccMgr.git
@@ -87,84 +86,69 @@ npm install
 
 ---
 
-## 🚀・Lancement
-
-### Mode développement
+## Lancement
 
 ```bash
 npm run start
 ```
 
-Une fenêtre Electron s’ouvre automatiquement.
+DevTools :
 
-> Astuce :
-> `Ctrl + Shift + I` (ou `Cmd + Option + I`) pour les DevTools.
-
----
-
-## 📦・Version Windows (exécutable)
-
-Une version **.exe** est disponible.
-
-👉・Téléchargement :
-**Releases GitHub**
-
-* aucune installation Node.js requise
-* double-clic pour lancer
-
-⚠️ Windows Defender peut afficher une alerte (**application non signée**).
+* Windows / Linux : Ctrl + Shift + I
+* macOS : Cmd + Option + I
 
 ---
 
-## 🧭・Utilisation rapide
+## Build Windows
 
-### 🌐・Serveurs
+* exécutable .exe disponible (Releases)
+* aucune dépendance requise
+* lancement direct
 
-* accès via l’onglet *Server Manager*
-* actions instantanées
-* liste mise à jour automatiquement
+Note : alerte Windows Defender possible (application non signée)
 
-### 👥・Amis
+---
 
-* ajout / suppression
-* recherche rapide
-* nettoyage facile
+## Utilisation
 
-### 🗑️・Messages
+### Serveurs
+
+* accès via Server Manager
+* actions immédiates
+
+### Amis
+
+* gestion directe
+* recherche intégrée
+
+### Messages
 
 * suppression irréversible
-* barre de progression
-* respect des limites Discord (anti-ban)
+* progression affichée
+* respect des limites Discord
 
-> Reality check :
-> supprimer beaucoup de messages = ça prend du temps.
-> C’est normal.
+Note : suppression massive = lenteur normale
 
 ---
 
-## 🤝・Contribuer
-
-Les contributions sont bienvenues.
-
-Workflow classique :
+## Contribution
 
 ```bash
-fork → branch → modifs → commit → pull request
+fork → branch → commit → pull request
 ```
 
 ---
 
-## 📄 Licence
+## Licence
 
-Projet sous **licence MIT**.
-Utilisation libre, aucune garantie.
+MIT — sans garantie
 
 ---
 
-## 🔗 Liens utiles
+## Liens
 
-* 🐛 Issues : GitHub Issues
-* 📦 Releases : GitHub Releases
-* 💻 Code source : GitHub
+* Issues
+* Releases
+* Source
 
 ---
