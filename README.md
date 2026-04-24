@@ -144,11 +144,3 @@ fork → branch → commit → pull request
 MIT — sans garantie
 
 ---
-
-## Liens
-
-* Issues
-* Releases
-* Source
-
----
