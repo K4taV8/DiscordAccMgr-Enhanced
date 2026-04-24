@@ -1,7 +1,14 @@
-# Discord Account Manager
+# `  ⚫  `︲`  ⚪  ` Discord Account Manager
 
-> Gestion de compte Discord via application desktop
-> Serveurs · Amis · Messages · Nettoyage
+<p align="center">
+Gestion de compte Discord ︲ Serveurs · Amis · Messages
+</p>
+
+<p align="center">
+  <img src="https://img.shields.io/badge/type-desktop_app-informational?style=for-the-badge">
+  <img src="https://img.shields.io/badge/stack-Electron%2FNode.js-blue?style=for-the-badge">
+  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8E95E1?style=for-the-badge">
+</p>
 
 ---
 
@@ -13,25 +20,17 @@
 
 ---
 
-## Usage
-
-Gestion du compte sans client Discord officiel :
-
-* serveurs (liste, rejoindre, quitter)
-* amis (liste, ajout, suppression)
-* messages (suppression en masse)
-
-Objectif : automatiser les actions répétitives.
+`  ⚙️  `︲Automatisation d’actions Discord sans client officiel.
 
 ---
 
-## Fonctionnalités
+## `  ⚫  `︲Fonctionnalités
 
 ### Serveurs
 
-* liste
-* rejoindre / quitter
-* recherche
+* Liste
+* Quitter
+* Recherche
 
 ### Amis
 
@@ -42,28 +41,30 @@ Objectif : automatiser les actions répétitives.
 
 ### Messages
 
-* suppression (DMs / serveurs)
-* volume configurable
+* Suppression (DMs / serveurs)
+* Volume configurable
 
 ### Général
 
-* rapide
-* interface simple
-* multi-plateforme (Windows / macOS / Linux build)
+* Rapide
+* Interface simple
+* Multi-plateforme (Windows prêt / macOS & Linux via build)
 
 ---
 
-## Stack
+## `  ⚪  `︲Stack
 
-* Electron
-* Node.js
-* discord.js-selfbot-v13
-* npm
-* electron-builder
+```text
+Electron
+Node.js
+discord.js-selfbot-v13
+npm
+electron-builder
+```
 
 ---
 
-## Prérequis
+## `  ⚫  `︲Prérequis
 
 * Node.js (LTS)
 * npm
@@ -76,7 +77,7 @@ npm -v
 
 ---
 
-## Installation
+## `  ⚪  `︲Installation
 
 ```bash
 git clone https://github.com/Bherl1/DiscordAccMgr.git
@@ -86,7 +87,7 @@ npm install
 
 ---
 
-## Lancement
+## `  ⚫  `︲Lancement
 
 ```bash
 npm run start
@@ -99,39 +100,39 @@ DevTools :
 
 ---
 
-## Build Windows
+## `  ⚪  `︲Build Windows
 
-* exécutable .exe disponible (Releases)
-* aucune dépendance requise
-* lancement direct
+* Exécutable .exe (Releases)
+* Aucune dépendance
+* Lancement direct
 
-Note : alerte Windows Defender possible (application non signée)
+Note : alerte Defender possible (non signé)
 
 ---
 
-## Utilisation
+## `  ⚫  `︲Utilisation
 
 ### Serveurs
 
-* accès via Server Manager
-* actions immédiates
+* Server Manager
+* Actions immédiates
 
 ### Amis
 
-* gestion directe
-* recherche intégrée
+* Gestion directe
+* Recherche intégrée
 
 ### Messages
 
-* suppression irréversible
-* progression affichée
-* respect des limites Discord
+* Suppression irréversible
+* Progression affichée
+* Limites Discord respectées
 
 Note : suppression massive = lenteur normale
 
 ---
 
-## Contribution
+## `  ⚪  `︲Contribution
 
 ```bash
 fork → branch → commit → pull request
@@ -139,7 +140,7 @@ fork → branch → commit → pull request
 
 ---
 
-## Licence
+## `  ⚫  `︲Licence
 
 MIT — sans garantie
 
