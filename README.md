@@ -2,7 +2,6 @@
 
 <p align="center">
 Gestion de compte Discord ︲ Serveurs · Amis · Messages
-Automatisation d’actions Discord sans client officiel.
 </p>
 
 <p align="center">
@@ -21,31 +20,38 @@ Automatisation d’actions Discord sans client officiel.
 
 ---
 
+`  ⚙️  `︲Automatisation d’actions Discord sans client officiel.
+
+---
+
 ## `  ⚫  `︲Fonctionnalités
 
 ### Serveurs
 
-* Liste
-* Quitter
-* Recherche
+* liste
+* quitter
+* mute / unmute
 
 ### Amis
 
 * liste
-* ajout
 * suppression
-* recherche
 
 ### Messages
 
-* Suppression (DMs / serveurs)
-* Volume configurable
+* suppression (DMs)
 
-### Général
+### DM Groups
 
-* Rapide
-* Interface simple
-* Multi-plateforme (Windows prêt / macOS & Linux via build)
+* gestion complète
+
+### Global
+
+* mark all as read
+* gestion des tokens (save / get / delete)
+* rapide
+* interface simple
+* multi-plateforme (Windows prêt / macOS & Linux via build)
 
 ---
 
@@ -99,9 +105,9 @@ DevTools :
 
 ## `  ⚪  `︲Build Windows
 
-* Exécutable .exe (Releases)
-* Aucune dépendance
-* Lancement direct
+* exécutable .exe (Releases)
+* aucune dépendance
+* lancement direct
 
 Note : alerte Defender possible (non signé)
 
@@ -112,20 +118,17 @@ Note : alerte Defender possible (non signé)
 ### Serveurs
 
 * Server Manager
-* Actions immédiates
+* actions immédiates
 
 ### Amis
 
-* Gestion directe
-* Recherche intégrée
+* gestion directe
 
 ### Messages
 
-* Suppression irréversible
-* Progression affichée
-* Limites Discord respectées
-
-Note : suppression massive = lenteur normale
+* suppression irréversible
+* progression affichée
+* limites Discord respectées
 
 ---
 
