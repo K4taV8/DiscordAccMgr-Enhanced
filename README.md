@@ -2,6 +2,7 @@
 
 <p align="center">
 Gestion de compte Discord ︲ Serveurs · Amis · Messages
+Automatisation d’actions Discord sans client officiel.
 </p>
 
 <p align="center">
@@ -17,10 +18,6 @@ Gestion de compte Discord ︲ Serveurs · Amis · Messages
 >
 > Utilisation sous ta responsabilité.
 > Pas d’abus, pas de spam.
-
----
-
-`  ⚙️  `︲Automatisation d’actions Discord sans client officiel.
 
 ---
 
