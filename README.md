@@ -1,7 +1,7 @@
 # `  ⚫  `︲`  ⚪  ` Discord Account Manager
 
 <p align="center">
-Gestion de compte Discord ︲ Serveurs · Amis · Messages
+Gestion de compte Discord ︲ Serveurs · Amis · Messages  
 Automatisation d’actions Discord sans client officiel.
 </p>
 
@@ -25,30 +25,30 @@ Automatisation d’actions Discord sans client officiel.
 
 ### Serveurs
 
-* liste
-* quitter
-* mute / unmute
+* Liste.
+* Quitter.
+* Mute / unmute.
 
 ### Amis
 
-* liste
-* suppression
+* Liste.
+* Suppression.
 
 ### Messages
 
-* suppression (DMs)
+* Suppression (DMs et groupes).
 
 ### DM Groups
 
-* gestion complète
+* Gestion complète.
 
 ### Global
 
-* mark all as read
-* gestion des tokens (save / get / delete)
-* rapide
-* interface simple
-* multi-plateforme (Windows prêt / macOS & Linux via build)
+* Mark all as read.
+* Gestion des tokens (save / get / delete).
+* Rapide.
+* Interface simple.
+* Multi-plateforme (Windows prêt / macOS & Linux via build).
 
 ---
 
@@ -66,9 +66,9 @@ electron-builder
 
 ## `  ⚫  `︲Prérequis
 
-* Node.js (LTS)
-* npm
-* Git
+* Node.js (LTS).
+* npm.
+* Git.
 
 ```bash
 node -v
@@ -95,18 +95,18 @@ npm run start
 
 DevTools :
 
-* Windows / Linux : Ctrl + Shift + I
-* macOS : Cmd + Option + I
+* Windows / Linux : Ctrl + Shift + I.
+* macOS : Cmd + Option + I.
 
 ---
 
 ## `  ⚪  `︲Build Windows
 
-* exécutable .exe (Releases)
-* aucune dépendance
-* lancement direct
+* Exécutable .exe (Releases).
+* Aucune dépendance.
+* Lancement direct.
 
-Note : alerte Defender possible (non signé)
+Note : alerte Defender possible (application non signée).
 
 ---
 
@@ -114,18 +114,18 @@ Note : alerte Defender possible (non signé)
 
 ### Serveurs
 
-* Server Manager
-* actions immédiates
+* Server Manager.
+* Actions immédiates.
 
 ### Amis
 
-* gestion directe
+* Gestion directe.
 
 ### Messages
 
-* suppression irréversible
-* progression affichée
-* limites Discord respectées
+* Suppression irréversible.
+* Progression affichée.
+* Limites Discord respectées.
 
 ---
 
@@ -139,6 +139,6 @@ fork → branch → commit → pull request
 
 ## `  ⚫  `︲Licence
 
-MIT — sans garantie
+MIT — sans garantie.
 
 ---
