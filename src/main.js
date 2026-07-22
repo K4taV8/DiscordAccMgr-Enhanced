@@ -1,4 +1,3 @@
-import { checkForUpdates } from './utils/updates.js';
 import { loadSavedTokens, saveToken } from './utils/tokenManager.js';
 import { DMManager } from './components/DMManager.js';
 import { ServerManager } from './components/ServerManager.js';
@@ -83,7 +82,6 @@ navItems.forEach(item => {
 
 document.addEventListener('DOMContentLoaded', async () => {
   try {
-    await checkForUpdates();
     await loadSavedTokens();
   } catch (error) {
     console.error('Error during initialization:', error);

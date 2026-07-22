@@ -51,7 +51,7 @@ export class GroupManager {
                 <button onclick="window.groupManager.copyId('${group.id}')" class="secondary-btn">Copy ID</button>
                 <button onclick="window.groupManager.deleteMessages('${group.id}', '${group.name}', false)" class="secondary-btn">Delete Messages</button>
                 <button onclick="window.groupManager.deleteMessages('${group.id}', '${group.name}', true)" class="secondary-btn">Delete Oldest First</button>
-                <button onclick="window.groupManager.leaveGroup('${group.id}')" class="danger-btn">Leave</button>
+                <button onclick="window.groupManager.leaveGroup(this, '${group.id}')" class="danger-btn">Leave</button>
               </div>
             </div>
           `).join('')}
@@ -113,7 +113,8 @@ export class GroupManager {
     }
   }
 
-  async leaveGroup(groupId) {
+  async leaveGroup(btn, groupId) {
+    btn.disabled = true;
     try {
       const result = await window.electronAPI.leaveGroup(groupId);
       if (result.success) {
@@ -121,6 +122,7 @@ export class GroupManager {
       }
     } catch (error) {
       console.error('Failed to leave group:', error);
+      btn.disabled = false;
     }
   }
 

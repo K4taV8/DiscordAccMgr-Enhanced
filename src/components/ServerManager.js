@@ -6,12 +6,14 @@ export class ServerManager {
     this.contentArea = contentArea;
   }
 
-  async muteServer(serverId) {
+  async muteServer(btn, serverId) {
+    btn.disabled = true;
     try {
       await window.electronAPI.muteServer(serverId);
       this.refreshServersList();
     } catch (error) {
       console.error('Failed to mute server:', error);
+      btn.disabled = false;
     }
   }
   
@@ -72,8 +74,8 @@ export class ServerManager {
               </div>
               <div class="button-group">
                 <button onclick="window.serverManager.copyToClipboard('${server.id}')" class="secondary-btn">Copy ID</button>
-                <button onclick="window.serverManager.muteServer('${server.id}')" class="secondary-btn">Mute</button>
-                <button onclick="window.serverManager.leaveServer('${server.id}')" class="danger-btn">Leave</button>
+                <button onclick="window.serverManager.muteServer(this, '${server.id}')" class="secondary-btn">Mute</button>
+                <button onclick="window.serverManager.leaveServer(this, '${server.id}')" class="danger-btn">Leave</button>
               </div>
             </div>
           `).join('')}
@@ -153,12 +155,14 @@ export class ServerManager {
 
   copyToClipboard = copyToClipboard;
 
-  async leaveServer(serverId) {
+  async leaveServer(btn, serverId) {
+    btn.disabled = true;
     try {
       await window.electronAPI.leaveServer(serverId);
       this.refreshServersList();
     } catch (error) {
       console.error('Failed to leave server:', error);
+      btn.disabled = false;
     }
   }
 }

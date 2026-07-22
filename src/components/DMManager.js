@@ -34,7 +34,7 @@ export class DMManager {
                 <button onclick="window.dmManager.copyToClipboard('${dm.id}')" class="secondary-btn">Copy ID</button>
                 <button onclick="window.dmManager.deleteDMMessages('${dm.id}', '${dm.username}', false)" class="secondary-btn">Delete Messages</button>
                 <button onclick="window.dmManager.deleteDMMessages('${dm.id}', '${dm.username}', true)" class="secondary-btn">Delete Oldest First</button>
-                <button onclick="window.dmManager.closeDM('${dm.id}')" class="danger-btn">Close DM</button>
+                <button onclick="window.dmManager.closeDM(this, '${dm.id}')" class="danger-btn">Close DM</button>
               </div>
             </div>
           `).join('')}
@@ -133,8 +133,9 @@ export class DMManager {
     }
   }
 
-  async closeDM(channelId) {
+  async closeDM(btn, channelId) {
     if (this.isDeleting) return;
+    btn.disabled = true;
 
     try {
       const result = await window.electronAPI.closeDM(channelId);
@@ -143,6 +144,7 @@ export class DMManager {
       }
     } catch (error) {
       console.error('Failed to close DM:', error);
+      btn.disabled = false;
     }
   }
 }

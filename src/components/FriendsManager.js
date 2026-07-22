@@ -33,7 +33,7 @@ export class FriendsManager {
               </div>
               <div class="button-group">
                 <button onclick="window.friendsManager.copyId('${friend.id}')" class="secondary-btn">Copy ID</button>
-                <button onclick="window.friendsManager.removeFriend('${friend.id}')" class="danger-btn">Remove</button>
+                <button onclick="window.friendsManager.removeFriend(this, '${friend.id}')" class="danger-btn">Remove</button>
               </div>
             </div>
           `).join('')}
@@ -65,12 +65,14 @@ export class FriendsManager {
     await copyToClipboard(id);
   }
 
-  async removeFriend(friendId) {
+  async removeFriend(btn, friendId) {
+    btn.disabled = true;
     try {
       await window.electronAPI.deleteFriend(friendId);
       this.refreshFriendsList();
     } catch (error) {
       console.error('Failed to remove friend:', error);
+      btn.disabled = false;
     }
   }
 

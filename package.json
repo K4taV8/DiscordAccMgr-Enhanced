@@ -7,6 +7,7 @@
   "scripts": {
     "start": "electron .",
     "package": "electron-builder",
+    "package:portable": "node -e \"require('fs').writeFileSync('.portable','')\" && electron-builder --win dir && node -e \"require('fs').unlinkSync('.portable')\"",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -21,7 +22,10 @@
     "appId": "com.discord.accoun.tmanager",
     "productName": "Discord Account Manager",
     "win": {
-      "target": "nsis",
+      "target": [
+        "nsis",
+        "dir"
+      ],
       "icon": "src/icons/app-icon.png"
     },
     "directories": {

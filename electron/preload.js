@@ -9,8 +9,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveToken: (name, token) => ipcRenderer.invoke('tokens:save', name, token),
   deleteToken: (name) => ipcRenderer.invoke('tokens:delete', name),
 
-  checkUpdates: () => ipcRenderer.invoke('app:checkUpdates'),
-  downloadUpdate: (url) => ipcRenderer.invoke('app:downloadUpdate', url),
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
 
   muteServer: (serverId) => ipcRenderer.invoke('discord:muteServer', serverId),

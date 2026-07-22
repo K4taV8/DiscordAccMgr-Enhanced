@@ -1,8 +1,33 @@
-const { app, BrowserWindow, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const axios = require('axios');
 const fs = require('fs');
+const fsp = require('fs/promises');
 const { Client } = require('discord.js-selfbot-v13');
+
+// Portable data directory setup
+const isPortable = process.env.PORTABLE_BUILD === 'true' || (app.isPackaged && fs.existsSync(path.join(path.dirname(process.execPath), '.portable')));
+const appRoot = app.isPackaged ? path.dirname(process.execPath) : path.join(__dirname, '..');
+
+if (isPortable) {
+  const dataDir = path.join(appRoot, 'data');
+  const portablePaths = {
+    userData: path.join(dataDir, 'userData'),
+    sessionData: path.join(dataDir, 'sessionData'),
+    cache: path.join(dataDir, 'cache'),
+    crashDumps: path.join(dataDir, 'crashDumps'),
+    logs: path.join(dataDir, 'logs'),
+  };
+  try {
+    Object.values(portablePaths).forEach(p => fs.mkdirSync(p, { recursive: true }));
+    Object.entries(portablePaths).forEach(([name, p]) => app.setPath(name, p));
+  } catch (err) {
+    console.error('Failed to initialize portable data directory:', err.message);
+    dialog.showErrorBox('Portable Mode Error',
+      'Cannot write to application data directory.\nPlease ensure the application folder is writable.');
+    process.exit(1);
+  }
+}
 
 let mainWindow;
 let discordClient = null;
@@ -28,6 +53,7 @@ function createWindow() {
   });
 
   mainWindow.loadFile('./index.html');
+  mainWindow.webContents.setBackgroundThrottling(false);
 }
 
 ipcMain.on('window:minimize', () => mainWindow.minimize());
@@ -227,12 +253,13 @@ ipcMain.handle('app:openExternal', async (_, url) => {
 // Token management
 ipcMain.handle('tokens:save', async (_, name, token) => {
   try {
-    const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
+    const raw = await fsp.readFile(tokensPath, 'utf8');
+    const tokens = JSON.parse(raw);
     if (tokens.some(t => t.name === name)) {
       return { success: false, error: 'A token with this name already exists' };
     }
     tokens.push({ name, token });
-    fs.writeFileSync(tokensPath, JSON.stringify(tokens, null, 2));
+    await fsp.writeFile(tokensPath, JSON.stringify(tokens, null, 2));
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
@@ -241,7 +268,8 @@ ipcMain.handle('tokens:save', async (_, name, token) => {
 
 ipcMain.handle('tokens:get', async () => {
   try {
-    const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
+    const raw = await fsp.readFile(tokensPath, 'utf8');
+    const tokens = JSON.parse(raw);
     return { success: true, tokens };
   } catch (error) {
     return { success: false, error: error.message };
@@ -250,37 +278,19 @@ ipcMain.handle('tokens:get', async () => {
 
 ipcMain.handle('tokens:delete', async (_, name) => {
   try {
-    const tokens = JSON.parse(fs.readFileSync(tokensPath, 'utf8'));
+    const raw = await fsp.readFile(tokensPath, 'utf8');
+    const tokens = JSON.parse(raw);
     const newTokens = tokens.filter(t => t.name !== name);
-    fs.writeFileSync(tokensPath, JSON.stringify(newTokens, null, 2));
+    await fsp.writeFile(tokensPath, JSON.stringify(newTokens, null, 2));
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
   }
 });
 
-// Check for updates
-ipcMain.handle('app:checkUpdates', async () => {
-  try {
-    const response = await axios.get('https://raw.githubusercontent.com/Bherl1/DiscordAccMgr/refs/heads/main/package.json');
-    const latestVersion = response.data.version;
-    const currentVersion = require('../package.json').version;
-    
-    return {
-      hasUpdate: latestVersion > currentVersion,
-      version: latestVersion,
-      downloadUrl: `https://github.com/Bherl1/DiscordAccMgr/releases/download/v${latestVersion}/DiscordAccManager-Setup.exe`
-    };
-  } catch (error) {
-    console.error('Update check failed:', error);
-    return { hasUpdate: false };
-  }
-});
-
-// Download update
-ipcMain.handle('app:downloadUpdate', async (_, url) => {
-  require('electron').shell.openExternal(url);
-});
+// Updates disabled — no network requests
+ipcMain.handle('app:checkUpdates', async () => ({ hasUpdate: false }));
+ipcMain.handle('app:downloadUpdate', async () => {});
 
 // Discord handlers
 ipcMain.handle('discord:connect', async (_, token) => {

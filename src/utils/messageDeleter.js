@@ -84,7 +84,7 @@ export async function deleteDMMessages({
         }
       });
       
-      deletableMessages = [...deletableMessages, ...newDeletableMessages];
+      deletableMessages.push(...newDeletableMessages);
       totalMessages = deletableMessages.length;
       document.getElementById('totalCount').textContent = totalMessages.toString();
       

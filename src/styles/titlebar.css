@@ -4,70 +4,68 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 clamp(12px, 1.5vw, 16px);
+  padding: 0 12px;
   -webkit-app-region: drag;
-  border-bottom: 1px solid var(--bg-secondary);
-  position: sticky;
-  top: 0;
-  z-index: 1000;
+  border-bottom: 1px solid var(--border-light);
+  flex-shrink: 0;
+  user-select: none;
 }
 
 .title-bar .title {
   display: flex;
   align-items: center;
-  gap: clamp(6px, 1vw, 8px);
+  gap: 8px;
   font-weight: 500;
-  font-size: clamp(14px, 1vw, 16px);
+  font-size: 13px;
+  color: var(--text-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  -webkit-app-region: drag;
 }
 
 .window-controls {
   display: flex;
   -webkit-app-region: no-drag;
   margin-left: auto;
+  user-select: none;
 }
 
 .window-controls button {
-  width: clamp(32px, 4vw, 46px);
+  width: 36px;
   height: var(--title-bar-height);
   display: flex;
   align-items: center;
   justify-content: center;
   background: transparent;
   border: none;
-  color: var(--text);
+  color: var(--text-secondary);
   opacity: 0.8;
-  transition: all 0.2s;
+  transition: all var(--transition-fast);
   padding: 0;
-}
-
-.window-controls button svg {
-  width: clamp(12px, 1.5vw, 16px);
-  height: clamp(12px, 1.5vw, 16px);
+  cursor: pointer;
+  border-radius: 0;
 }
 
 .window-controls button:hover {
   opacity: 1;
+  color: var(--text-primary);
   background: var(--bg-secondary);
+}
+
+.window-controls button svg {
+  width: 14px;
+  height: 14px;
 }
 
 .window-controls button#closeBtn:hover {
   background: var(--danger);
+  color: var(--text-primary);
 }
 
+/* Responsive */
 @media (max-width: 480px) {
-  .title-bar .title {
-    font-size: 14px;
-  }
-  
   .window-controls button {
     width: 32px;
-  }
-  
-  .window-controls button svg {
-    width: 12px;
-    height: 12px;
   }
 }
