@@ -25,7 +25,7 @@ export class FriendsManager {
             <div class="list-item" data-id="${friend.id}">
               <div class="list-item-left">
                 <input type="checkbox" class="friend-checkbox" onchange="window.friendsManager.updateSelectedCount()">
-                <img src="${friend.avatar}" alt="${friend.username}">
+                <img src="${friend.avatar}" alt="${friend.username}" loading="lazy">
                 <div class="user-info">
                   <span class="display-name">${friend.displayName}</span>
                   <span class="username">(${friend.username})</span>

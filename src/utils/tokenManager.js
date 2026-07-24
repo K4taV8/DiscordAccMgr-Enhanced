@@ -1,6 +1,23 @@
 import { showInputModal } from './ui.js';
 import { updateTokensList } from './domManager.js';
 
+export async function updateTokenIndicator() {
+  const el = document.getElementById('tokenStatus');
+  try {
+    const result = await window.electronAPI.getTokens();
+    if (result.success && result.tokens.length > 0) {
+      el.textContent = '✓ Token sauvegardé';
+      el.className = 'token-status saved';
+    } else {
+      el.textContent = 'Aucun token enregistré';
+      el.className = 'token-status';
+    }
+  } catch {
+    el.textContent = 'Aucun token enregistré';
+    el.className = 'token-status';
+  }
+}
+
 export async function loadSavedTokens() {
     try {
         const result = await window.electronAPI.getTokens();
@@ -12,6 +29,7 @@ export async function loadSavedTokens() {
         const tokenManagement = document.getElementById('tokenManagement');
         if (!result.tokens.length) {
             tokenManagement.innerHTML = '<p class="text-muted">No saved tokens</p>';
+            updateTokenIndicator();
             return;
         }
 
@@ -27,6 +45,7 @@ export async function loadSavedTokens() {
                 }
             }
         });
+        updateTokenIndicator();
     } catch (error) {
         console.error('Failed to load tokens:', error);
     }

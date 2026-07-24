@@ -1,6 +1,7 @@
 import { showProgressModal } from '../utils/ui.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { deleteDMMessages } from '../utils/messageDeleter.js';
+import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
 
 export class GroupManager {
   constructor(contentArea) {
@@ -31,6 +32,7 @@ export class GroupManager {
           <button id="selectAllGroupsBtn" onclick="window.groupManager.toggleSelectAll()">Select All</button>
           <button id="leaveSelectedGroupsBtn" onclick="window.groupManager.leaveSelectedGroups()" disabled>Leave Selected</button>
           <button id="deleteSelectedMessagesBtn" onclick="window.groupManager.deleteSelectedMessages()" disabled>Delete Selected Messages</button>
+          <button id="removeSelectedReactionsBtn" onclick="window.groupManager.removeSelectedReactions()" disabled>Remove Selected Reactions</button>
         </div>
         <div id="groupsList">
           ${result.groups.map(group => `
@@ -40,6 +42,7 @@ export class GroupManager {
                 <div class="group-avatar${!group.icon || group.icon === '/discord.png' ? ' default-avatar' : ''}">
                   <img src="${group.icon === '/discord.png' ? this.defaultGroupIcon : group.icon}" 
                        alt="${group.name}"
+                       loading="lazy"
                        onerror="this.src='${this.defaultGroupIcon}'">
                 </div>
                 <div class="group-info">
@@ -51,6 +54,7 @@ export class GroupManager {
                 <button onclick="window.groupManager.copyId('${group.id}')" class="secondary-btn">Copy ID</button>
                 <button onclick="window.groupManager.deleteMessages('${group.id}', '${group.name}', false)" class="secondary-btn">Delete Messages</button>
                 <button onclick="window.groupManager.deleteMessages('${group.id}', '${group.name}', true)" class="secondary-btn">Delete Oldest First</button>
+                <button onclick="window.groupManager.removeReactions(this, '${group.id}', '${group.name}')" class="secondary-btn">Remove Reactions</button>
                 <button onclick="window.groupManager.leaveGroup(this, '${group.id}')" class="danger-btn">Leave</button>
               </div>
             </div>
@@ -76,12 +80,15 @@ export class GroupManager {
     const selectedCount = document.querySelectorAll('.group-checkbox:checked').length;
     const leaveSelectedBtn = document.getElementById('leaveSelectedGroupsBtn');
     const deleteSelectedBtn = document.getElementById('deleteSelectedMessagesBtn');
+    const removeSelectedBtn = document.getElementById('removeSelectedReactionsBtn');
     
     leaveSelectedBtn.disabled = selectedCount === 0;
     deleteSelectedBtn.disabled = selectedCount === 0;
+    removeSelectedBtn.disabled = selectedCount === 0;
     
     leaveSelectedBtn.textContent = `Leave Selected (${selectedCount})`;
     deleteSelectedBtn.textContent = `Delete Selected Messages (${selectedCount})`;
+    removeSelectedBtn.textContent = `Remove Selected Reactions (${selectedCount})`;
   }
 
   async copyId(id) {
@@ -123,6 +130,55 @@ export class GroupManager {
     } catch (error) {
       console.error('Failed to leave group:', error);
       btn.disabled = false;
+    }
+  }
+
+  async removeReactions(btn, groupId, groupName) {
+    if (this.isDeleting) return;
+    this.isDeleting = true;
+    btn.disabled = true;
+
+    try {
+      await removeReactionsFromChannel({
+        channelId: groupId,
+        channelName: groupName,
+        electronAPI: window.electronAPI,
+        isGroup: true,
+        onComplete: () => {
+          this.isDeleting = false;
+          this.refreshGroupsList();
+        }
+      });
+    } catch (error) {
+      console.error('Failed to remove reactions:', error);
+      this.isDeleting = false;
+      btn.disabled = false;
+    }
+  }
+
+  async removeSelectedReactions() {
+    if (this.isDeleting) return;
+    this.isDeleting = true;
+
+    try {
+      const selectedGroups = Array.from(document.querySelectorAll('.group-checkbox:checked')).map(checkbox => {
+        const item = checkbox.closest('.list-item');
+        return { id: item.dataset.id, name: item.dataset.name };
+      });
+
+      for (const group of selectedGroups) {
+        await removeReactionsFromChannel({
+          channelId: group.id,
+          channelName: group.name,
+          electronAPI: window.electronAPI,
+          isGroup: true,
+          skipRefresh: true
+        });
+      }
+
+      this.refreshGroupsList();
+    } finally {
+      this.isDeleting = false;
     }
   }
 

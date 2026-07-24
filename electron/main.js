@@ -1,9 +1,8 @@
-const { app, BrowserWindow, ipcMain, shell, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require('electron');
 const path = require('path');
 const axios = require('axios');
 const fs = require('fs');
 const fsp = require('fs/promises');
-const { Client } = require('discord.js-selfbot-v13');
 
 // Portable data directory setup
 const isPortable = process.env.PORTABLE_BUILD === 'true' || (app.isPackaged && fs.existsSync(path.join(path.dirname(process.execPath), '.portable')));
@@ -44,16 +43,19 @@ function createWindow() {
     minWidth: 770,
     minHeight: 600,
     frame: false,
+    show: false,
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
+      spellcheck: false,
     },
     backgroundColor: '#1a1b1e'
   });
 
   mainWindow.loadFile('./index.html');
   mainWindow.webContents.setBackgroundThrottling(false);
+  mainWindow.once('ready-to-show', () => mainWindow.show());
 }
 
 ipcMain.on('window:minimize', () => mainWindow.minimize());
@@ -127,31 +129,61 @@ ipcMain.handle('discord:leaveGroup', async (_, groupId) => {
 
 ipcMain.handle('discord:getGroupMessages', async (_, channelId, beforeId = null) => {
   try {
-    if (!discordClient || !discordClient.token) {
-      return { success: false, error: 'Not connected' };
+    if (!discordClient || !discordClient.user) {
+      return { success: false, error: 'Not connected to Discord' };
     }
-
-    const url = `https://discord.com/api/v9/channels/${channelId}/messages?limit=100${beforeId ? `&before=${beforeId}` : ''}`;
-    const response = await axios.get(url, {
-      headers: {
-        'Authorization': discordClient.token,
-        'Content-Type': 'application/json'
-      }
-    });
-
+    const channel = await discordClient.channels.fetch(channelId);
+    if (!channel) return { success: false, error: 'No access' };
+    const options = beforeId ? { before: beforeId, limit: 100 } : { limit: 100 };
+    const messages = await channel.messages.fetch(options);
+    const msgs = Array.from(messages.values()).map(msg => ({
+        id: msg.id,
+        content: msg.content,
+        author: { id: msg.author.id },
+        type: msg.type,
+        attachments: Array.from(msg.attachments.values()).map(a => ({ id: a.id, url: a.url })),
+        embeds: Array.from(msg.embeds.values()).map(e => ({ type: e.type })),
+        reactions: Array.from(msg.reactions.cache.values()).map(r => ({
+          emoji: { id: r.emoji.id, name: r.emoji.name },
+          count: r.count,
+          me: r.me
+        }))
+      }));
     return {
       success: true,
       currentUserId: discordClient.user.id,
-      messages: response.data.map(msg => ({
-        id: msg.id,
-        content: msg.content,
-        author: {
-          id: msg.author.id
-        }
+      messages: msgs
+    };
+  } catch (error) {
+    if (error.code === 50001) {
+      return { success: false, error: 'No access' };
+    }
+    console.error('getGroupMessages error:', error.message);
+    return { success: false, error: error.message };
+  }
+});
+
+ipcMain.handle('discord:getMessage', async (_, channelId, messageId) => {
+  try {
+    if (!discordClient || !discordClient.token) {
+      return { success: false, error: 'Not connected' };
+    }
+    const res = await axios.get(
+      `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}`,
+      { headers: { 'Authorization': discordClient.token } }
+    );
+    const msg = res.data;
+    return {
+      success: true,
+      currentUserId: discordClient.user.id,
+      reactions: (msg.reactions || []).map(r => ({
+        emoji: { id: r.emoji.id, name: r.emoji.name },
+        count: r.count,
+        me: r.me
       }))
     };
   } catch (error) {
-    console.error('Get group messages error:', error);
+    console.error('getMessage error:', error.message);
     return { success: false, error: error.message };
   }
 });
@@ -250,19 +282,33 @@ ipcMain.handle('app:openExternal', async (_, url) => {
   await shell.openExternal(url);
 });
 
-// Token management
+// Token management — encrypted at rest via safeStorage
+function encryptToken(token) {
+  return 'enc:' + safeStorage.encryptString(token).toString('base64');
+}
+
+function decryptToken(stored) {
+  if (typeof stored === 'string' && stored.startsWith('enc:')) {
+    return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'));
+  }
+  return null;
+}
+
 ipcMain.handle('tokens:save', async (_, name, token) => {
+  if (!safeStorage.isEncryptionAvailable()) {
+    return { success: false, error: 'Cannot save: secure storage unavailable. On Linux, install libsecret.' };
+  }
   try {
     const raw = await fsp.readFile(tokensPath, 'utf8');
     const tokens = JSON.parse(raw);
     if (tokens.some(t => t.name === name)) {
       return { success: false, error: 'A token with this name already exists' };
     }
-    tokens.push({ name, token });
+    tokens.push({ name, token: encryptToken(token) });
     await fsp.writeFile(tokensPath, JSON.stringify(tokens, null, 2));
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: 'Failed to save token' };
   }
 });
 
@@ -270,9 +316,28 @@ ipcMain.handle('tokens:get', async () => {
   try {
     const raw = await fsp.readFile(tokensPath, 'utf8');
     const tokens = JSON.parse(raw);
-    return { success: true, tokens };
+    let hasLegacy = false;
+
+    const result = tokens.map(t => {
+      if (typeof t.token === 'string' && t.token.startsWith('enc:')) {
+        try {
+          return { ...t, token: decryptToken(t.token) };
+        } catch {
+          return null;
+        }
+      }
+      hasLegacy = true;
+      return { ...t, token: t.token };
+    }).filter(Boolean);
+
+    if (hasLegacy && safeStorage.isEncryptionAvailable()) {
+      const encrypted = result.map(t => ({ ...t, token: encryptToken(t.token) }));
+      await fsp.writeFile(tokensPath, JSON.stringify(encrypted, null, 2));
+    }
+
+    return { success: true, tokens: result };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: 'Failed to load tokens' };
   }
 });
 
@@ -284,7 +349,16 @@ ipcMain.handle('tokens:delete', async (_, name) => {
     await fsp.writeFile(tokensPath, JSON.stringify(newTokens, null, 2));
     return { success: true };
   } catch (error) {
-    return { success: false, error: error.message };
+    return { success: false, error: 'Failed to delete token' };
+  }
+});
+
+ipcMain.handle('tokens:deleteAll', async () => {
+  try {
+    await fsp.writeFile(tokensPath, '[]', 'utf8');
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: 'Failed to delete tokens' };
   }
 });
 
@@ -299,6 +373,7 @@ ipcMain.handle('discord:connect', async (_, token) => {
       await discordClient.destroy();
     }
     
+    const { Client } = require('discord.js-selfbot-v13');
     discordClient = new Client({
       checkUpdate: false,
       fetchAllMembers: false,
@@ -311,10 +386,10 @@ ipcMain.handle('discord:connect', async (_, token) => {
       username: discordClient.user.tag 
     };
   } catch (error) {
-    console.error('Connection error:', error);
+    console.error('Connection failed');
     return { 
       success: false, 
-      error: error.message 
+      error: error.message || 'Connection failed' 
     };
   }
 });
@@ -409,10 +484,16 @@ ipcMain.handle('discord:getDMMessages', async (_, channelId, beforeId = null) =>
     
     return { 
       success: true, 
+      currentUserId: discordClient.user.id,
       messages: Array.from(messages.values()).map(msg => ({
         id: msg.id,
         content: msg.content,
-        isDeletable: msg.author.id === discordClient.user.id && !msg.system
+        isDeletable: msg.author.id === discordClient.user.id && !msg.system,
+        reactions: Array.from(msg.reactions.cache.values()).map(r => ({
+          emoji: { id: r.emoji.id, name: r.emoji.name },
+          count: r.count,
+          me: r.me
+        }))
       }))
     };
   } catch (error) {
@@ -482,6 +563,59 @@ ipcMain.handle('discord:closeDM', async (_, channelId) => {
   }
 });
 
+ipcMain.handle('discord:clearMessageReactions', async (_, channelId, messageId) => {
+  try {
+    if (!discordClient || !discordClient.token) {
+      return { success: false, error: 'Not connected' };
+    }
+
+    await axios.delete(
+      `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}/reactions`,
+      { headers: { 'Authorization': discordClient.token } }
+    );
+
+    return { success: true };
+  } catch (error) {
+    if (error.response?.status === 403) {
+      return { success: false, error: 'No permission to clear reactions' };
+    }
+    if (error.response?.status === 429) {
+      return { success: false, error: 'Rate limited', retryAfter: parseInt(error.response.headers?.['retry-after']) || 5 };
+    }
+    return { success: false, error: 'Failed to clear reactions' };
+  }
+});
+
+ipcMain.handle('discord:removeOwnReaction', async (_, channelId, messageId, emoji) => {
+  try {
+    if (!discordClient || !discordClient.token) {
+      return { success: false, error: 'Not connected' };
+    }
+
+    const encoded = encodeURIComponent(emoji);
+    const url = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}/reactions/${encoded}/@me`;
+    const response = await axios.delete(url, {
+      headers: { 'Authorization': discordClient.token },
+      validateStatus: () => true // accept any status
+    });
+
+    if (response.status === 204 || response.status === 200) {
+      return { success: true };
+    }
+    if (response.status === 404) {
+      return { success: false, error: 'noReaction' };
+    }
+    if (response.status === 429) {
+      return { success: false, error: 'Rate limited', retryAfter: parseInt(response.headers?.['retry-after']) || 5 };
+    }
+    console.log(`[RR] removeOwnReaction unexpected status: ${response.status}`, emoji);
+    return { success: false, error: `Unexpected status ${response.status}` };
+  } catch (error) {
+    console.log(`[RR] removeOwnReaction error:`, error.message);
+    return { success: false, error: 'Failed to remove reaction' };
+  }
+});
+
 ipcMain.handle('discord:deleteFriend', async (_, friendId) => {
   try {
     if (!discordClient || !discordClient.token) {
@@ -512,7 +646,7 @@ ipcMain.handle('discord:getServers', async () => {
     }
 
     const servers = Array.from(discordClient.guilds.cache.values())
-      .filter(server => server && server.ownerId !== discordClient.user.id) // Exclure les serveurs dont l'utilisateur est propriétaire
+      .filter(server => server)
       .map(server => ({
         id: server.id,
         name: server.name,
@@ -529,6 +663,27 @@ ipcMain.handle('discord:getServers', async () => {
       success: false, 
       error: error.message 
     };
+  }
+});
+
+ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
+  try {
+    if (!discordClient || !discordClient.token) {
+      return { success: false, error: 'Not connected' };
+    }
+
+    const response = await axios.get(
+      `https://discord.com/api/v9/guilds/${serverId}/channels`,
+      { headers: { 'Authorization': discordClient.token } }
+    );
+
+    const channels = response.data
+      .filter(ch => [0, 5, 10, 11, 12].includes(ch.type))
+      .map(ch => ({ id: ch.id, name: ch.name, type: ch.type }));
+
+    return { success: true, channels };
+  } catch (error) {
+    return { success: false, error: error.message };
   }
 });
 

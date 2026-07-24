@@ -8,6 +8,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getTokens: () => ipcRenderer.invoke('tokens:get'),
   saveToken: (name, token) => ipcRenderer.invoke('tokens:save', name, token),
   deleteToken: (name) => ipcRenderer.invoke('tokens:delete', name),
+  deleteAllTokens: () => ipcRenderer.invoke('tokens:deleteAll'),
 
   openExternal: (url) => ipcRenderer.invoke('app:openExternal', url),
 
@@ -19,6 +20,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getFriends: () => ipcRenderer.invoke('discord:getFriends'),
   deleteFriend: (friendId) => ipcRenderer.invoke('discord:deleteFriend', friendId),
   getServers: () => ipcRenderer.invoke('discord:getServers'),
+  getServerChannels: (serverId) => ipcRenderer.invoke('discord:getServerChannels', serverId),
   leaveServer: (serverId) => ipcRenderer.invoke('discord:leaveServer', serverId),
   getDMs: () => ipcRenderer.invoke('discord:getDMs'),
   getDMMessages: (channelId, beforeId) => ipcRenderer.invoke('discord:getDMMessages', channelId, beforeId),
@@ -29,5 +31,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getGroups: () => ipcRenderer.invoke('discord:getGroups'),
   leaveGroup: (groupId) => ipcRenderer.invoke('discord:leaveGroup', groupId),
   getGroupMessages: (channelId, beforeId) => ipcRenderer.invoke('discord:getGroupMessages', channelId, beforeId),
-  deleteGroupMessage: (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId)
+  getMessage: (channelId, messageId) => ipcRenderer.invoke('discord:getMessage', channelId, messageId),
+  deleteGroupMessage: (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId),
+  
+  clearMessageReactions: (channelId, messageId) => ipcRenderer.invoke('discord:clearMessageReactions', channelId, messageId),
+  removeOwnReaction: (channelId, messageId, emoji) => ipcRenderer.invoke('discord:removeOwnReaction', channelId, messageId, emoji)
 });

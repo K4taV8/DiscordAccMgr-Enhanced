@@ -102,7 +102,8 @@ export async function deleteDMMessages({
     }
 
     if (totalMessages === 0) {
-      throw new Error('No messages to delete');
+      progressBar.update(100);
+      return;
     }
 
     // Sort messages based on deletion order preference

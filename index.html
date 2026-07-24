@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Discord Manager</title>
-  <link rel="stylesheet" href="src/styles/layout.css">
-  <link rel="stylesheet" href="src/styles/titlebar.css">
-  <link rel="stylesheet" href="src/styles/components.css">
+  <link rel="stylesheet" href="src/styles/app.css">
 </head>
 <body>
   <div class="app-container">
@@ -50,35 +48,38 @@
             <span>Login</span>
           </div>
           <div class="nav-item hidden" data-page="friends">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+            <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M10 13H8c-2.76 0-5 2.24-5 5v1c0 .55.45 1 1 1h10c.55 0 1-.45 1-1v-1c0-2.76-2.24-5-5-5m-5 5c0-1.65 1.35-3 3-3h2c1.65 0 3 1.35 3 3zm7.73-11.49c-.08-.22-.19-.42-.3-.62v-.01c-.69-1.14-1.93-1.89-3.42-1.89-2.28 0-4 1.72-4 4s1.72 4 4 4c1.49 0 2.73-.74 3.42-1.89v-.01c.12-.2.22-.4.3-.62.02-.06.03-.12.05-.18.06-.17.11-.34.15-.52.05-.25.07-.51.07-.78s-.03-.53-.07-.78c-.03-.18-.09-.35-.15-.52-.02-.06-.03-.12-.05-.18M9 10c-1.18 0-2-.82-2-2s.82-2 2-2 2 .82 2 2-.82 2-2 2m6 0q-.165 0-.33-.03c-.22.66-.56 1.27-.98 1.81.41.13.84.22 1.31.22 2.28 0 4-1.72 4-4s-1.72-4-4-4c-.47 0-.9.09-1.31.22.43.53.76 1.14.98 1.81.11-.01.21-.03.33-.03 1.18 0 2 .82 2 2s-.82 2-2 2m1 3h-1.11c.6.58 1.08 1.27 1.44 2.03C17.83 15.2 19 16.46 19 18h-2v1c0 .35-.07.69-.18 1H20c.55 0 1-.45 1-1v-1c0-2.76-2.24-5-5-5"/>
             </svg>
             <span>Friends</span>
           </div>
           <div class="nav-item hidden" data-page="servers">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+            <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M3 14v2h3.73l-.72 3.82 1.97.37.78-4.18h4.96L13 19.83l1.97.37.78-4.18h4.23v-2h-3.86l.75-4h4.11v-2h-3.73l.72-3.82L16 3.83l-.78 4.18h-4.96l.72-3.82-1.97-.37L8.23 8H4v2h3.86l-.75 4zm6.89-4h4.96l-.75 4H9.14z"/>
             </svg>
             <span>Servers</span>
           </div>
           <div class="nav-item hidden" data-page="dms">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+            <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M4 19h3v2c0 .36.19.69.51.87.15.09.32.13.49.13s.36-.05.51-.14L13.27 19h6.72c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2"/>
             </svg>
             <span>DMs</span>
           </div>
           <div class="nav-item hidden" data-page="groups">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
-              <circle cx="9" cy="7" r="4"/>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>
+            <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 5a3 3 0 1 0 0 6 3 3 0 1 0 0-6m1 7h-2c-2.76 0-5 2.24-5 5v.5c0 .83.67 1.5 1.5 1.5h9c.83 0 1.5-.67 1.5-1.5V17c0-2.76-2.24-5-5-5m-6.5-1c.47 0 .9-.12 1.27-.33a5.03 5.03 0 0 1-.42-4.52C7.09 6.06 6.8 6 6.5 6 5.06 6 4 7.06 4 8.5S5.06 11 6.5 11m-.39 1H5.5C3.57 12 2 13.57 2 15.5v1c0 .28.22.5.5.5H4c0-1.96.81-3.73 2.11-5m11.39-1c1.44 0 2.5-1.06 2.5-2.5S18.94 6 17.5 6c-.31 0-.59.06-.85.15a5.03 5.03 0 0 1-.42 4.52c.37.21.79.33 1.27.33m1 1h-.61A6.97 6.97 0 0 1 20 17h1.5c.28 0 .5-.22.5-.5v-1c0-1.93-1.57-3.5-3.5-3.5"/>
             </svg>
             <span>Groups</span>
           </div>
+          <div class="nav-item hidden" id="logNavItem" onclick="event.stopPropagation();toggleDebugLog()">
+            <svg width="24" height="24" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+              <path d="M12 14h6v2h-6zM6.29 9.71 8.59 12l-2.3 2.29 1.42 1.42 3.7-3.71-3.7-3.71z"></path>
+              <path d="M20 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2M4 18V6h16v12z"></path>
+            </svg>
+            <span>Log</span>
+          </div>
         </div>
-        
+
         <!-- User Profile -->
         <div class="user-profile" id="userProfile">
           <div class="user-avatar">
@@ -101,14 +102,18 @@
             <div class="login-box">
               <h1>Welcome Back</h1>
               <div class="input-group">
-                <input type="password" id="tokenInput" placeholder="Enter your Discord token">
+                <div class="token-field">
+                  <input type="password" id="tokenInput" placeholder="Enter your Discord token">
+                  <button id="toggleTokenBtn" class="field-btn">Show</button>
+                </div>
               </div>
+              <div class="token-status" id="tokenStatus">Aucun token enregistré</div>
               <div class="button-group">
                 <button id="connectBtn">
                   <span class="btn-text">Connect</span>
                   <div class="loader" style="display: none;"></div>
                 </button>
-                <button id="saveTokenBtn" class="secondary">Save Token</button>
+                <button id="saveTokenBtn" class="secondary">Save</button>
               </div>
               <div id="status"></div>
               <div class="token-management" id="tokenManagement"></div>

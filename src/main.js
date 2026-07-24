@@ -12,6 +12,98 @@ window.serverManager = new ServerManager(document.getElementById('servers-page')
 window.friendsManager = new FriendsManager(document.getElementById('friends-page'));
 window.groupManager = new GroupManager(document.getElementById('groups-page'));
 
+window._dlOpen = false;
+window._dlPanel = null;
+
+window.toggleDebugLog = () => {
+  const n = document.getElementById('logNavItem');
+  window._dlOpen = !window._dlOpen;
+  n?.classList.toggle('active', window._dlOpen);
+
+  if (!window._dlOpen) {
+    window._dlPanel?.remove();
+    window._dlPanel = null;
+    return;
+  }
+
+  if (window._dlPanel) return;
+  const p = document.createElement('div');
+  p.style.cssText = [
+    'position:fixed;bottom:60px;left:4px;width:232px;z-index:10001',
+    'background:#18191c;border:1px solid #303338;border-radius:8px',
+    'box-shadow:0 4px 24px rgba(0,0,0,.6);overflow:hidden',
+    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
+    'font-size:13px;color:#dcddde',
+  ].join(';');
+  p.innerHTML = [
+    '<div id="dlHeader" style="display:flex;align-items:center;padding:10px 14px;background:#202225;border-bottom:1px solid #303338;gap:8px;cursor:grab;user-select:none">',
+      '<span style="font-weight:600;font-size:14px;color:#fff;flex:1">Debug Log</span>',
+      '<button id="dlClose" style="background:none;border:none;color:#96989d;cursor:pointer;font-size:20px;line-height:1;padding:2px 4px;border-radius:4px">&times;</button>',
+    '</div>',
+    '<div id="dlBody" style="overflow-y:auto;padding:4px 0;min-height:60px;max-height:200px;background:#0d0d0d;font-family:Consolas,\'Courier New\',monospace;font-size:8px;line-height:1.3;color:#a0a0a0"></div>',
+    '<div id="dlResize" style="width:14px;height:14px;position:absolute;bottom:0;right:0;cursor:nwse-resize;background:#424549;clip-path:polygon(100% 0,100% 100%,0 100%)"></div>',
+  ].join('');
+  document.body.appendChild(p);
+
+  // drag
+  let dx, dy, dragging = false;
+  const h = p.querySelector('#dlHeader');
+  h.addEventListener('mousedown', e => {
+    if (e.target.id === 'dlClose') return;
+    dragging = true;
+    dx = e.clientX - p.offsetLeft;
+    dy = e.clientY - p.offsetTop;
+    h.style.cursor = 'grabbing';
+  });
+  document.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    p.style.left = (e.clientX - dx) + 'px';
+    p.style.top = (e.clientY - dy) + 'px';
+    p.style.bottom = 'auto';
+    p.style.right = 'auto';
+  });
+  document.addEventListener('mouseup', () => {
+    if (!dragging) return;
+    dragging = false;
+    h.style.cursor = 'grab';
+  });
+
+  // resize
+  let rx, ry, rw, rh, resizing = false;
+  const rz = p.querySelector('#dlResize');
+  rz.addEventListener('mousedown', e => {
+    e.stopPropagation();
+    resizing = true;
+    rx = e.clientX;
+    ry = e.clientY;
+    rw = p.offsetWidth;
+    rh = p.offsetHeight;
+  });
+  document.addEventListener('mousemove', e => {
+    if (!resizing) return;
+    const w = Math.max(200, rw + (e.clientX - rx));
+    const h = Math.max(100, rh + (e.clientY - ry));
+    p.style.width = w + 'px';
+    p.querySelector('#dlBody').style.maxHeight = (h - 44) + 'px';
+  });
+  document.addEventListener('mouseup', () => { resizing = false; });
+
+  p.querySelector('#dlClose').onclick = () => { window._dlOpen = false; n?.classList.remove('active'); p.remove(); window._dlPanel = null; };
+  window._dlPanel = p;
+};
+
+window.log = (msg) => {
+  const cls = /\berror\b/i.test(msg) ? 'err' : /\b(?:done|success|removed|deleted?)\b/i.test(msg) ? 'ok' : /cancelled|warn/i.test(msg) ? 'warn' : '';
+  const body = document.getElementById('dlBody');
+  if (body) {
+    const e = document.createElement('div');
+    e.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;color:' + (cls === 'err' ? '#e04e4e' : cls === 'ok' ? '#3ba55d' : cls === 'warn' ? '#d4a72c' : '#a0a0a0');
+    e.textContent = msg;
+    body.appendChild(e);
+    body.scrollTop = body.scrollHeight;
+  }
+};
+
 window.copyToClipboard = copyToClipboard;
 window.getFriendsList = getFriendsList;
 
@@ -54,6 +146,7 @@ function switchPage(pageId) {
       item.classList.add('active');
     }
   });
+  if (window._dlOpen) document.getElementById('logNavItem')?.classList.add('active');
 
   // Load content based on page
   switch (pageId) {
@@ -77,6 +170,7 @@ toggleNavItems(false);
 switchPage('login');
 
 navItems.forEach(item => {
+  if (item.id === 'logNavItem') return;
   item.addEventListener('click', () => switchPage(item.dataset.page));
 });
 
@@ -97,11 +191,18 @@ document.getElementById('saveTokenBtn').addEventListener('click', () => saveToke
 
 // Disconnect handler
 document.getElementById('disconnectBtn').addEventListener('click', () => {
+  window._dlOpen = false;
+  window._dlPanel?.remove();
+  window._dlPanel = null;
+  document.getElementById('logNavItem')?.classList.remove('active');
   hideUserProfile();
   toggleNavItems(false);
   switchPage('login');
   tokenInput.value = '';
+  tokenInput.type = 'password';
+  document.getElementById('toggleTokenBtn').textContent = 'Show';
   status.textContent = '';
+  status.className = '';
 });
 
 // Connect button handler
@@ -142,5 +243,16 @@ connectBtn.addEventListener('click', async () => {
     btnText.style.display = 'inline-block';
     loader.style.display = 'none';
     connectBtn.disabled = false;
+  }
+});
+
+// Toggle token visibility
+document.getElementById('toggleTokenBtn').addEventListener('click', () => {
+  if (tokenInput.type === 'password') {
+    tokenInput.type = 'text';
+    document.getElementById('toggleTokenBtn').textContent = 'Hide';
+  } else {
+    tokenInput.type = 'password';
+    document.getElementById('toggleTokenBtn').textContent = 'Show';
   }
 });
