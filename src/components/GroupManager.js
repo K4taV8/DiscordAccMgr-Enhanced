@@ -1,7 +1,9 @@
-import { showProgressModal } from '../utils/ui.js';
+import { showProgressModal, confirmAction } from '../utils/ui.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { deleteDMMessages } from '../utils/messageDeleter.js';
 import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
+import { escHtml, escJs } from '../utils/emojiUtils.js';
+import { preservePageScroll } from '../utils/domManager.js';
 
 export class GroupManager {
   constructor(contentArea) {
@@ -26,43 +28,43 @@ export class GroupManager {
         return;
       }
 
-      this.contentArea.innerHTML = `
+      preservePageScroll(this.contentArea, () => `
         <h2>Groups List</h2>
         <div class="actions-bar">
-          <button id="selectAllGroupsBtn" onclick="window.groupManager.toggleSelectAll()">Select All</button>
-          <button id="leaveSelectedGroupsBtn" onclick="window.groupManager.leaveSelectedGroups()" disabled>Leave Selected</button>
-          <button id="deleteSelectedMessagesBtn" onclick="window.groupManager.deleteSelectedMessages()" disabled>Delete Selected Messages</button>
-          <button id="removeSelectedReactionsBtn" onclick="window.groupManager.removeSelectedReactions()" disabled>Remove Selected Reactions</button>
+          <button id="selectAllGroupsBtn" class="btn btn-secondary" onclick="window.groupManager.toggleSelectAll()">Select All</button>
+          <button id="leaveSelectedGroupsBtn" class="btn btn-secondary" onclick="window.groupManager.leaveSelectedGroups()" disabled>Leave Selected</button>
+          <button id="deleteSelectedMessagesBtn" class="btn btn-secondary" onclick="window.groupManager.deleteSelectedMessages()" disabled>Delete Selected Messages</button>
+          <button id="removeSelectedReactionsBtn" class="btn btn-secondary" onclick="window.groupManager.removeSelectedReactions()" disabled>Remove Selected Reactions</button>
         </div>
         <div id="groupsList">
           ${result.groups.map(group => `
-            <div class="list-item" data-id="${group.id}" data-name="${group.name}">
+            <div class="list-item" data-id="${group.id}" data-name="${encodeURIComponent(group.name)}">
               <div class="list-item-left">
                 <input type="checkbox" class="group-checkbox" onchange="window.groupManager.updateSelectedCount()">
                 <div class="group-avatar${!group.icon || group.icon === '/discord.png' ? ' default-avatar' : ''}">
-                  <img src="${group.icon === '/discord.png' ? this.defaultGroupIcon : group.icon}" 
-                       alt="${group.name}"
+                  <img src="${group.icon === '/discord.png' ? this.defaultGroupIcon : escHtml(group.icon)}"
+                       alt="${escHtml(group.name)}"
                        loading="lazy"
                        onerror="this.src='${this.defaultGroupIcon}'">
                 </div>
                 <div class="group-info">
-                  <span class="group-name">${group.name}</span>
+                  <span class="group-name">${escHtml(group.name)}</span>
                   <span class="group-members">${group.recipients} members</span>
                 </div>
               </div>
               <div class="button-group">
-                <button onclick="window.groupManager.copyId('${group.id}')" class="secondary-btn">Copy ID</button>
-                <button onclick="window.groupManager.deleteMessages('${group.id}', '${group.name}', false)" class="secondary-btn">Delete Messages</button>
-                <button onclick="window.groupManager.deleteMessages('${group.id}', '${group.name}', true)" class="secondary-btn">Delete Oldest First</button>
-                <button onclick="window.groupManager.removeReactions(this, '${group.id}', '${group.name}')" class="secondary-btn">Remove Reactions</button>
-                <button onclick="window.groupManager.leaveGroup(this, '${group.id}')" class="danger-btn">Leave</button>
+                <button onclick="window.groupManager.copyId('${group.id}')" class="btn btn-secondary">Copy ID</button>
+                <button onclick="window.groupManager.deleteMessages('${group.id}', '${escJs(group.name)}', false)" class="btn btn-secondary">Delete Messages</button>
+                <button onclick="window.groupManager.deleteMessages('${group.id}', '${escJs(group.name)}', true)" class="btn btn-secondary">Delete Oldest First</button>
+                <button onclick="window.groupManager.removeReactions(this, '${group.id}', '${escJs(group.name)}')" class="btn btn-secondary">Remove Reactions</button>
+                <button onclick="window.groupManager.leaveGroup(this, '${group.id}')" class="btn btn-danger">Leave</button>
               </div>
             </div>
           `).join('')}
         </div>
-      `;
+      `);
     } catch (error) {
-      this.contentArea.innerHTML = `<p class="error">${error.message}</p>`;
+      this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
   }
 
@@ -97,6 +99,7 @@ export class GroupManager {
 
   async deleteMessages(groupId, groupName, oldestFirst = false, skipRefresh = false) {
     if (this.isDeleting) return;
+    if (!skipRefresh && !(await confirmAction('Delete Messages', `Delete ALL your messages in ${groupName}? This cannot be undone.`))) return;
     this.isDeleting = true;
 
     try {
@@ -121,6 +124,7 @@ export class GroupManager {
   }
 
   async leaveGroup(btn, groupId) {
+    if (!(await confirmAction('Leave Group', 'Leave this group? This cannot be undone.'))) return;
     btn.disabled = true;
     try {
       const result = await window.electronAPI.leaveGroup(groupId);
@@ -163,7 +167,7 @@ export class GroupManager {
     try {
       const selectedGroups = Array.from(document.querySelectorAll('.group-checkbox:checked')).map(checkbox => {
         const item = checkbox.closest('.list-item');
-        return { id: item.dataset.id, name: item.dataset.name };
+        return { id: item.dataset.id, name: decodeURIComponent(item.dataset.name) };
       });
 
       for (const group of selectedGroups) {
@@ -185,6 +189,8 @@ export class GroupManager {
   async leaveSelectedGroups() {
     const selectedGroups = document.querySelectorAll('.group-checkbox:checked');
     const total = selectedGroups.length;
+    if (total === 0) return;
+    if (!(await confirmAction('Leave Groups', `Leave ${total} selected group(s)? This cannot be undone.`))) return;
     let completed = 0;
 
     const { updateProgress, closeModal } = showProgressModal('Leaving Groups', total);
@@ -210,6 +216,9 @@ export class GroupManager {
 
   async deleteSelectedMessages() {
     if (this.isDeleting) return;
+    const selectedCount = document.querySelectorAll('.group-checkbox:checked').length;
+    if (selectedCount === 0) return;
+    if (!(await confirmAction('Delete Messages', `Delete your messages in ${selectedCount} selected group(s)? This cannot be undone.`))) return;
     this.isDeleting = true;
 
     const selectedGroups = document.querySelectorAll('.group-checkbox:checked');
@@ -221,7 +230,7 @@ export class GroupManager {
     for (const checkbox of selectedGroups) {
       const groupItem = checkbox.closest('.list-item');
       const groupId = groupItem.dataset.id;
-      const groupName = groupItem.dataset.name;
+      const groupName = decodeURIComponent(groupItem.dataset.name);
       
       try {
         await this.deleteMessages(groupId, groupName, false, true);

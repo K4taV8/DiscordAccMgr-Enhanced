@@ -1,8 +1,6 @@
 import { ProgressBar } from '../components/ProgressBar.js';
-
-function emojiKey(emoji) {
-  return emoji.id ? `${emoji.name}:${emoji.id}` : emoji.name;
-}
+import { formatEmojiForApi, escHtml } from './emojiUtils.js';
+import { scanLimiter, deleteLimiter } from './rateLimiter.js';
 
 export async function removeReactionsFromChannel({
   channelId,
@@ -16,10 +14,11 @@ export async function removeReactionsFromChannel({
   modalOverlay.className = 'modal-overlay';
   modalOverlay.innerHTML = `
     <div class="modal-content">
-      <h2>Removing your reactions ${isGroup ? 'in' : 'with'} ${channelName}</h2>
+      <h2>Removing your reactions ${isGroup ? 'in' : 'with'} ${escHtml(channelName)}</h2>
       <div id="progressContainer">
         <div class="message-counter">
-          <span id="processedCount">0</span> / <span id="totalCount">0</span> reactions
+          <span id="processedCount">0</span> / <span id="totalCount">0</span> processed
+          — <span id="removedCount">0</span> removed, <span id="failedCount">0</span> failed
         </div>
       </div>
     </div>
@@ -33,95 +32,134 @@ export async function removeReactionsFromChannel({
   progressBar.show();
 
   let shouldStop = false;
+  let currentUserId = null;
+
   progressBar.onCancel(() => {
     shouldStop = true;
     progressBar.setCancelButtonText('Cancelling...');
     progressBar.disableCancelButton();
   });
 
+  const timers = [];
+  const clearTimers = () => { timers.forEach(clearTimeout); timers.length = 0; };
+  const safeTimeout = (fn, ms) => {
+    clearTimers();
+    const id = setTimeout(fn, ms);
+    timers.push(id);
+    return id;
+  };
+
+  const log = (msg) => {
+    try { window.log?.(`[RmReactions] ${msg}`); } catch {}
+    console.log(`[RmReactions] ${msg}`);
+  };
+
   try {
-    let myReactions = [];
+    let messages = [];
     let lastMessageId = null;
     let hasMore = true;
+    let totalMessagesFetched = 0;
+    const MAX_MESSAGES = 2000;
 
-    while (hasMore && !shouldStop) {
-      const result = isGroup
-        ? await electronAPI.getGroupMessages(channelId, lastMessageId)
-        : await electronAPI.getDMMessages(channelId, lastMessageId);
+    while (hasMore && !shouldStop && totalMessagesFetched < MAX_MESSAGES) {
+      const release = await scanLimiter.acquire();
+      let result;
+      try {
+        result = isGroup
+          ? await electronAPI.getChannelMessages(channelId, lastMessageId)
+          : await electronAPI.getDMMessages(channelId, lastMessageId);
+      } finally {
+        release();
+      }
 
-      if (!result.success || !result.messages.length) {
+      if (!result.success) {
+        if (result.error === 'Rate limited') {
+          await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 5) * 1000) + 1000));
+          continue;
+        }
         hasMore = false;
         continue;
       }
 
+      if (!result.messages || result.messages.length === 0) {
+        hasMore = false;
+        continue;
+      }
+
+      if (!currentUserId && result.currentUserId) currentUserId = result.currentUserId;
+
       for (const msg of result.messages) {
-        if (msg.reactions) {
-          for (const r of msg.reactions) {
-            // ponytail: me is unreliable from API, try removal for all
-            myReactions.push({ messageId: msg.id, emoji: r.emoji });
-          }
+        if (msg.reactions && msg.reactions.length > 0) {
+          const userReactions = msg.reactions.filter(r => r.me === true);
+          if (userReactions.length > 0) messages.push({ id: msg.id, reactions: userReactions });
         }
       }
 
-      if (result.messages.length < 100) {
-        hasMore = false;
-      } else {
-        lastMessageId = result.messages[result.messages.length - 1].id;
-      }
+      totalMessagesFetched += result.messages.length;
 
-      await new Promise(resolve => setTimeout(resolve, 250));
+      if (result.messages.length < 100) hasMore = false;
+      else lastMessageId = result.messages[result.messages.length - 1].id;
     }
 
     if (shouldStop) throw new Error('Operation cancelled');
 
-    const total = myReactions.length;
-    document.getElementById('totalCount').textContent = total.toString();
+    const totalReactions = messages.reduce((acc, msg) => acc + msg.reactions.length, 0);
+    document.getElementById('totalCount').textContent = totalReactions.toString();
 
-    if (total === 0) {
+    if (totalReactions === 0) {
       progressBar.update(100);
+      safeTimeout(() => { modalOverlay.remove(); onComplete(); }, 1000);
       return;
     }
 
-    let processedCount = 0;
+    let removed = 0;
+    let failed = 0;
+    let processed = 0;
 
-    for (const item of myReactions) {
+    const $ = (id) => document.getElementById(id);
+    const refreshCounters = () => {
+      $('processedCount').textContent = processed.toString();
+      $('removedCount').textContent = removed.toString();
+      $('failedCount').textContent = failed.toString();
+    };
+
+    for (const msg of messages) {
       if (shouldStop) break;
+      for (const reaction of msg.reactions) {
+        if (shouldStop) break;
 
-      const result = await electronAPI.removeOwnReaction(channelId, item.messageId, emojiKey(item.emoji));
+        const emojiStr = formatEmojiForApi(reaction.emoji);
+        if (!emojiStr) { failed++; processed++; refreshCounters(); continue; }
 
-      if (result.success) {
-        processedCount++;
-      } else if (result.error === 'Rate limited') {
-        const waitTime = ((result.retryAfter || 5) * 1000) + 1000;
-        await new Promise(resolve => setTimeout(resolve, waitTime));
-        const retry = await electronAPI.removeOwnReaction(channelId, item.messageId, emojiKey(item.emoji));
-        if (retry.success) processedCount++;
-      } else if (result.error === 'noReaction') {
-        continue; // 404 = user didn't have this reaction, skip fast
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 2500));
-        continue;
-      }
+        let success = false;
+        for (let attempt = 0; attempt < 3 && !shouldStop; attempt++) {
+          const release = await deleteLimiter.acquire();
+          let r;
+          try { r = await electronAPI.removeOwnReaction(channelId, msg.id, emojiStr); }
+          finally { release(); }
+          if (r.success || r.error === 'noReaction') { success = true; break; }
+          if (r.error === 'Rate limited') {
+            deleteLimiter.throttle(r.retryAfter || 3);
+            await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 3) * 1000) + 500));
+          }
+        }
 
-      document.getElementById('processedCount').textContent = processedCount.toString();
-      progressBar.update((processedCount / total) * 100);
+        if (success) removed++;
+        else failed++;
 
-      if (processedCount % 5 === 0) {
-        await new Promise(resolve => setTimeout(resolve, 3000));
-      } else {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        processed++;
+        refreshCounters();
+        progressBar.update((processed / totalReactions) * 100);
       }
     }
 
-    if (!shouldStop) progressBar.update(100);
+    log(`Completed: removed=${removed}, failed=${failed}, total=${totalReactions}`);
   } catch (error) {
-    console.error('Remove reactions error:', error.message);
+    console.error('Remove reactions error:', error);
     const progressContainer = document.getElementById('progressContainer');
-    progressContainer.innerHTML = `<p class="error">${error.message}</p>`;
+    if (progressContainer) progressContainer.innerHTML = `<p class="error">${error.message}</p>`;
   } finally {
-    setTimeout(() => {
-      modalOverlay.remove();
-      onComplete();
-    }, 1000);
+    clearTimers();
+    safeTimeout(() => { modalOverlay.remove(); onComplete(); }, 1000);
   }
 }

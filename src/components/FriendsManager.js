@@ -1,5 +1,7 @@
-import { showProgressModal } from '../utils/ui.js';
+import { showProgressModal, confirmAction } from '../utils/ui.js';
 import { copyToClipboard } from '../utils/clipboard.js';
+import { escHtml } from '../utils/emojiUtils.js';
+import { preservePageScroll } from '../utils/domManager.js';
 
 export class FriendsManager {
   constructor(contentArea) {
@@ -10,37 +12,37 @@ export class FriendsManager {
     try {
       const result = await window.electronAPI.getFriends();
       if (!result.success) {
-        this.contentArea.innerHTML = `<p class="error">${result.error}</p>`;
+        this.contentArea.innerHTML = `<p class="error">${escHtml(result.error)}</p>`;
         return;
       }
 
-      this.contentArea.innerHTML = `
+      preservePageScroll(this.contentArea, () => `
         <h2>Friends List</h2>
         <div class="actions-bar">
-          <button id="selectAllFriendsBtn" onclick="window.friendsManager.toggleSelectAll()">Select All</button>
-          <button id="removeSelectedFriendsBtn" onclick="window.friendsManager.removeSelected()" disabled>Remove Selected</button>
+          <button id="selectAllFriendsBtn" class="btn btn-secondary" onclick="window.friendsManager.toggleSelectAll()">Select All</button>
+          <button id="removeSelectedFriendsBtn" class="btn btn-danger" onclick="window.friendsManager.removeSelected()" disabled>Remove Selected</button>
         </div>
         <div id="friendsList">
           ${result.friends.map(friend => `
             <div class="list-item" data-id="${friend.id}">
               <div class="list-item-left">
                 <input type="checkbox" class="friend-checkbox" onchange="window.friendsManager.updateSelectedCount()">
-                <img src="${friend.avatar}" alt="${friend.username}" loading="lazy">
+                <img src="${escHtml(friend.avatar)}" alt="${escHtml(friend.username)}" loading="lazy">
                 <div class="user-info">
-                  <span class="display-name">${friend.displayName}</span>
-                  <span class="username">(${friend.username})</span>
+                  <span class="display-name">${escHtml(friend.displayName)}</span>
+                  <span class="username">(${escHtml(friend.username)})</span>
                 </div>
               </div>
               <div class="button-group">
-                <button onclick="window.friendsManager.copyId('${friend.id}')" class="secondary-btn">Copy ID</button>
-                <button onclick="window.friendsManager.removeFriend(this, '${friend.id}')" class="danger-btn">Remove</button>
+                <button onclick="window.friendsManager.copyId('${friend.id}')" class="btn btn-secondary">Copy ID</button>
+                <button onclick="window.friendsManager.removeFriend(this, '${friend.id}')" class="btn btn-danger">Remove</button>
               </div>
             </div>
           `).join('')}
         </div>
-      `;
+      `);
     } catch (error) {
-      this.contentArea.innerHTML = `<p class="error">${error.message}</p>`;
+      this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
   }
 
@@ -66,6 +68,7 @@ export class FriendsManager {
   }
 
   async removeFriend(btn, friendId) {
+    if (!(await confirmAction('Remove Friend', 'Remove this friend?'))) return;
     btn.disabled = true;
     try {
       await window.electronAPI.deleteFriend(friendId);
@@ -79,6 +82,8 @@ export class FriendsManager {
   async removeSelected() {
     const selectedFriends = document.querySelectorAll('.friend-checkbox:checked');
     const total = selectedFriends.length;
+    if (total === 0) return;
+    if (!(await confirmAction('Remove Friends', `Remove ${total} selected friend(s)? This cannot be undone.`))) return;
     
     const { updateProgress, closeModal } = showProgressModal('Removing Friends', total);
     let completed = 0;

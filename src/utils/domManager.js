@@ -1,3 +1,12 @@
+// BUG-08 : préserver le scroll après un refresh de liste (le scroll vit sur le .page-container)
+export function preservePageScroll(contentArea, render) {
+  const scroller = contentArea.closest('.page-container') || contentArea;
+  const top = scroller.scrollTop;
+  const html = render();
+  contentArea.innerHTML = html;
+  scroller.scrollTop = top;
+}
+
 // Update token list with icons
 export function updateTokensList(tokens, handlers) {
   const tokenManagement = document.getElementById('tokenManagement');
@@ -14,23 +23,24 @@ export function updateTokensList(tokens, handlers) {
 
     const nameSpan = document.createElement('span');
     nameSpan.className = 'name';
-    nameSpan.textContent = t.name;
+    nameSpan.textContent = t.corrupt ? `${t.name} (corrupted)` : t.name;
+    if (t.corrupt) nameSpan.title = 'This token cannot be decrypted. Delete it and re-add it.';
 
     const buttonGroup = document.createElement('div');
     buttonGroup.className = 'button-group';
 
     const useBtn = document.createElement('button');
-    useBtn.className = 'secondary-btn';
+    useBtn.className = 'btn btn-secondary';
     useBtn.innerHTML = `
       Use
     `;
+    useBtn.disabled = !!t.corrupt;
     useBtn.addEventListener('click', () => handlers.useToken(t.token));
 
     const deleteBtn = document.createElement('button');
-    deleteBtn.className = 'danger-btn';
-    deleteBtn.innerHTML = `
-      Delete
-    `;
+    deleteBtn.className = 'btn btn-icon-danger';
+    deleteBtn.title = 'Delete';
+    deleteBtn.innerHTML = '<svg width="22" height="22" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M17 6V4c0-1.1-.9-2-2-2H9c-1.1 0-2 .9-2 2v2H2v2h2v12c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V8h2V6zM9 4h6v2H9zM6 20V8h12v12z"></path><path d="M9 10h2v8H9zm4 0h2v8h-2z"></path></svg>';
     deleteBtn.addEventListener('click', () => handlers.deleteToken(t.name));
 
     buttonGroup.appendChild(useBtn);
@@ -44,60 +54,4 @@ export function updateTokensList(tokens, handlers) {
 
   tokenManagement.innerHTML = '';
   tokenElements.forEach(el => tokenManagement.appendChild(el));
-}
-
-export function updateFriendsList(friends, handlers) {
-  const friendsList = document.getElementById('friendsList');
-  if (!friendsList) return;
-
-  const friendElements = friends.map(friend => {
-    const div = document.createElement('div');
-    div.className = 'list-item';
-    div.dataset.id = friend.id;
-
-    // Create left side
-    const leftDiv = document.createElement('div');
-    leftDiv.className = 'list-item-left';
-
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'friend-checkbox';
-    checkbox.addEventListener('change', handlers.updateCount);
-
-    const img = document.createElement('img');
-    img.src = friend.avatar;
-    img.alt = friend.username;
-
-    const span = document.createElement('span');
-    span.textContent = friend.username;
-
-    leftDiv.appendChild(checkbox);
-    leftDiv.appendChild(img);
-    leftDiv.appendChild(span);
-
-    // Create button group
-    const buttonGroup = document.createElement('div');
-    buttonGroup.className = 'button-group';
-
-    const copyBtn = document.createElement('button');
-    copyBtn.className = 'secondary-btn';
-    copyBtn.textContent = 'Copy ID';
-    copyBtn.addEventListener('click', () => handlers.copyId(friend.id));
-
-    const removeBtn = document.createElement('button');
-    removeBtn.className = 'danger-btn';
-    removeBtn.textContent = 'Remove';
-    removeBtn.addEventListener('click', () => handlers.removeFriend(friend.id));
-
-    buttonGroup.appendChild(copyBtn);
-    buttonGroup.appendChild(removeBtn);
-
-    div.appendChild(leftDiv);
-    div.appendChild(buttonGroup);
-
-    return div;
-  });
-
-  friendsList.innerHTML = '';
-  friendElements.forEach(el => friendsList.appendChild(el));
 }

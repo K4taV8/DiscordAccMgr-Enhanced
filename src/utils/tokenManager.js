@@ -1,23 +1,6 @@
 import { showInputModal } from './ui.js';
 import { updateTokensList } from './domManager.js';
 
-export async function updateTokenIndicator() {
-  const el = document.getElementById('tokenStatus');
-  try {
-    const result = await window.electronAPI.getTokens();
-    if (result.success && result.tokens.length > 0) {
-      el.textContent = '✓ Token sauvegardé';
-      el.className = 'token-status saved';
-    } else {
-      el.textContent = 'Aucun token enregistré';
-      el.className = 'token-status';
-    }
-  } catch {
-    el.textContent = 'Aucun token enregistré';
-    el.className = 'token-status';
-  }
-}
-
 export async function loadSavedTokens() {
     try {
         const result = await window.electronAPI.getTokens();
@@ -27,25 +10,25 @@ export async function loadSavedTokens() {
         }
 
         const tokenManagement = document.getElementById('tokenManagement');
-        if (!result.tokens.length) {
+        if (!tokenManagement) return;
+if (!result.tokens.length) {
             tokenManagement.innerHTML = '<p class="text-muted">No saved tokens</p>';
-            updateTokenIndicator();
             return;
         }
 
         updateTokensList(result.tokens, {
             useToken: (token) => {
-                document.getElementById('tokenInput').value = token;
-                document.getElementById('connectBtn').click();
+                const input = document.getElementById('tokenInput');
+                const btn = document.getElementById('connectBtn');
+                if (input && btn) { input.value = token; btn.click(); }
             },
             deleteToken: async (name) => {
-                const result = await window.electronAPI.deleteToken(name);
-                if (result.success) {
-                    loadSavedTokens();
-                }
+                try {
+                    const r = await window.electronAPI.deleteToken(name);
+                    if (r.success) loadSavedTokens();
+                } catch (e) { console.error('Delete token error:', e); }
             }
-        });
-        updateTokenIndicator();
+});
     } catch (error) {
         console.error('Failed to load tokens:', error);
     }
@@ -62,11 +45,12 @@ export async function saveToken(token, status) {
     if (!name) return;
 
     try {
-        const result = await window.electronAPI.saveToken(name, token);
+        const result = await window.electronAPI.saveToken(name.trim(), token);
         if (result.success) {
-            status.textContent = 'Token saved successfully';
-            status.className = 'success';
+            status.textContent = '';
+            document.getElementById('tokenInput').value = '';
             await loadSavedTokens();
+            showSavedFeedback();
         } else {
             status.textContent = result.error;
             status.className = 'error';
@@ -76,3 +60,18 @@ export async function saveToken(token, status) {
         status.className = 'error';
     }
 }
+
+// Solution A : feedback temporaire "Saved ✓" sur le bouton Save (2s, pas de layout shift)
+let savedTimer = null;
+function showSavedFeedback() {
+  const btn = document.getElementById('saveTokenBtn');
+  if (!btn) return;
+  clearTimeout(savedTimer);
+  btn.classList.add('btn-saved');
+  btn.innerHTML = 'Saved ✓';
+  savedTimer = setTimeout(() => {
+    btn.classList.remove('btn-saved');
+    btn.innerHTML = 'Save';
+  }, 2000);
+}
+

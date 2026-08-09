@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Discord Manager</title>
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com; connect-src 'self'">
+  <title>Discord Account Manager</title>
   <link rel="stylesheet" href="src/styles/app.css">
 </head>
 <body>
@@ -88,7 +89,7 @@
           <div class="user-info">
             <div class="user-name" id="userName"></div>
           </div>
-          <button class="disconnect-btn" id="disconnectBtn">
+          <button class="btn btn-danger" id="disconnectBtn">
             Disconnect
           </button>
         </div>
@@ -100,22 +101,28 @@
         <div class="page-container active" id="login-page">
           <div class="login-container">
             <div class="login-box">
+              <div class="login-logo">
+                <svg width="26" height="26" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M8 21c2.76 0 5-2.24 5-5 0-1.02-.31-1.96-.83-2.75l3.33-3.33 1.79 1.79 1.41-1.41-1.79-1.79L18 7.42l2.29 2.29L21.7 8.3l-2.29-2.29 1.29-1.29-1.41-1.41-8.54 8.54c-.79-.52-1.74-.83-2.75-.83-2.76 0-5 2.24-5 5s2.24 5 5 5Zm0-8c1.65 0 3 1.35 3 3s-1.35 3-3 3-3-1.35-3-3 1.35-3 3-3"></path></svg>
+              </div>
               <h1>Welcome Back</h1>
               <div class="input-group">
                 <div class="token-field">
-                  <input type="password" id="tokenInput" placeholder="Enter your Discord token">
-                  <button id="toggleTokenBtn" class="field-btn">Show</button>
+                  <input type="password" id="tokenInput" placeholder="e.g. mfa.Vkd_qX... (Paste your token)">
+                  <button id="toggleTokenBtn" class="btn btn-secondary" title="Show">
+                    <svg id="eyeOpenIcon" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6"></path><path d="M12 19c7.63 0 9.93-6.62 9.95-6.68.07-.21.07-.43 0-.63-.02-.07-2.32-6.68-9.95-6.68s-9.93 6.61-9.95 6.67c-.07.21-.07.43 0 .63.02.07 2.32 6.68 9.95 6.68Zm0-12c5.35 0 7.42 3.85 7.93 5-.5 1.16-2.58 5-7.93 5s-7.42-3.84-7.93-5c.5-1.16 2.58-5 7.93-5"></path></svg>
+                    <svg id="eyeClosedIcon" width="16" height="16" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" style="display:none"><path d="m21.95 12.32-1.9-.64C19.98 11.9 18.16 17 12 17s-7.98-5.1-8.05-5.32l-1.9.63s.28.8.93 1.81L.7 15.85l1.21 1.6 2.3-1.74c.58.62 1.29 1.24 2.16 1.77l-1.51 2.48L6.57 21l1.62-2.65c.83.3 1.78.5 2.82.59v3.05h2v-3.05c1.05-.08 1.99-.29 2.82-.59L17.45 21l1.71-1.04-1.51-2.48c.87-.53 1.58-1.15 2.16-1.77l2.3 1.74 1.21-1.6-2.28-1.73c.65-1.01.92-1.79.93-1.81Z"></path></svg>
+                  </button>
                 </div>
               </div>
-              <div class="token-status" id="tokenStatus">Aucun token enregistré</div>
               <div class="button-group">
-                <button id="connectBtn">
+                <button id="connectBtn" class="btn btn-primary">
                   <span class="btn-text">Connect</span>
                   <div class="loader" style="display: none;"></div>
                 </button>
-                <button id="saveTokenBtn" class="secondary">Save</button>
+                <button id="saveTokenBtn" class="btn btn-secondary">Save</button>
               </div>
               <div id="status"></div>
+              <div class="login-divider"></div>
               <div class="token-management" id="tokenManagement"></div>
             </div>
           </div>
