@@ -7,6 +7,17 @@ export function preservePageScroll(contentArea, render) {
   scroller.scrollTop = top;
 }
 
+// Cache liste : navigation instantanée, refetch après 30s ; force=true après une mutation
+export async function cachedListRefresh(self, fetchFn, renderFn, force = false, ttl = 30000) {
+  if (!force && self._cache && Date.now() - self._cache.at < ttl) {
+    renderFn(self._cache.data);
+    return;
+  }
+  const data = await fetchFn();
+  self._cache = { data, at: Date.now() };
+  renderFn(data);
+}
+
 // Update token list with icons
 export function updateTokensList(tokens, handlers) {
   const tokenManagement = document.getElementById('tokenManagement');

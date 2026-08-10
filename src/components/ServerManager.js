@@ -3,7 +3,7 @@ import { showNotification, confirmAction } from '../utils/ui.js';
 import { deleteServerMessages } from '../utils/serverMessageDeleter.js';
 import { removeServerReactions } from '../utils/serverReactionRemover.js';
 import { escHtml } from '../utils/emojiUtils.js';
-import { preservePageScroll } from '../utils/domManager.js';
+import { cachedListRefresh } from '../utils/domManager.js';
 
 export class ServerManager {
   constructor(contentArea) {
@@ -15,7 +15,7 @@ export class ServerManager {
     btn.disabled = true;
     try {
       await window.electronAPI.muteServer(serverId);
-      this.refreshServersList();
+      this.refreshServersList(true);
     } catch (error) {
       console.error('Failed to mute server:', error);
       btn.disabled = false;
@@ -25,7 +25,7 @@ export class ServerManager {
   async unmuteServer(serverId) {
     try {
       await window.electronAPI.unmuteServer(serverId);
-      this.refreshServersList();
+      this.refreshServersList(true);
     } catch (error) {
       console.error('Failed to unmute server:', error);
     }
@@ -47,15 +47,16 @@ export class ServerManager {
     if (failed > 0) {
       showNotification(`Failed to mute ${failed} server(s)`);
     }
-    this.refreshServersList();
+    this.refreshServersList(true);
   }
   
-  async refreshServersList() {
+  async refreshServersList(force = false) {
     try {
-      const servers = await getServersList();
-      
-      preservePageScroll(this.contentArea, () => `
-        <h2>Servers List</h2>
+      const render = (servers) => {
+        const scroller = this.contentArea.closest('.page-container') || this.contentArea;
+        const top = scroller.scrollTop;
+        this.contentArea.innerHTML = `
+        <h2 class="page-title">Servers List <span class="list-count">${servers.length}</span></h2>
         <div class="actions-bar">
           <button id="selectAllServersBtn" class="btn btn-secondary" onclick="window.serverManager.toggleSelectAllServers()">Select All</button>
           <button id="leaveSelectedServersBtn" class="btn btn-secondary" onclick="window.serverManager.leaveSelectedServers()" disabled>Leave Selected</button>
@@ -64,41 +65,63 @@ export class ServerManager {
           <button id="removeSelectedServersReactionsBtn" class="btn btn-secondary" onclick="window.serverManager.removeSelectedServersReactions()" disabled>Remove Reactions</button>
           <button id="readAllBtn" class="btn btn-primary" onclick="window.serverManager.readAll()">Read All</button>
         </div>
-        <div id="serversList">
-          ${servers.map(server => `
-            <div class="list-item" data-id="${server.id}">
-              <div class="list-item-left">
-                <input type="checkbox" class="server-checkbox" onchange="window.serverManager.updateSelectedServersCount()">
-                <img src="${escHtml(server.icon)}" alt="${escHtml(server.name)}" loading="lazy">
-                <span>${escHtml(server.name)}</span>
-              </div>
-              <div class="button-group">
-                <button onclick="window.serverManager.copyToClipboard('${server.id}')" class="btn btn-secondary">Copy ID</button>
-                <button onclick="window.serverManager.muteServer(this, '${server.id}')" class="btn btn-secondary">Mute</button>
-                <button onclick="window.serverManager.deleteServerMessages('${server.id}')" class="btn btn-danger">Delete Msgs</button>
-                <button onclick="window.serverManager.removeServerReactions('${server.id}')" class="btn btn-danger">Rm Reactions</button>
-                <button onclick="window.serverManager.leaveServer(this, '${server.id}')" class="btn btn-danger">Leave</button>
-              </div>
+        <div id="serversList"></div>
+        `;
+        scroller.scrollTop = top;
+        const list = document.getElementById('serversList');
+        // Phase C : rendu chunké (50 lignes/frame) — pas de frame bloquée à 200 lignes
+        const CHUNK = 50;
+        const row = (server) => `
+          <div class="list-item" data-id="${server.id}">
+            <div class="list-item-left">
+              <input type="checkbox" class="server-checkbox" onchange="window.serverManager.updateSelectedServersCount()">
+              <img src="${escHtml(server.icon)}" alt="${escHtml(server.name)}" loading="lazy">
+              <span>${escHtml(server.name)}</span>
             </div>
-          `).join('')}
-        </div>
-      `);
+            <div class="button-group">
+              <button onclick="window.serverManager.copyToClipboard('${server.id}')" class="btn btn-secondary">Copy ID</button>
+              <button onclick="window.serverManager.muteServer(this, '${server.id}')" class="btn btn-secondary">Mute</button>
+              <button onclick="window.serverManager.deleteServerMessages('${server.id}')" class="btn btn-danger">Delete Msgs</button>
+              <button onclick="window.serverManager.removeServerReactions('${server.id}')" class="btn btn-danger">Rm Reactions</button>
+              <button onclick="window.serverManager.leaveServer(this, '${server.id}')" class="btn btn-danger">Leave</button>
+            </div>
+          </div>
+        `;
+        let i = 0;
+        const flush = () => {
+          const end = Math.min(i + CHUNK, servers.length);
+          list.insertAdjacentHTML('beforeend', servers.slice(i, end).map(row).join(''));
+          i = end;
+          if (i < servers.length) requestAnimationFrame(flush);
+        };
+        requestAnimationFrame(flush);
+      };
+      await cachedListRefresh(this, () => getServersList(force), render, force);
     } catch (error) {
       this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
   }
   
   async readAll() {
+    const btn = document.getElementById('readAllBtn');
+    const originalText = btn?.textContent;
+    const unsubscribe = window.electronAPI?.onReadAllProgress?.(({ done, total }) => {
+      if (btn) btn.textContent = `Read All (${done}/${total})`;
+    });
     try {
+      if (btn) btn.disabled = true;
       const result = await window.electronAPI.readAll();
       if (result.success) {
-        showNotification('Marked all as read!');
+        showNotification(result.failed > 0 ? `Marked all as read (${result.failed} failed)` : 'Marked all as read!');
       } else {
         showNotification('Failed to mark all as read');
       }
     } catch (error) {
       console.error('Read all error:', error);
       showNotification('Failed to mark all as read');
+    } finally {
+      unsubscribe?.();
+      if (btn) { btn.disabled = false; btn.textContent = originalText; }
     }
   }
 
@@ -151,7 +174,7 @@ export class ServerManager {
         console.error('Failed to leave server:', error);
       }
     }
-    this.refreshServersList();
+    this.refreshServersList(true);
   }
 
   async deleteServerMessages(serverId) {
@@ -189,7 +212,7 @@ export class ServerManager {
           onComplete: () => {}
         });
       }
-      this.refreshServersList();
+      this.refreshServersList(true);
     } finally {
       this.isDeleting = false;
     }
@@ -230,7 +253,7 @@ export class ServerManager {
           onComplete: () => {}
         });
       }
-      this.refreshServersList();
+      this.refreshServersList(true);
     } finally {
       this.isDeleting = false;
     }
@@ -243,7 +266,7 @@ export class ServerManager {
     btn.disabled = true;
     try {
       await window.electronAPI.leaveServer(serverId);
-      this.refreshServersList();
+      this.refreshServersList(true);
     } catch (error) {
       console.error('Failed to leave server:', error);
       btn.disabled = false;

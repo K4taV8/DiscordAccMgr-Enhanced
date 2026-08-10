@@ -1,23 +1,22 @@
 import { showProgressModal, confirmAction } from '../utils/ui.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { escHtml } from '../utils/emojiUtils.js';
-import { preservePageScroll } from '../utils/domManager.js';
+import { preservePageScroll, cachedListRefresh } from '../utils/domManager.js';
 
 export class FriendsManager {
   constructor(contentArea) {
     this.contentArea = contentArea;
   }
 
-  async refreshFriendsList() {
+  async refreshFriendsList(force = false) {
     try {
-      const result = await window.electronAPI.getFriends();
-      if (!result.success) {
-        this.contentArea.innerHTML = `<p class="error">${escHtml(result.error)}</p>`;
-        return;
-      }
-
-      preservePageScroll(this.contentArea, () => `
-        <h2>Friends List</h2>
+      const render = (result) => {
+        if (!result.success) {
+          this.contentArea.innerHTML = `<p class="error">${escHtml(result.error)}</p>`;
+          return;
+        }
+        preservePageScroll(this.contentArea, () => `
+        <h2 class="page-title">Friends List <span class="list-count">${result.friends.length}</span></h2>
         <div class="actions-bar">
           <button id="selectAllFriendsBtn" class="btn btn-secondary" onclick="window.friendsManager.toggleSelectAll()">Select All</button>
           <button id="removeSelectedFriendsBtn" class="btn btn-danger" onclick="window.friendsManager.removeSelected()" disabled>Remove Selected</button>
@@ -41,13 +40,15 @@ export class FriendsManager {
           `).join('')}
         </div>
       `);
+      };
+      await cachedListRefresh(this, () => window.electronAPI.getFriends(), render, force);
     } catch (error) {
       this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
   }
 
   toggleSelectAll() {
-    const checkboxes = document.querySelectorAll('.friend-checkbox');
+    const checkboxes = this.contentArea.querySelectorAll('.friend-checkbox');
     const selectAllBtn = document.getElementById('selectAllFriendsBtn');
     const isSelectAll = selectAllBtn.textContent === 'Select All';
     
@@ -57,7 +58,7 @@ export class FriendsManager {
   }
 
   updateSelectedCount() {
-    const selectedCount = document.querySelectorAll('.friend-checkbox:checked').length;
+    const selectedCount = this.contentArea.querySelectorAll('.friend-checkbox:checked').length;
     const removeSelectedBtn = document.getElementById('removeSelectedFriendsBtn');
     removeSelectedBtn.disabled = selectedCount === 0;
     removeSelectedBtn.textContent = `Remove Selected (${selectedCount})`;
@@ -72,7 +73,7 @@ export class FriendsManager {
     btn.disabled = true;
     try {
       await window.electronAPI.deleteFriend(friendId);
-      this.refreshFriendsList();
+      this.refreshFriendsList(true);
     } catch (error) {
       console.error('Failed to remove friend:', error);
       btn.disabled = false;
@@ -101,7 +102,7 @@ export class FriendsManager {
 
     setTimeout(() => {
       closeModal();
-      this.refreshFriendsList();
+      this.refreshFriendsList(true);
     }, 1000);
   }
 }

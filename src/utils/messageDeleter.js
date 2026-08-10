@@ -89,8 +89,8 @@ export async function deleteDMMessages({
           if (!msg.author || msg.author.id !== currentUserId) return false;
           return (
             (typeof msg.content === 'string' && msg.content.trim().length > 0) ||
-            (msg.attachments && msg.attachments.length > 0) ||
-            (msg.embeds && msg.embeds.length > 0) ||
+            (msg.attachments || 0) > 0 ||
+            (msg.embeds || 0) > 0 ||
             msg.type === 'VOICE_MESSAGE'
           );
         } else {
@@ -108,8 +108,6 @@ export async function deleteDMMessages({
       } else {
         lastMessageId = messages[messages.length - 1].id;
       }
-
-      await sleep(humanDelay(250));
     }
 
     if (shouldStop || isStopSignal?.()) {

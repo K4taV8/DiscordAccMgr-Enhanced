@@ -3,7 +3,7 @@ import { copyToClipboard } from '../utils/clipboard.js';
 import { deleteDMMessages } from '../utils/messageDeleter.js';
 import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
 import { escHtml, escJs } from '../utils/emojiUtils.js';
-import { preservePageScroll } from '../utils/domManager.js';
+import { preservePageScroll, cachedListRefresh } from '../utils/domManager.js';
 
 export class GroupManager {
   constructor(contentArea) {
@@ -20,16 +20,15 @@ export class GroupManager {
     `)}`;
   }
 
-  async refreshGroupsList() {
+  async refreshGroupsList(force = false) {
     try {
-      const result = await window.electronAPI.getGroups();
-      if (!result.success) {
-        this.contentArea.innerHTML = '<p class="error">Failed to load groups</p>';
-        return;
-      }
-
-      preservePageScroll(this.contentArea, () => `
-        <h2>Groups List</h2>
+      const render = (result) => {
+        if (!result.success) {
+          this.contentArea.innerHTML = '<p class="error">Failed to load groups</p>';
+          return;
+        }
+        preservePageScroll(this.contentArea, () => `
+        <h2 class="page-title">Groups List <span class="list-count">${result.groups.length}</span></h2>
         <div class="actions-bar">
           <button id="selectAllGroupsBtn" class="btn btn-secondary" onclick="window.groupManager.toggleSelectAll()">Select All</button>
           <button id="leaveSelectedGroupsBtn" class="btn btn-secondary" onclick="window.groupManager.leaveSelectedGroups()" disabled>Leave Selected</button>
@@ -63,13 +62,15 @@ export class GroupManager {
           `).join('')}
         </div>
       `);
+      };
+      await cachedListRefresh(this, () => window.electronAPI.getGroups(), render, force);
     } catch (error) {
       this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
   }
 
   toggleSelectAll() {
-    const checkboxes = document.querySelectorAll('.group-checkbox');
+    const checkboxes = this.contentArea.querySelectorAll('.group-checkbox');
     const selectAllBtn = document.getElementById('selectAllGroupsBtn');
     const isSelectAll = selectAllBtn.textContent === 'Select All';
     
@@ -79,7 +80,7 @@ export class GroupManager {
   }
 
   updateSelectedCount() {
-    const selectedCount = document.querySelectorAll('.group-checkbox:checked').length;
+    const selectedCount = this.contentArea.querySelectorAll('.group-checkbox:checked').length;
     const leaveSelectedBtn = document.getElementById('leaveSelectedGroupsBtn');
     const deleteSelectedBtn = document.getElementById('deleteSelectedMessagesBtn');
     const removeSelectedBtn = document.getElementById('removeSelectedReactionsBtn');
@@ -110,7 +111,7 @@ export class GroupManager {
         onComplete: () => {
           this.isDeleting = false;
           if (!skipRefresh) {
-            this.refreshGroupsList();
+            this.refreshGroupsList(true);
           }
         },
         skipRefresh,
@@ -129,7 +130,7 @@ export class GroupManager {
     try {
       const result = await window.electronAPI.leaveGroup(groupId);
       if (result.success) {
-        this.refreshGroupsList();
+        this.refreshGroupsList(true);
       }
     } catch (error) {
       console.error('Failed to leave group:', error);
@@ -150,7 +151,7 @@ export class GroupManager {
         isGroup: true,
         onComplete: () => {
           this.isDeleting = false;
-          this.refreshGroupsList();
+          this.refreshGroupsList(true);
         }
       });
     } catch (error) {
@@ -180,7 +181,7 @@ export class GroupManager {
         });
       }
 
-      this.refreshGroupsList();
+      this.refreshGroupsList(true);
     } finally {
       this.isDeleting = false;
     }
@@ -210,7 +211,7 @@ export class GroupManager {
 
     setTimeout(() => {
       closeModal();
-      this.refreshGroupsList();
+      this.refreshGroupsList(true);
     }, 1000);
   }
 
@@ -244,7 +245,7 @@ export class GroupManager {
     setTimeout(() => {
       closeModal();
       this.isDeleting = false;
-      this.refreshGroupsList();
+      this.refreshGroupsList(true);
     }, 1000);
   }
 }

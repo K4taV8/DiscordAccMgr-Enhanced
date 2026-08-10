@@ -1,83 +1,297 @@
-# `  ⚫  `︲`  ⚪  ` Discord Account Manager
+# ` 🎤 `︲Discord Account Manager : Gestion de comptes Discord sans client officiel
 
 <p align="center">
-Gestion de compte Discord ︲ Serveurs · Amis · Messages  
-Automatisation d’actions Discord sans client officiel.
+  <img src="https://img.shields.io/badge/Electron-29-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
+  <img src="https://img.shields.io/badge/Node.js-20-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
+  <img src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
+  <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Anti_RateLimit-X_RateLimit_aware-00b87c?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Persistence-Checkpoint_%7C_Watermark_%7C_Ledger-4b0082?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Tests-node_test-3ba55d?style=for-the-badge">
+  <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
-<p align="center">
-  <img src="https://img.shields.io/badge/type-desktop_app-informational?style=for-the-badge">
-  <img src="https://img.shields.io/badge/stack-Electron%2FNode.js-blue?style=for-the-badge">
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-8E95E1?style=for-the-badge">
-</p>
+---
+
+<p align="center">Application de bureau Electron — gestion de serveurs, amis, messages et réactions. Automatisation d'actions Discord sans client officiel, sur son propre compte.</p>
 
 ---
 
 > [!CAUTION]
-> Outil non officiel.
+> **Outil non officiel.** Utilisation sous votre entière responsabilité — pas d'abus, pas de spam.
+> `discord.js-selfbot-v13` et l'API v9 avec un jeton utilisateur **violent les conditions d'utilisation de Discord** : risque de bannissement du compte. Cette application est un outil de gestion de données personnelles, pas un bot d'automatisation abusive.
+
+---
+
+## `📑`︲Sommaire
+
+1. [`📘`︲Présentation.](#presentation)
+2. [`✨`︲Fonctionnalités.](#fonctionnalites)
+3. [`🧩`︲Architecture du projet.](#architecture)
+4. [`⚡`︲Performances et optimisations.](#performances)
+5. [`🛡️`︲Garde-fous & Do Not Break.](#gardefous)
+6. [`⚖️`︲Choix techniques & limitations.](#choices)
+7. [`🧰`︲Technologies utilisées.](#technologies)
+8. [`🛠️`︲Installation.](#installation)
+9. [`▶️`︲Utilisation.](#utilisation)
+10. [`⚙️`︲Configuration.](#configuration)
+11. [`🔧`︲Maintenance & débogage.](#maintenance)
+12. [`🗺️`︲Roadmap.](#roadmap)
+13. [`🤝`︲Contribution.](#contribution)
+14. [`📜`︲Licence.](#licence)
+
+---
+
+<a id="presentation"></a>
+# `📘`︲Présentation.
+
+---
+
+> [!NOTE]
+> **Problème résolu :** gérer plusieurs comptes Discord (serveurs, amis, messages, réactions, « tout marquer comme lu ») sans lancer le client officiel, avec des volumes allant jusqu'à **100 serveurs** (comptes standard) et **200 serveurs** (comptes Nitro), **sans jamais déclencher de rate-limit** (429) ni de drapeau d'abus.
 >
-> Utilisation sous ta responsabilité.
-> Pas d’abus, pas de spam.
+> **Objectif :** une application Electron légère, sans bundler ni framework, dont le cœur réseau est **piloté par les en-têtes de débit réels de l'API** (`X-RateLimit-Remaining` / `X-RateLimit-Reset-After`) — jamais par des délais arbitraires — avec une couche de **cache local** et de **reprise de scan** (checkpointing) pour ne jamais re-scanner intégralement des serveurs déjà analysés.
+
+**Architecture en trois sous-systèmes isolés :**
+
+| Sous-système | Fichiers | Rôle |
+|---|---|---|
+| **UI (renderer, ESM)** | `src/` — `components/` (4 managers), `utils/` | Interface, opérations lourdes (scan/suppression), rendu fluide |
+| **Pont (preload)** | `electron/preload.cjs` | `contextBridge` isolé, redaction des IPC sensibles |
+| **Noyau (main, CJS)** | `electron/main.cjs`, `rateLimiter.cjs`, `persist.cjs` | **Autorité débit** (ordonnanceur header-aware), persistance atomique, sécurité des tokens |
 
 ---
 
-## `  ⚫  `︲Fonctionnalités
-
-### Serveurs
-
-* Liste.
-* Quitter.
-* Mute / unmute.
-
-### Amis
-
-* Liste.
-* Suppression.
-
-### Messages
-
-* Suppression (DMs et groupes).
-
-### DM Groups
-
-* Gestion complète.
-
-### Global
-
-* Mark all as read.
-* Gestion des tokens (save / get / delete).
-* Rapide.
-* Interface simple.
-* Multi-plateforme (Windows prêt / macOS & Linux via build).
+<a id="fonctionnalites"></a>
+# `✨`︲Fonctionnalités.
 
 ---
 
-## `  ⚪  `︲Stack
+* ` 🖥️ `︲**Serveurs** : liste, quitter, mute / unmute, sélection multiple, suppression de messages et retrait de réactions à l'échelle du serveur.
 
-```text
-Electron
-Node.js
-discord.js-selfbot-v13
-npm
-electron-builder
+* ` 👥 `︲**Amis** : liste, suppression.
+
+* ` 💬 `︲**Messages** : suppression dans les DMs et groupes (avec progression, ETA, annulation, reprise par checkpoint).
+
+* ` 🗂️ `︲**Groupes DM** : gestion complète (lister, quitter, supprimer messages, retirer réactions).
+
+* ` ⭐ `︲**Réactions** : retrait de vos propres réactions (DMs, groupes, serveurs), **avec passes de vérification anti-fantômes** et registre local de confirmation.
+
+* ` 📖 `︲**Read All** : marquer tous les serveurs comme lus, débit gouverné, **progression live** sur le bouton.
+
+* ` 🔑 `︲**Gestion des tokens** : enregistrer / charger / supprimer, **chiffrés au repos** (`safeStorage`), enveloppe de schéma versionnée, écritures sérialisées (mutex) et atomiques.
+
+* ` 🩹 `︲**Reprise de scan** : toute opération interrompue (annulation, perte réseau) propose **« Reprendre / Repartir à zéro »** et reprend à l'élément près.
+
+* ` ⚡ `︲**Delta par watermark** : un serveur déjà nettoyé n'est plus re-scanné intégralement — les canaux inchangés sont sautés (1 requête de contrôle), les modifiés sont scannés **bornés** au dernier point nettoyé.
+
+---
+
+<a id="architecture"></a>
+# `🧩`︲Architecture du projet.
+
+---
+
+> [!IMPORTANT]
+> **Un seul chemin HTTP autorisé** : `discordFetch()` dans le main process. Le renderer ne parle **jamais** directement à Discord — uniquement par IPC. C'est ce point unique qui garantit le contrôle du débit.
+
+```
+┌──────────────────────────────────────────────────────────────────┐
+│   RENDERER  (src/ · ESM · sandbox · contextIsolation)            │
+│                                                                  │
+│   components/  ServerManager · DMManager · GroupManager          │
+│                FriendsManager · ProgressBar                      │
+│   utils/       serverMessageDeleter · serverReactionRemover      │
+│                messageDeleter · reactionRemover · persist.js     │
+│   limiters renderer = FILET (scan 100 r/s · delete 30 r/s)       │
+└───────────────────────────────┬──────────────────────────────────┘
+                                │  contextBridge · IPC (invoke/on)
+┌───────────────────────────────▼──────────────────────────────────┐
+│   PRELOAD  (preload.cjs)                                         │
+│   electronAPI (handlers wrappés) · persistAPI                    │
+│   SENSITIVE_CALLS → args/réponses masqués [redacted]             │
+└───────────────────────────────┬──────────────────────────────────┘
+                                │
+┌───────────────────────────────▼──────────────────────────────────┐
+│   MAIN PROCESS  (electron/ · CJS)                                │
+│                                                                  │
+│   discordFetch(method, path) ── AUTORITÉ DÉBIT                    │
+│      makeRouteScheduler (X-RateLimit-aware)                      │
+│        readScheduler     nominal 25 r/s · burst 16 · 12 conc.    │
+│        deleteScheduler   nominal  4 r/s · burst  2 ·  4 conc.    │
+│      routeKeyFor(path) → bucket par route (snowflakes masqués)   │
+│                                                                  │
+│   persist.cjs  → JSON atomique (tmp + rename), async             │
+│      checkpoints/<op>-<serverId>.json                            │
+│      watermark-<serverId>.json  ·  cleaned_reactions.json        │
+│   safeStorage (tokens chiffrés) + mutex withTokenLock            │
+└───────────────────────────────┬──────────────────────────────────┘
+                                │  HTTPS · axios · timeout 15 s
+                  ┌─────────────▼─────────────┐
+                  │      DISCORD API v9       │
+                  │ X-RateLimit-Remaining     │
+                  │ X-RateLimit-Reset-After   │
+                  │ X-RateLimit-Global        │
+                  └───────────────────────────┘
 ```
 
+**Blocs fonctionnels :**
+
+| Bloc | Fichier | Rôle |
+|---|---|---|
+| `discordFetch()` | `electron/main.cjs` | Seul proxy REST : acquire scheduler → requête → `applyHeaders` (route + global) |
+| `makeRouteScheduler` | `electron/rateLimiter.cjs` | Budget consommé optimistement (`remaining`), pause jusqu'à `reset-after`, repli nominal sans en-têtes, `Retry-After` honoré, anti-deadlock |
+| `makeRateLimiter` | `electron/rateLimiter.cjs` | Token-bucket nominal (repli avant premier en-tête) |
+| `readJson`/`writeJson` | `electron/persist.cjs` | I/O asynchrone, écriture atomique — **jamais de fichier tronqué** |
+| `persist.js` | `src/utils/persist.js` | Checkpoint, watermark, ledger — helpers testables |
+| `serverMessageDeleter.js` / `serverReactionRemover.js` | `src/utils/` | Scans (segmentés en parallèle, ≤12 segments), suppression, checkpoint/reprise |
+| `messageDeleter.js` / `reactionRemover.js` | `src/utils/` | Opérations DM/groupe (scan + suppression, humanisation DELETE conservée) |
+| `rateLimiter.js` | `src/utils/` | Filet renderer — **ne contraint plus** le débit réel (le main décide) |
+| `ServerManager.js` | `src/components/` | Rendu chunké de la liste serveurs (50 lignes/frame) |
+
 ---
 
-## `  ⚫  `︲Prérequis
-
-* Node.js (LTS).
-* npm.
-* Git.
-
-```bash
-node -v
-npm -v
-```
+<a id="performances"></a>
+# `⚡`︲Performances et optimisations.
 
 ---
 
-## `  ⚪  `︲Installation
+## Réseau & Anti-Rate-Limit
+
+* ` 🚦 `︲**Ordonnanceur header-aware** (`makeRouteScheduler`) : avant chaque requête, le budget réel annoncé par `X-RateLimit-Remaining` est consommé de façon optimiste ; si le bucket (route **ou** global) est à zéro, l'ordonnanceur **attend `X-RateLimit-Reset-After`** au lieu d'envoyer la requête. **Les 429 sont évités par construction**, pas subis puis punis.
+
+* ` 📊 `︲**Zéro pénalité post-429** : l'ancien mécanisme coupait le débit à 40 % pendant 40 s après chaque 429. Désormais inatteignable : le budget est lu avant d'agir. `Retry-After` reste en ceinture de sécurité.
+
+* ` ⚡ `︲**Bursts sûrs** : quand le bucket annonce du budget, les requêtes partent en rafale jusqu'à `remaining` (au lieu d'être bridées à un taux nominal). Benchmark local : 40 requêtes nominales ≈ 981 ms (~41 r/s) vs **0 ms** avec budget en-têtes.
+
+* ` 🪣 `︲**Débits nominaux calibrés** (repli, avant premier en-tête) : lecture **25 r/s**, suppression **4 r/s** — seuils sûrs pour un jeton utilisateur (selfbot), plus stricts que les 50 r/s documentés des bots. Les en-têtes peuvent ensuite accorder plus.
+
+* ` 🧵 `︲**Scan serveur parallèle segmenté** : jusqu'à 12 segments temporels par canal (découpage snowflake), workers ≤ 8 canaux — le **limiter global** plafonne le débit combiné (pas de pic local).
+
+* ` 🔁 `︲**Retry borné** (3 tentatives) avec backoff `Retry-After` sur les mutations ; 3 tentatives réseau avant d'abandonner un segment de scan (résilience).
+
+* ` ⏱️ `︲**Timeout global** `axios` 15 s — aucun appel ne peut pendre indéfiniment.
+
+## Cache local & Reprise
+
+* ` 💾 `︲**Checkpoints** (`checkpoints/<op>-<serverId>.json`) : état `scan → delete → verifying`, file de travail (`queue`) et progression (`progress.done`) par opération/serveur. Sauvegarde après chaque canal, toutes les 25 suppressions, et **à l'annulation**. Reprise à l'élément près via le prompt « Reprendre / Repartir à zéro ». Nettoyage automatique au-delà de 7 jours.
+
+* ` 🗂️ `︲**Watermarks** (`watermark-<serverId>.json`) : dernier id vu par canal (TTL 24 h). Canal inchangé → **skip** (1 requête de contrôle) ; modifié → scan **borné** au dernier id nettoyé. Un serveur déjà analysé ne repart jamais de zéro.
+
+* ` 🩹 `︲**Ledger anti-fantômes** (`cleaned_reactions.json`) : chaque réaction **confirmée supprimée** (204) ou **confirmée absente** (404) est mémorisée (TTL 24 h). Le cache `me:true` périmé de l'API Discord ne produit donc plus de « réactions fantômes » re-signalées à chaque run.
+
+* ` 🔒 `︲**Écritures atomiques** (`persist.cjs` : tmp + rename, async) — un arrêt brutal ne corrompt jamais un checkpoint, watermark ou ledger.
+
+* ` 📁 `︲**Caches à TTL** : serveurs (persistant, 30 s, contournable en `force` après mutation), canaux (mémoire, 60 s).
+
+## UI/UX — fluidité
+
+* ` 🎨 `︲**Design system léger** : variables CSS dans `src/styles/theme.css` (`:root`), thème sombre, breakpoints réels dans `app.css` — **768 / 640 / 480 px**.
+
+* ` 📜 `︲**Rendu chunké** des listes serveurs : 50 lignes par frame (`requestAnimationFrame`) — plus de frame bloquée sur 200 entrées.
+
+* ` 🔄 `︲**Scroll préservé** après chaque rafraîchissement de liste (`preservePageScroll`).
+
+* ` ⏳ `︲**ETA temps réel** (suppressions), **progression live** sur « Read All », barres de progression déterminées/indéterminées.
+
+* ` ⚡ `︲**Warm-up GPU/layout** au démarrage (`warmUpPages`) : les premiers changements de page sont aussi fluides que les suivants.
+
+* ` 🖥️ `︲**Panneau de log debug** intégré (draggable, resizable, copie, cap 500 lignes) et `window.__logs` capé à 5000 lignes — pas de fuite mémoire.
+
+* ` 📉 `︲**Mapping minimal des messages** : `attachments`/`embeds`/`sticker_items`/`message_snapshots` transmis en **nombres** (`(x || 0) > 0`) au lieu de tableaux complets — parsing plus léger, `reactions` conservé complet (nécessaire).
+
+---
+
+<a id="gardefous"></a>
+# `🛡️`︲Garde-fous & Do Not Break.
+
+---
+
+> [!CAUTION]
+> **Ces zones rouges protègent la garantie zéro-429 et l'intégrité des données. Toute modification d'un de ces éléments sans comprendre les conséquences peut entraîner des 429 en cascade, des blocages de jeton, des suppressions manquées ou des états corrompus.**
+
+### 🚫 Réseau / Rate-Limit
+
+| # | Zone rouge | Conséquence si modifiée |
+|---|---|---|
+| **G1** | Tout appel HTTP DOIT passer par `discordFetch()` (+ `routeKeyFor`, acquire/release scheduler) dans `main.cjs` | 429, coupure de débit, restriction d'IP, suspension de jeton |
+| **G2** | Ne pas bypasser `makeRouteScheduler` (`electron/rateLimiter.cjs`) | Perte de la lecture des `X-RateLimit-*` → 429 systématiques |
+| **G3** | Ne pas dépasser les nominaux lecture **25 r/s** / suppression **4 r/s** sans preuve empirique | Buckets user-token non documentés et plus stricts que les 50 r/s des bots |
+| **G4** | Ne pas retirer les boucles de retry 429 (3 tentatives) ni le `Retry-After` | Suppressions perdues + drapeaux d'abus |
+| **G5** | Ne pas dépasser 12 segments de scan parallèle ni `autoConcurrency` > 8 | Aucun gain (débit global déjà plafonné) + pics locaux |
+| **G6** | Conserver `humanDelay(200)` sur les **DELETE** DM/groupe (le `sleep` de scan a été retiré à dessein) | Détection comportementale anti-abus (au-delà du rate-limit) |
+
+### 🚫 Sécurité
+
+| # | Zone rouge | Conséquence |
+|---|---|---|
+| **S1** | Ne jamais retirer `getTokens`/`connectDiscord`/`saveToken` de `SENSITIVE_CALLS` (`preload.cjs`) | Tokens en clair dans la console DevTools |
+| **S2** | Ne jamais stocker de token en clair : `safeStorage` + enveloppe `schemaVersion` + **mutex `withTokenLock`** obligatoires | Fuite ou perte de token (race read-modify-write) |
+| **S3** | Ne pas élargir l'allowlist `app:openExternal` (dépôt GitHub uniquement) ni `connect-src 'self'` | Surface d'attaque : une XSS du renderer exfiltrerait les tokens |
+| **S4** | CSP `'unsafe-inline'` = limitation connue : **ne pas ajouter** de handlers inline (préférer `addEventListener`) ; les 36 existants ne doivent être retirés que par une refonte complète | Régression UI ou ouverture XSS |
+
+### 🚫 Cache / Checkpoint / Ledger
+
+| # | Zone rouge | Conséquence |
+|---|---|---|
+| **P1** | Toute écriture de persistance passe par `electron/persist.cjs` (atomique) — **jamais de `writeFileSync` brut** | Fichier tronqué sur arrêt brutal → état corrompu |
+| **P2** | Ne pas changer le format checkpoint/watermark/ledger sans bumper `schemaVersion` + migration | Fichiers anciens ignorés, reprise cassée |
+| **P3** | Ledger : ne ledgérer que sur **204 (supprimé) ou 404 (absent)** ; un **400 ne doit jamais** être ledgéré ; **TTL 24 h à conserver** | Masquer de vraies réactions ré-ajoutées (perte d'intégrité) ou régression fantômes |
+| **P4** | Ne pas retirer le prompt « Reprendre / Repartir à zéro » ni la sauvegarde à l'annulation | Progression perdue à la moindre interruption |
+
+### 🚫 UI / Intégrité des données
+
+| # | Zone rouge | Conséquence |
+|---|---|---|
+| **U1** | Rendu chunké 50/frame dans `ServerManager` à conserver | Frame bloquée sur 200 serveurs |
+| **U2** | `attachments`/`embeds`/`snapshots` sont des **nombres** : les consommateurs testent `(x || 0) > 0`, **pas `.length`** | Messages « pièce jointe seule » jamais supprimés (régression déjà rencontrée et corrigée) |
+| **U3** | `reactions` doit rester mappé **complet** (`emoji`, `me`) | Retrait de réactions cassé |
+| **U4** | Ne pas supprimer `test/routeScheduler.test.js` / `test/persist.test.js` (garanties zéro-429 + atomicité) | Régressions silencieuses |
+
+---
+
+<a id="choices"></a>
+# `⚖️`︲Choix techniques & limitations.
+
+| Choix | Justification |
+|---|---|
+| **Electron 29 + Node 20, sans bundler** | Renderer ESM natif chargé tel quel (`index.html` → `src/main.js`), main/preload en `.cjs`. Aucune étape de build de dev. |
+| **`discordFetch()` unique + `makeRouteScheduler`** | Toute la politique de débit vit au **seul endroit** où l'HTTP est émis. Les limiters renderer ne sont qu'un filet (taux relevés : scan 100 r/s, delete 30 r/s) pour ne jamais brider les bursts que les en-têtes autorisent. |
+| **Bucket par route normalisée (`routeKeyFor`)** | Approximation des « major params » Discord (snowflakes masqués) — suffisant pour éviter les 429 sans modèle exact de bucket, qui n'est pas public pour les jetons utilisateur. |
+| **Persistance JSON atomique plutôt que SQLite/IndexedDB** | Volumes modestes (IDs + curseurs, pas de contenu), zéro dépendance, écriture `tmp+rename` crash-safe. Pas de BBD nécessaire (YAGNI). |
+| **Checkpoint en `queue` de chaînes compactes** | `"canal:message:emoji"` — non sensible, dédupliqué, repris à l'index près. Aucun contenu de message n'est stocké. |
+| **Ledger TTL 24 h** | Compromis assumé : une réaction réellement ré-ajoutée dans les 24 h serait ignorée (borné dans le temps) ; en échange, le cache `me:true` périmé de Discord ne crée plus de fantômes récurrents. |
+| **Scan segmenté (messages serveur)** | La parallélisation temporelle ne débloque pas le débit (plafonné par le limiter) mais rend chaque segment résilient ; la **reprise par canal** couvre l'interruption (un canal `partial` se re-scanne seul). |
+| **`humanDelay` conservé sur les DELETE DM** | Au-delà du rate-limit, la suppression est la route la plus surveillée ; l'humanisation est une protection comportementale. Retirée du scan (lecture, peu risquée). |
+| **`except` larges dans les opérations GUI** | Un crash silencieux journalisé vaut mieux qu'un traceback non géré qui gèle l'UI ; chaque erreur est loggée avec contexte. |
+| **Limitations connues** | CSP `'unsafe-inline'` (36 handlers inline à migrer) · couverture de tests ≈ 63 % sur le sous-ensemble importable (`main.cjs`, composants et deleters non testés unitairement) · `npm run package` non validé avec `type: module` · le `X-RateLimit` des jetons utilisateur n'est pas documenté par Discord — les en-têtes sont la seule vérité. |
+
+---
+
+<a id="technologies"></a>
+# `🧰`︲Technologies utilisées.
+
+---
+
+* ` ⚛️ ` ︲**Electron 29** : application de bureau (renderer sandboxé, `contextIsolation`).
+* ` 🟢 ` ︲**Node.js 20** : moteur (main/preload `.cjs`, renderer ESM).
+* ` 🌐 ` ︲**axios** : HTTP vers l'API Discord (timeout 15 s, `validateStatus`).
+* ` 🤖 ` ︲**discord.js-selfbot-v13** : connexion WebSocket (login uniquement ; toutes les opérations passent par le REST).
+* ` 📦 ` ︲**electron-builder** : packaging Windows (NSIS / dir, mode portable).
+* ` 🧪 ` ︲**node:test** (stdlib) : 6 fichiers, 24 tests — `npm test`, coverage via `npm run test:coverage`.
+
+---
+
+<a id="installation"></a>
+# `🛠️`︲Installation.
+
+---
+
+1️⃣︲**Prérequis.**
+
+* ` 🟢 ` ︲**Node.js LTS** (`^20`) et **npm**.
+
+2️⃣︲**Cloner et installer.**
 
 ```bash
 git clone https://github.com/Bherl1/DiscordAccMgr.git
@@ -85,60 +299,141 @@ cd DiscordAccMgr
 npm install
 ```
 
----
-
-## `  ⚫  `︲Lancement
+3️⃣︲**Lancer l'application.**
 
 ```bash
 npm run start
 ```
 
-DevTools :
-
-* Windows / Linux : Ctrl + Shift + I.
-* macOS : Cmd + Option + I.
-
----
-
-## `  ⚪  `︲Build Windows
-
-* Exécutable .exe (Releases).
-* Aucune dépendance.
-* Lancement direct.
-
-Note : alerte Defender possible (application non signée).
-
----
-
-## `  ⚫  `︲Utilisation
-
-### Serveurs
-
-* Server Manager.
-* Actions immédiates.
-
-### Amis
-
-* Gestion directe.
-
-### Messages
-
-* Suppression irréversible.
-* Progression affichée.
-* Limites Discord respectées.
-
----
-
-## `  ⚪  `︲Contribution
+4️⃣︲**Lancer les tests (24 tests).**
 
 ```bash
-fork → branch → commit → pull request
+npm test
+npm run test:coverage
 ```
 
+5️⃣︲**Packager (Windows).**
+
+```bash
+npm run package          # NSIS + dir
+npm run package:portable # exécutable portable (dossier data/ local)
+```
+
+> [!NOTE]
+> Alerte Defender possible sur l'exécutable non signé — application non signée, distribution via Releases.
+
 ---
 
-## `  ⚫  `︲Licence
-
-MIT — sans garantie.
+<a id="utilisation"></a>
+# `▶️`︲Utilisation.
 
 ---
+
+> [!CAUTION]
+> **Avant un traitement de masse (suppression de messages / réactions), faites une copie de sauvegarde de votre compte côté Discord si l'opération est critique.** Les suppressions sont **irréversibles**. Les confirmations destructives sont systématiques, mais aucune application ne peut annuler une suppression déjà envoyée à l'API.
+
+1️⃣︲**Se connecter.** Collez votre token utilisateur (bouton œil pour afficher). Le token peut être enregistré localement (chiffré `safeStorage`) pour un usage ultérieur.
+
+2️⃣︲**Naviguer.** Les onglets **Friends / Servers / DMs / Groups** chargent les listes (cache 30 s, refetch en arrière-plan).
+
+3️⃣︲**Opérations par serveur** (onglet Servers, boutons de ligne) :
+
+| Bouton | Action |
+|---|---|
+| `Delete Msgs` | Supprime tous vos messages du serveur — scan + suppression, **reprise par checkpoint** si interrompu |
+| `Rm Reactions` | Retire vos réactions — scan + **2 passes de vérification anti-fantômes**, ledger |
+| `Mute` / `Leave` | Mute / quitte le serveur |
+| `Read All` | Marque tout comme lu — **progression `Read All (12/200)`** sur le bouton |
+
+4️⃣︲**Lire la progression.** Chaque opération affiche un panneau : phase, compteur, **ETA**, barre de progression, bouton **Stop**.
+
+> [!IMPORTANT]
+> En cas d'interruption (Stop, perte réseau, fermeture) : la prochaine exécution de la même opération sur le même serveur propose **« Reprendre / Repartir à zéro »**. La reprise continue **à l'élément près**, sans re-scanner les canaux déjà analysés.
+
+---
+
+<a id="configuration"></a>
+# `⚙️`︲Configuration.
+
+---
+
+> [!NOTE]
+> Pas de fichier de configuration externe : les réglages sont dans le code, documentés ci-dessous.
+
+* ` 🚦 `︲**Débits nominaux** (`electron/rateLimiter.cjs`) : lecture **25 r/s** (burst 16, 12 concurrents), suppression **4 r/s** (burst 2, 4 concurrents). Ces valeurs sont des **planchers de sécurité** — les en-têtes `X-RateLimit-*` gouvernent ensuite les bursts réels. Ne pas les augmenter sans preuve empirique (G3).
+
+* ` 🪣 `︲**Filet renderer** (`src/utils/rateLimiter.js`) : scan 100 r/s, delete 30 r/s — ne contraint plus le débit (le main décide), ne sert que de protection contre un flood IPC.
+
+* ` 🕰️ `︲**TTL** : watermark serveur 24 h · ledger réactions 24 h · cache serveurs 30 s · cache canaux 60 s · checkpoints nettoyés après 7 jours.
+
+* ` 🔑 `︲**Tokens** : chiffrés `safeStorage` (préfixe `enc:`), enveloppe `schemaVersion: 1`, migration automatique de l'ancien format plat, entrées corrompues marquées (supprimables), écritures sérialisées par mutex.
+
+* ` ⚙️ `︲**Environnement** : `ELECTRON_DEV=1` force l'ouverture des DevTools en build packagé. Mode portable : fichier `.portable` + données dans `data/` à côté de l'exécutable.
+
+---
+
+<a id="maintenance"></a>
+# `🔧`︲Maintenance & débogage.
+
+---
+
+* ` 🐞 `︲**Panneau de log** : bouton Log (nav) — draggable, redimensionnable, copie dans le presse-papiers, cap 500 lignes. Logs aussi dans la console DevTools (`Ctrl+Shift+I`).
+
+* ` 📊 `︲**Statistiques HTTP** : IPC `app:getHttpStats` (depuis la console : `await window.electronAPI.getHttpStats()`) — compteur de requêtes, **compteur de 429 (objectif : 0)**, budget par route.
+
+* ` 🧪 `︲**Tests** : `npm test` (24 tests — rate limiter, ordonnanceur header-aware, persistance, ESM/escaping) ; `npm run test:coverage` pour la couverture.
+
+* ` 🧹 `︲**Cache local** : les fichiers de persistance vivent dans `userData` (Windows : `%APPDATA%\discord-account-manager`) — `checkpoints/`, `watermark-*.json`, `cleaned_reactions.json`, `saved_tokens.json`, `servers_cache.json`. Les supprimer = retour à un état « à froid » (sans perte de tokens si vous ne touchez pas `saved_tokens.json`).
+
+* ` ⚠️ `︲**Points ouverts** (tracés, à traiter par priorité) : migration CSP `'unsafe-inline'` (SEC-02) · scinder `electron/main.cjs` en modules testables (couverture ~20-30 % réelle) · création du `CHANGELOG.md` · formalisation du modèle de permissions dans `OptimizeAI/rules/permissions.md` · validation `npm run package`.
+
+---
+
+<a id="roadmap"></a>
+# `🗺️`︲Roadmap.
+
+---
+
+> [!NOTE]
+> Pistes identifiées à partir du code et des rapports d'audit, à valider/prioriser :
+
+* ` 🧪 `︲Étendre la couverture de tests : extraire les helpers purs de `main.cjs` (proxy REST déjà factorisé = bon point de départ), tester les snowflakes/segments.
+* ` 🛡️ `︲Supprimer `'unsafe-inline'` de la CSP en migrant les 36 handlers inline vers `addEventListener` (refonte des composants).
+* ` 📜 `︲Créer `CHANGELOG.md` (format Keep a Changelog) — version 1.6.0 candidate.
+* ` 📈 `︲Mesure runtime des Core Web Vitals (Lighthouse/DevTools) à l'occasion d'un lancement.
+* ` 🖥️ `︲Fusion des modules DM/serveur dupliqués (`messageDeleter` ↔ `serverMessageDeleter`, réactions idem) dans un cycle dédié.
+
+---
+
+<a id="contribution"></a>
+# `🤝`︲Contribution.
+
+---
+
+> [!NOTE]
+> Aucune convention formelle : marche à suivre standard ci-dessous.
+
+1️⃣︲**Fork** du dépôt.
+
+2️⃣︲**Créer une branche dédiée :**
+
+```bash
+git checkout -b feature/ma-fonctionnalite
+```
+
+3️⃣︲**Committer** des changements clairs et atomiques.
+
+4️⃣︲**Ouvrir une Pull Request** en décrivant le contexte, le problème résolu et les effets de bord.
+
+> [!TIP]
+> Toute modification touchant au **réseau** (`discordFetch`, schedulers), à la **persistance** (formats checkpoint/watermark/ledger) ou aux **mappings de messages** doit être accompagnée des tests correspondants et d'une vérification des garde-fous (G1–G6, S1–S4, P1–P4, U1–U4).
+
+---
+
+<a id="licence"></a>
+# `📜`︲Licence.
+
+---
+
+> [!IMPORTANT]
+> Projet distribué sous licence **MIT** — voir le fichier `LICENSE` à la racine du dépôt. Outil non officiel : l'utilisation d'un jeton utilisateur avec l'API Discord est contraire aux conditions d'utilisation de Discord et peut entraîner le bannissement du compte concerné.

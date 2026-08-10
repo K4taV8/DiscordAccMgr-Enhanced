@@ -44,8 +44,8 @@ export class RateLimiter {
   }
 }
 
-// ponytail : calibration empirique — scan ~25 req/s est le seuil sûr en selfbot,
-// mutations ~4 req/s (Discord est bien plus chatouilleux sur DELETE).
-// 429 → throttle() auto-divise par 2.5 pendant 40s → jamais de cascade.
-export const scanLimiter = new RateLimiter({ ratePerSec: 25, burst: 16, maxConcurrent: 12 });
-export const deleteLimiter = new RateLimiter({ ratePerSec: 4, burst: 2, maxConcurrent: 1 });
+// ponytail : les limiters renderer ne contraignent plus le débit réel — le main
+// (makeRouteScheduler, header-aware X-RateLimit-*) est l'autorité. Taux relevés
+// pour ne pas brider les bursts que les en-têtes autorisent ; maxConcurrent gardé.
+export const scanLimiter = new RateLimiter({ ratePerSec: 100, burst: 50, maxConcurrent: 12 });
+export const deleteLimiter = new RateLimiter({ ratePerSec: 30, burst: 10, maxConcurrent: 4 });

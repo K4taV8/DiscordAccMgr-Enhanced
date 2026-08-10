@@ -89,25 +89,28 @@ export const showInfoModal = async () => {
   const content = document.createElement('div');
   content.className = 'modal-content info-modal';
 
-  const img = document.createElement('img');
-  img.src = 'src/icons/app-icon.png';
-  img.alt = 'App Icon';
+  const icon = document.createElement('div');
+  icon.className = 'modal-icon';
+  icon.innerHTML = '<svg width="26" height="26" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
 
   const title = document.createElement('h2');
   title.textContent = 'Discord Account Manager';
 
-  const version = document.createElement('p');
   let versionText = '';
   try {
     versionText = await window.electronAPI.getAppVersion();
   } catch { /* fallback below */ }
-  version.textContent = `Version ${versionText || '1.5.6'}`;
+
+  const badge = document.createElement('span');
+  badge.className = 'version-badge';
+  badge.textContent = `Version ${versionText || '1.5.6'}`;
 
   const author = document.createElement('p');
+  author.className = 'info-author';
   author.textContent = 'Created by Bherl1';
 
   const links = document.createElement('div');
-  links.className = 'links';
+  links.className = 'info-links';
 
   const githubLink = document.createElement('a');
   githubLink.href = 'https://github.com/Bherl1/DiscordAccMgr';
@@ -116,25 +119,35 @@ export const showInfoModal = async () => {
     e.preventDefault();
     window.electronAPI.openExternal(githubLink.href);
   });
+  links.appendChild(githubLink);
+
+  const divider = document.createElement('div');
+  divider.className = 'info-divider';
 
   const closeBtn = document.createElement('button');
   closeBtn.className = 'btn btn-secondary';
   closeBtn.textContent = 'Close';
 
-  closeBtn.style.marginTop = '10px';
+  const close = () => {
+    document.removeEventListener('keydown', escHandler);
+    modal.remove();
+  };
+  const escHandler = (e) => { if (e.key === 'Escape') close(); };
+  document.addEventListener('keydown', escHandler);
+  modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
+  closeBtn.addEventListener('click', close);
 
-  closeBtn.addEventListener('click', () => modal.remove());
-
-  links.appendChild(githubLink);
-  content.appendChild(img);
+  content.appendChild(icon);
   content.appendChild(title);
-  content.appendChild(version);
+  content.appendChild(badge);
   content.appendChild(author);
   content.appendChild(links);
+  content.appendChild(divider);
   content.appendChild(closeBtn);
   modal.appendChild(content);
 
   document.body.appendChild(modal);
+  closeBtn.focus();
 };
 
 export const showInputModal = (title, message) => {

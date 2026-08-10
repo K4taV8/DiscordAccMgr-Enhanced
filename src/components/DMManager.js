@@ -4,7 +4,7 @@ import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
 import { handleBulkDMActions } from '../utils/bulkDMHandler.js';
 import { confirmAction } from '../utils/ui.js';
 import { escHtml, escJs } from '../utils/emojiUtils.js';
-import { preservePageScroll } from '../utils/domManager.js';
+import { preservePageScroll, cachedListRefresh } from '../utils/domManager.js';
 
 export class DMManager {
   constructor(contentArea) {
@@ -12,12 +12,11 @@ export class DMManager {
     this.isDeleting = false;
   }
 
-  async refreshDMsList() {
+  async refreshDMsList(force = false) {
     try {
-      const dms = await getDMsList();
-      
-      preservePageScroll(this.contentArea, () => `
-        <h2>DMs List</h2>
+      const render = (dms) => {
+        preservePageScroll(this.contentArea, () => `
+        <h2 class="page-title">DMs List <span class="list-count">${dms.length}</span></h2>
         <div class="actions-bar">
           <button id="selectAllDMsBtn" class="btn btn-secondary" onclick="window.dmManager.toggleSelectAllDMs()">Select All</button>
           <button id="deleteSelectedMessagesBtn" class="btn btn-secondary" onclick="window.dmManager.deleteSelectedMessages()" disabled>Delete Selected Messages</button>
@@ -46,13 +45,15 @@ export class DMManager {
           `).join('')}
         </div>
       `);
+      };
+      await cachedListRefresh(this, () => getDMsList(), render, force);
     } catch (error) {
       this.contentArea.innerHTML = '<p class="error">Failed to load DMs</p>';
     }
   }
 
   toggleSelectAllDMs() {
-    const checkboxes = document.querySelectorAll('.dm-checkbox');
+    const checkboxes = this.contentArea.querySelectorAll('.dm-checkbox');
     const selectAllBtn = document.getElementById('selectAllDMsBtn');
     const isSelectAll = selectAllBtn.textContent === 'Select All';
     
@@ -62,7 +63,7 @@ export class DMManager {
   }
 
   updateSelectedCount() {
-    const selectedCount = document.querySelectorAll('.dm-checkbox:checked').length;
+    const selectedCount = this.contentArea.querySelectorAll('.dm-checkbox:checked').length;
     const deleteSelectedBtn = document.getElementById('deleteSelectedMessagesBtn');
     const closeSelectedBtn = document.getElementById('closeSelectedDMsBtn');
     const removeSelectedBtn = document.getElementById('removeSelectedReactionsBtn');
@@ -93,7 +94,7 @@ export class DMManager {
       });
 
       await handleBulkDMActions(selectedDMs, 'delete', window.electronAPI);
-      this.refreshDMsList();
+      this.refreshDMsList(true);
     } finally {
       this.isDeleting = false;
     }
@@ -116,7 +117,7 @@ export class DMManager {
       });
 
       await handleBulkDMActions(selectedDMs, 'close', window.electronAPI);
-      this.refreshDMsList();
+      this.refreshDMsList(true);
     } finally {
       this.isDeleting = false;
     }
@@ -137,7 +138,7 @@ export class DMManager {
         onComplete: () => {
           this.isDeleting = false;
           if (!skipRefresh) {
-            this.refreshDMsList();
+            this.refreshDMsList(true);
           }
         },
         skipRefresh,
@@ -157,7 +158,7 @@ export class DMManager {
     try {
       const result = await window.electronAPI.closeDM(channelId);
       if (result.success) {
-        this.refreshDMsList();
+        this.refreshDMsList(true);
       }
     } catch (error) {
       console.error('Failed to close DM:', error);
@@ -177,7 +178,7 @@ export class DMManager {
         electronAPI: window.electronAPI,
         onComplete: () => {
           this.isDeleting = false;
-          this.refreshDMsList();
+          this.refreshDMsList(true);
         }
       });
     } catch (error) {
@@ -213,7 +214,7 @@ export class DMManager {
         completed++;
       }
 
-      this.refreshDMsList();
+      this.refreshDMsList(true);
     } finally {
       this.isDeleting = false;
     }

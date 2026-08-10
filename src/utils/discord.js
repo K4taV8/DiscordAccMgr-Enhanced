@@ -8,8 +8,8 @@ export const getFriendsList = async () => {
   return result.friends || [];
 };
 
-export const getServersList = async () => {
-  const result = await window.electronAPI.getServers();
+export const getServersList = async (force = false) => {
+  const result = await window.electronAPI.getServers(force);
   if (!result.success) {
     throw new Error(result.error);
   }

@@ -4,6 +4,11 @@ const axios = require('axios');
 const fs = require('fs');
 const fsp = require('fs/promises');
 
+// SEC-03 : timeout global — aucun appel HTTP ne doit pendre indéfiniment
+axios.defaults.timeout = 15000;
+
+const { readJson, writeJson } = require('./persist.cjs');
+
 // Portable data directory setup
 const isPortable = process.env.PORTABLE_BUILD === 'true' || (app.isPackaged && fs.existsSync(path.join(path.dirname(process.execPath), '.portable')));
 let appRoot;
@@ -76,87 +81,93 @@ ipcMain.on('window:maximize', () => {
 });
 ipcMain.on('window:close', () => mainWindow?.close());
 
-ipcMain.handle('discord:getGroups', async () => {
+// ponytail: proxy REST unique — tout handler HTTP passe ici.
+// Casse les doublons axios (Authorization / validateStatus / 429) de ce fichier.
+// Succès = statut 2xx ; sinon {success:false, error, status} — le handler
+// interprète 403/404 comme il veut ('No access' / 'not found' / 'noReaction').
+async function discordFetch(method, path, { data, params } = {}) {
+  if (!discordClient?.token) return { success: false, error: 'Not connected' };
+  const key = routeKeyFor(path);
+  const scheduler = method === 'DELETE' ? deleteScheduler : readScheduler;
+  const release = await scheduler.acquire(key);
   try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const resp = await axios.get('https://discord.com/api/v9/users/@me/channels', {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
+    const resp = await axios.request({
+      method,
+      url: `https://discord.com/api/v9${path}`,
+      params,
+      data,
+      headers: { Authorization: discordClient.token },
+      validateStatus: () => true,
     });
-    if (resp.status !== 200) return { success: false, error: `HTTP ${resp.status}` };
-    const groups = resp.data
-      .filter(ch => ch.type === 3)
-      .map(group => ({
-        id: group.id,
-        name: group.name || 'Unnamed Group',
-        icon: group.icon ? `https://cdn.discordapp.com/channel-icons/${group.id}/${group.icon}.png` : '/discord.png',
-        recipients: group.recipients?.length || 0
-      }));
-    return { success: true, groups };
+    scheduler.applyHeaders(key, resp.headers);
+    httpStats.requests++;
+    httpStats.byRoute.set(key, (httpStats.byRoute.get(key) || 0) + 1);
+    if (resp.status === 429) {
+      httpStats.rateLimited++;
+      return { success: false, status: 429, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
+    }
+    return { success: resp.status >= 200 && resp.status < 300, status: resp.status, data: resp.data, headers: resp.headers };
   } catch (error) {
-    console.error('Get groups error:', error.message);
-    return { success: false, error: error.message };
+    httpStats.requests++;
+    return { success: false, status: 0, error: error.message };
+  } finally {
+    release();
   }
+}
+
+ipcMain.handle('discord:getGroups', async () => {
+  const r = await discordFetch('GET', '/users/@me/channels');
+  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  const groups = r.data
+    .filter(ch => ch.type === 3)
+    .map(group => ({
+      id: group.id,
+      name: group.name || 'Unnamed Group',
+      icon: group.icon ? `https://cdn.discordapp.com/channel-icons/${group.id}/${group.icon}.png` : '/discord.png',
+      recipients: group.recipients?.length || 0
+    }));
+  return { success: true, groups };
 });
 
 ipcMain.handle('discord:leaveGroup', async (_, groupId) => {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const resp = await axios.delete(`https://discord.com/api/v9/channels/${groupId}`, {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    if (resp.status === 204 || resp.status === 200) return { success: true };
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    console.error('Leave group error:', error.message);
-    return { success: false, error: error.message };
+  const r = await discordFetch('DELETE', `/channels/${groupId}`);
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
 async function fetchChannelMessagesRest(channelId, beforeId = null, afterId = null) {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const params = new URLSearchParams({ limit: afterId ? '1' : '100' });
-    if (beforeId) params.set('before', beforeId);
-    if (afterId) params.set('after', afterId);
-    const resp = await axios.get(
-      `https://discord.com/api/v9/channels/${channelId}/messages?${params}`,
-      { headers: { 'Authorization': discordClient.token }, validateStatus: () => true }
-    );
-    if (resp.status === 429) {
-      return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    }
-    if (resp.status === 403 || resp.status === 404) {
-      return { success: false, error: 'No access' };
-    }
-    if (resp.status !== 200) {
-      return { success: false, error: `HTTP ${resp.status}` };
-    }
-    const uid = discordClient.user?.id;
-    const msgs = resp.data.map(msg => ({
-      id: msg.id,
-      content: typeof msg.content === 'string' ? msg.content.substring(0, 80) : '',
-      author: { id: msg.author?.id },
-      type: msg.type,
-      attachments: (msg.attachments || []).map(a => ({ id: a.id, url: a.url })),
-      embeds: (msg.embeds || []).map(e => ({ type: e.type })),
-      sticker_items: msg.sticker_items || [],
-      message_snapshots: msg.message_snapshots || [],
-      message_reference: msg.message_reference || null,
-      isDeletable: msg.author?.id === uid,
-      reactions: (msg.reactions || []).map(r => ({
-        emoji: { id: r.emoji.id, name: r.emoji.name },
-        count: r.count,
-        me: Boolean(r.me || r.me_burst)
-      }))
-    }));
-    return { success: true, currentUserId: uid, messages: msgs };
-  } catch (error) {
-    console.error('fetchChannelMessagesRest error:', error.message);
-    return { success: false, error: error.message };
+  const params = { limit: afterId ? 1 : 100 };
+  if (beforeId) params.before = beforeId;
+  if (afterId) params.after = afterId;
+  const r = await discordFetch('GET', `/channels/${channelId}/messages`, { params });
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    if (r.status === 403 || r.status === 404) return { success: false, error: 'No access' };
+    if (r.status) return { success: false, error: `HTTP ${r.status}` };
+    return { success: false, error: r.error };
   }
+  const uid = discordClient.user?.id;
+  const msgs = r.data.map(msg => ({
+    id: msg.id,
+    content: typeof msg.content === 'string' ? msg.content.substring(0, 80) : '',
+    author: { id: msg.author?.id },
+    type: msg.type,
+    attachments: msg.attachments?.length || 0,
+    embeds: msg.embeds?.length || 0,
+    sticker_items: msg.sticker_items?.length || 0,
+    message_snapshots: msg.message_snapshots?.length || 0,
+    message_reference: msg.message_reference || null,
+    isDeletable: msg.author?.id === uid,
+    reactions: (msg.reactions || []).map(ra => ({
+      emoji: { id: ra.emoji.id, name: ra.emoji.name },
+      count: ra.count,
+      me: Boolean(ra.me || ra.me_burst)
+    }))
+  }));
+  return { success: true, currentUserId: uid, messages: msgs };
 }
 
 ipcMain.handle('discord:getChannelMessages', async (_, channelId, beforeId = null, afterId = null) => {
@@ -168,101 +179,62 @@ ipcMain.handle('discord:getDMMessages', async (_, channelId, beforeId = null) =>
 });
 
 ipcMain.handle('discord:getMessage', async (_, channelId, messageId) => {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const resp = await axios.get(
-      `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}`,
-      { headers: { 'Authorization': discordClient.token }, validateStatus: () => true }
-    );
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    if (resp.status !== 200) return { success: false, error: `HTTP ${resp.status}` };
-    const msg = resp.data;
-    return {
-      success: true,
-      currentUserId: discordClient.user.id,
-      reactions: (msg.reactions || []).map(r => ({
-        emoji: { id: r.emoji.id, name: r.emoji.name },
-        count: r.count,
-        me: Boolean(r.me || r.me_burst)
-      }))
-    };
-  } catch (error) {
-    console.error('getMessage error:', error.message);
-    return { success: false, error: error.message };
-  }
+  const r = await discordFetch('GET', `/channels/${channelId}/messages/${messageId}`);
+  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  const msg = r.data;
+  return {
+    success: true,
+    currentUserId: discordClient.user.id,
+    reactions: (msg.reactions || []).map(ra => ({
+      emoji: { id: ra.emoji.id, name: ra.emoji.name },
+      count: ra.count,
+      me: Boolean(ra.me || ra.me_burst)
+    }))
+  };
 });
 
 ipcMain.handle('discord:deleteGroupMessage', async (_, channelId, messageId) => {
-  try {
-    if (!discordClient || !discordClient.token) {
-      return { success: false, error: 'Not connected' };
-    }
-
-    const resp = await axios.delete(`https://discord.com/api/v9/channels/${channelId}/messages/${messageId}`, {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-
-    if (resp.status === 204 || resp.status === 200) return { success: true };
-    if (resp.status === 429) {
-      return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    }
-    if (resp.status === 404) return { success: false, error: 'not found' };
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    return { success: false, error: error.message };
+  const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}`);
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    if (r.status === 404) return { success: false, error: 'not found' };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
 ipcMain.handle('discord:muteServer', async (_, serverId) => {
-  try {
-    if (!discordClient || !discordClient.token) {
-      return { success: false, error: 'Not connected' };
-    }
-
-    const resp = await axios.patch(`https://discord.com/api/v9/users/@me/guilds/${serverId}/settings`, {
-      muted: true
-    }, {
-      headers: {
-        'Authorization': discordClient.token,
-        'Content-Type': 'application/json'
-      },
-      validateStatus: () => true
-    });
-
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    if (resp.status !== 200) return { success: false, error: `HTTP ${resp.status}` };
-    return { success: true };
-  } catch (error) {
-    console.error('Mute server error:', error);
-    return { success: false, error: error.message };
+  const r = await discordFetch('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: true } });
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
 ipcMain.handle('discord:unmuteServer', async (_, serverId) => {
-  try {
-    if (!discordClient || !discordClient.token) {
-      return { success: false, error: 'Not connected' };
-    }
-
-    const resp = await axios.patch(`https://discord.com/api/v9/users/@me/guilds/${serverId}/settings`, {
-      muted: false
-    }, {
-      headers: {
-        'Authorization': discordClient.token,
-        'Content-Type': 'application/json'
-      },
-      validateStatus: () => true
-    });
-
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    if (resp.status !== 200) return { success: false, error: `HTTP ${resp.status}` };
-    return { success: true };
-  } catch (error) {
-    console.error('Unmute server error:', error);
-    return { success: false, error: error.message };
+  const r = await discordFetch('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: false } });
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
+
+// ponytail: ordonnanceurs côté main = autorité débit. Lecture nominale 25 r/s,
+// suppression 4 r/s (seuils sûrs calibrés) ; les en-têtes X-RateLimit-* gouvernent
+// ensuite les bursts réels — zéro 429 par construction.
+const { makeRouteScheduler } = require('./rateLimiter.cjs');
+const readScheduler = makeRouteScheduler({ nominalRatePerSec: 25, burst: 16, maxConcurrent: 12 });
+const deleteScheduler = makeRouteScheduler({ nominalRatePerSec: 4, burst: 2, maxConcurrent: 4 });
+
+// Statistiques HTTP (phase E) — exposées via app:getHttpStats
+const httpStats = { requests: 0, rateLimited: 0, byRoute: new Map() };
+
+// Clé de route normalisée : snowflakes masqués (~bucket Discord, major params)
+function routeKeyFor(path) {
+  return path.replace(/\/\d+(?=\/|$)/g, '/:id');
+}
 
 ipcMain.handle('discord:readAll', async () => {
   try {
@@ -272,27 +244,38 @@ ipcMain.handle('discord:readAll', async () => {
 
     let allGuilds = [];
     let lastId = null;
+    let firstPageOk = false;
     while (true) {
+      await readScheduler.acquire('/users/@me/guilds');
       const params = new URLSearchParams({ limit: '100' });
       if (lastId) params.set('after', lastId);
       const resp = await axios.get(`https://discord.com/api/v9/users/@me/guilds?${params}`, {
         headers: { 'Authorization': discordClient.token },
         validateStatus: () => true
       });
+      readScheduler.applyHeaders('/users/@me/guilds', resp.headers);
       if (resp.status !== 200) break;
+      firstPageOk = true;
       allGuilds = allGuilds.concat(resp.data);
       if (resp.data.length < 100) break;
       lastId = resp.data[resp.data.length - 1].id;
     }
+    if (allGuilds.length === 0 && !firstPageOk) {
+      return { success: false, error: 'Failed to fetch servers' };
+    }
 
     let failed = 0;
-    for (const guild of allGuilds) {
+    const total = allGuilds.length;
+    for (let i = 0; i < total; i++) {
+      const guild = allGuilds[i];
       for (let attempt = 0; attempt < 3; attempt++) {
         try {
+          await readScheduler.acquire(`/guilds/${guild.id}/ack`);
           const ack = await axios.put(`https://discord.com/api/v9/guilds/${guild.id}/ack`, { token: null }, {
             headers: { 'Authorization': discordClient.token },
             validateStatus: () => true
           });
+          readScheduler.applyHeaders(`/guilds/${guild.id}/ack`, ack.headers);
           if (ack.status === 429) {
             const wait = parseInt(ack.headers?.['retry-after']) || 1;
             await new Promise(r => setTimeout(r, (wait * 1000) + 500));
@@ -304,8 +287,8 @@ ipcMain.handle('discord:readAll', async () => {
           else await new Promise(r => setTimeout(r, 1000));
         }
       }
-      await new Promise(resolve => setTimeout(resolve, 300));
-      if (failed > allGuilds.length / 3) break; // ponytail: se retire si les erreurs s'accumulent — on n'ignore pas un serveur en panne indéfiniment
+      mainWindow?.webContents.send('readall:progress', { done: i + 1, total, failed });
+      if (failed > total / 3) break; // ponytail: se retire si les erreurs s'accumulent — on n'ignore pas un serveur en panne indéfiniment
     }
 
     return { success: true, failed };
@@ -346,8 +329,19 @@ async function readTokensFile() {
 }
 
 async function writeTokensFile(store) {
-  await fsp.writeFile(tokensPath, JSON.stringify({ schemaVersion: TOKEN_SCHEMA_VERSION, tokens: store }, null, 2));
+  // BUG-03 : écriture atomique (tmp + rename) — pas de fichier tronqué en cas de crash
+  const tmp = tokensPath + '.tmp';
+  await fsp.writeFile(tmp, JSON.stringify({ schemaVersion: TOKEN_SCHEMA_VERSION, tokens: store }, null, 2));
+  await fsp.rename(tmp, tokensPath);
 }
+
+// BUG-03 : mutex — sérialise les read-modify-write (save/get/delete) pour éviter les pertes de mise à jour
+let tokenOp = Promise.resolve();
+const withTokenLock = (fn) => {
+  const p = tokenOp.then(fn);
+  tokenOp = p.then(() => {}, () => {});
+  return p;
+};
 
 function encryptToken(token) {
   return 'enc:' + safeStorage.encryptString(token).toString('base64');
@@ -360,7 +354,7 @@ function decryptToken(stored) {
   return null;
 }
 
-ipcMain.handle('tokens:save', async (_, name, token) => {
+ipcMain.handle('tokens:save', (_, name, token) => withTokenLock(async () => {
   if (!safeStorage.isEncryptionAvailable()) {
     return { success: false, error: 'Cannot save: secure storage unavailable. On Linux, install libsecret.' };
   }
@@ -376,9 +370,9 @@ ipcMain.handle('tokens:save', async (_, name, token) => {
   } catch (error) {
     return { success: false, error: 'Failed to save token' };
   }
-});
+}));
 
-ipcMain.handle('tokens:get', async () => {
+ipcMain.handle('tokens:get', () => withTokenLock(async () => {
   try {
     const store = await readTokensFile();
     const tokens = store.tokens || [];
@@ -405,9 +399,9 @@ ipcMain.handle('tokens:get', async () => {
   } catch (error) {
     return { success: false, error: 'Failed to load tokens' };
   }
-});
+}));
 
-ipcMain.handle('tokens:delete', async (_, name) => {
+ipcMain.handle('tokens:delete', (_, name) => withTokenLock(async () => {
   try {
     const store = await readTokensFile();
     const tokens = store.tokens || [];
@@ -417,16 +411,16 @@ ipcMain.handle('tokens:delete', async (_, name) => {
   } catch (error) {
     return { success: false, error: 'Failed to delete token' };
   }
-});
+}));
 
-ipcMain.handle('tokens:deleteAll', async () => {
+ipcMain.handle('tokens:deleteAll', () => withTokenLock(async () => {
   try {
     await writeTokensFile([]);
     return { success: true };
   } catch (error) {
     return { success: false, error: 'Failed to delete tokens' };
   }
-});
+}));
 
 // Updates disabled
 ipcMain.handle('app:checkUpdates', async () => ({ success: true, hasUpdate: false }));
@@ -435,20 +429,30 @@ ipcMain.handle('app:downloadUpdate', async () => ({ success: true }));
 // Version — single source of truth: package.json (via Electron)
 ipcMain.handle('app:getVersion', async () => app.getVersion());
 
+// Phase E : instrumentation HTTP (débit réel, 429, budget par route)
+ipcMain.handle('app:getHttpStats', async () => ({
+  requests: httpStats.requests,
+  rateLimited: httpStats.rateLimited,
+  routes: Object.fromEntries(httpStats.byRoute),
+}));
+
 // Discord handlers
 ipcMain.handle('discord:connect', async (_, token) => {
   if (connecting) return { success: false, error: 'Already connecting' };
   connecting = true;
   try {
-    if (discordClient) { try { const p = discordClient.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
+    // BUG-04 : ne détruit l'ancien client qu'après le succès du login —
+    // un échec de connexion laisse l'utilisateur connecté au client précédent.
     const { Client } = require('discord.js-selfbot-v13');
-    discordClient = new Client({ checkUpdate: false, fetchAllMembers: false });
-    await discordClient.login(token);
+    const next = new Client({ checkUpdate: false, fetchAllMembers: false });
+    await next.login(token);
+    if (discordClient) { try { const p = discordClient.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
+    discordClient = next;
     return {
       success: true,
-      username: discordClient.user.tag,
-      avatar: discordClient.user.avatar
-        ? `https://cdn.discordapp.com/avatars/${discordClient.user.id}/${discordClient.user.avatar}.png?size=64`
+      username: next.user.tag,
+      avatar: next.user.avatar
+        ? `https://cdn.discordapp.com/avatars/${next.user.id}/${next.user.avatar}.png?size=64`
         : '/discord.png'
     };
   } catch (error) {
@@ -460,229 +464,220 @@ ipcMain.handle('discord:connect', async (_, token) => {
 });
 
 ipcMain.handle('discord:getFriends', async () => {
-  try {
-    if (!discordClient || !discordClient.token) {
-      return { 
-        success: false, 
-        error: 'Not connected to Discord' 
-      };
-    }
+  const r = await discordFetch('GET', '/users/@me/relationships');
+  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
 
-    const resp = await axios.get('https://discord.com/api/v9/users/@me/relationships', {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-    if (resp.status !== 200) return { success: false, error: `HTTP ${resp.status}` };
+  const friends = r.data
+    .filter(relationship => relationship.type === 1)
+    .map(friend => ({
+      id: friend.user.id,
+      username: friend.user.username,
+      displayName: friend.user.global_name || friend.user.username,
+      avatar: friend.user.avatar ? `https://cdn.discordapp.com/avatars/${friend.user.id}/${friend.user.avatar}.png` : '/discord.png'
+    }));
 
-    const friends = resp.data
-      .filter(relationship => relationship.type === 1)
-      .map(friend => ({
-        id: friend.user.id,
-        username: friend.user.username,
-        displayName: friend.user.global_name || friend.user.username,
-        avatar: friend.user.avatar ? `https://cdn.discordapp.com/avatars/${friend.user.id}/${friend.user.avatar}.png` : '/discord.png'
-      }));
-
-    return { 
-      success: true, 
-      friends 
-    };
-  } catch (error) {
-    console.error('Get friends error:', error);
-    return { 
-      success: false, 
-      error: error.message 
-    };
-  }
+  return { success: true, friends };
 });
 
 ipcMain.handle('discord:getDMs', async () => {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const resp = await axios.get('https://discord.com/api/v9/users/@me/channels', {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-    if (resp.status !== 200) return { success: false, error: `HTTP ${resp.status}` };
-    const dms = resp.data
-      .filter(ch => ch.type === 1)
-      .map(dm => ({
-        id: dm.id,
-        username: dm.recipients?.[0]?.username || 'Unknown User',
-        displayName: dm.recipients?.[0]?.global_name || dm.recipients?.[0]?.username || 'Unknown User',
-        avatar: dm.recipients?.[0]?.avatar
-          ? `https://cdn.discordapp.com/avatars/${dm.recipients[0].id}/${dm.recipients[0].avatar}.png`
-          : '/discord.png'
-      }));
-    return { success: true, dms };
-  } catch (error) {
-    console.error('Get DMs error:', error.message);
-    return { success: false, error: error.message };
-  }
+  const r = await discordFetch('GET', '/users/@me/channels');
+  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  const dms = r.data
+    .filter(ch => ch.type === 1)
+    .map(dm => ({
+      id: dm.id,
+      username: dm.recipients?.[0]?.username || 'Unknown User',
+      displayName: dm.recipients?.[0]?.global_name || dm.recipients?.[0]?.username || 'Unknown User',
+      avatar: dm.recipients?.[0]?.avatar
+        ? `https://cdn.discordapp.com/avatars/${dm.recipients[0].id}/${dm.recipients[0].avatar}.png`
+        : '/discord.png'
+    }));
+  return { success: true, dms };
 });
 
 ipcMain.handle('discord:deleteDMMessage', async (_, channelId, messageId) => {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const resp = await axios.delete(
-      `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}`,
-      { headers: { 'Authorization': discordClient.token }, validateStatus: () => true }
-    );
-    if (resp.status === 204 || resp.status === 200) return { success: true };
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    if (resp.status === 404) return { success: false, error: 'not found' };
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    return { success: false, error: error.message };
+  const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}`);
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    if (r.status === 404) return { success: false, error: 'not found' };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
 ipcMain.handle('discord:closeDM', async (_, channelId) => {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const resp = await axios.delete(`https://discord.com/api/v9/channels/${channelId}`, {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    if (resp.status === 204 || resp.status === 200) return { success: true };
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    return { success: false, error: error.message };
+  const r = await discordFetch('DELETE', `/channels/${channelId}`);
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
 ipcMain.handle('discord:removeOwnReaction', async (_, channelId, messageId, rawEmojiKey) => {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    if (!rawEmojiKey) return { success: false, error: 'empty emoji key' };
+  if (!rawEmojiKey) return { success: false, error: 'empty emoji key' };
 
-    const key = rawEmojiKey.includes(':') ? rawEmojiKey : rawEmojiKey.replace(/%EF%B8%8F/g, '');
-    const url = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}/reactions/${key}/@me`;
-    const resp = await axios.delete(url, {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
+  const key = rawEmojiKey.includes(':') ? rawEmojiKey : rawEmojiKey.replace(/%EF%B8%8F/g, '');
+  const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${key}/@me`);
 
-    if (resp.status === 204) return { success: true };
-    if (resp.status === 404 || resp.status === 400) return { success: false, error: 'noReaction' };
-    if (resp.status === 429) {
-      return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    }
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    console.error('[RR] error:', error.message);
-    return { success: false, error: error.message };
+  if (!r.success) {
+    // anti-fantômes : 404 = réaction confirmée absente (ok) ; 400 = requête invalide (échec visible, pas silencieux)
+    if (r.status === 404) return { success: false, error: 'noReaction' };
+    if (r.status === 400) return { success: false, error: 'invalidEmoji' };
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
 ipcMain.handle('discord:getReactions', async (_, channelId, messageId, emoji, afterId) => {
-  try {
-    if (!discordClient || !discordClient.token) {
-      return { success: false, error: 'Not connected' };
-    }
-    const params = afterId ? `?after=${afterId}` : '';
-    const url = `https://discord.com/api/v9/channels/${channelId}/messages/${messageId}/reactions/${emoji}${params}`;
-    const resp = await axios.get(url, {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-    if (resp.status === 200) return { success: true, data: resp.data };
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    console.log('[RR] getReactions error:', error.message);
-    return { success: false, error: 'Failed to get reactions' };
+  const r = await discordFetch('GET', `/channels/${channelId}/messages/${messageId}/reactions/${emoji}`, afterId ? { params: { after: afterId } } : {});
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.status ? `HTTP ${r.status}` : 'Failed to get reactions' };
   }
+  return { success: true, data: r.data };
 });
 
 ipcMain.handle('discord:deleteFriend', async (_, friendId) => {
-  try {
-    if (!discordClient?.token) return { success: false, error: 'Not connected' };
-    const resp = await axios.delete(`https://discord.com/api/v9/users/@me/relationships/${friendId}`, {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-    if (resp.status === 204 || resp.status === 200) return { success: true };
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    console.error('Delete friend error:', error.message);
-    return { success: false, error: error.message };
+  const r = await discordFetch('DELETE', `/users/@me/relationships/${friendId}`);
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
-ipcMain.handle('discord:getServers', async () => {
+// Phase C : cache persistant de la liste des serveurs (lancement instantané).
+// La correction (force=true) contourne le cache — aucune donnée périmée après mutation.
+const SERVERS_CACHE_TTL = 30000;
+const serversCachePath = () => path.join(app.getPath('userData'), 'servers_cache.json');
+
+function readServersCache() {
   try {
-    if (!discordClient?.token) {
-      return { success: false, error: 'Not connected' };
-    }
+    const { at, servers } = JSON.parse(fs.readFileSync(serversCachePath(), 'utf8'));
+    if (Date.now() - at < SERVERS_CACHE_TTL && Array.isArray(servers)) return servers;
+  } catch {}
+  return null;
+}
 
-    const resp = await axios.get('https://discord.com/api/v9/users/@me/guilds', {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-    if (resp.status !== 200) return { success: false, error: `HTTP ${resp.status}` };
+function writeServersCache(servers) {
+  try { fs.writeFileSync(serversCachePath(), JSON.stringify({ at: Date.now(), servers })); } catch {}
+}
 
-    const servers = resp.data.map(server => ({
-      id: server.id,
-      name: server.name,
-      icon: server.icon
-        ? `https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png`
-        : '/discord.png'
-    }));
-
-    return { success: true, servers };
-  } catch (error) {
-    console.error('Get servers error:', error);
-    return { success: false, error: error.message };
+ipcMain.handle('discord:getServers', async (_, force = false) => {
+  if (!force) {
+    const cached = readServersCache();
+    if (cached) return { success: true, servers: cached };
   }
+  const r = await discordFetch('GET', '/users/@me/guilds');
+  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+
+  const servers = r.data.map(server => ({
+    id: server.id,
+    name: server.name,
+    icon: server.icon
+      ? `https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png`
+      : '/discord.png'
+  }));
+  writeServersCache(servers);
+  return { success: true, servers };
 });
+
+// Phase D : cache canaux par serveur (mémoire, TTL 60 s) — évite de re-fetch
+// quand delete-msgs + rm-reactions s'enchaînent sur le même serveur.
+const channelsCache = new Map(); // serverId -> { at, channels }
+const CHANNELS_TTL = 60000;
 
 ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
-  try {
-    if (!discordClient || !discordClient.token) {
-      return { success: false, error: 'Not connected' };
-    }
-
-    const response = await axios.get(
-      `https://discord.com/api/v9/guilds/${serverId}/channels`,
-      { headers: { 'Authorization': discordClient.token }, validateStatus: () => true }
-    );
-    if (response.status !== 200) return { success: false, error: `HTTP ${response.status}` };
-
-    // types: 0=text, 2=voice, 5=announcement, 10=announcement-thread, 11=public-thread, 12=private-thread, 15=forum, 16=media
-    const channels = response.data
-      .filter(ch => [0, 5, 10, 11, 12, 15, 16].includes(ch.type))
-      .map(ch => ({ id: ch.id, name: ch.name, type: ch.type }));
-
-    return { success: true, channels, currentUserId: discordClient.user?.id };
-  } catch (error) {
-    return { success: false, error: error.message };
+  const hit = channelsCache.get(serverId);
+  if (hit && Date.now() - hit.at < CHANNELS_TTL) {
+    return { success: true, channels: hit.channels, currentUserId: discordClient.user?.id };
   }
+  const r = await discordFetch('GET', `/guilds/${serverId}/channels`);
+  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+
+  // types: 0=text, 2=voice, 5=announcement, 10=announcement-thread, 11=public-thread, 12=private-thread, 15=forum, 16=media
+  const channels = r.data
+    .filter(ch => [0, 5, 10, 11, 12, 15, 16].includes(ch.type))
+    .map(ch => ({ id: ch.id, name: ch.name, type: ch.type }));
+  channelsCache.set(serverId, { at: Date.now(), channels });
+  return { success: true, channels, currentUserId: discordClient.user?.id };
 });
 
 ipcMain.handle('discord:leaveServer', async (_, serverId) => {
-  try {
-    if (!discordClient?.token) {
-      return { success: false, error: 'Not connected' };
-    }
-
-    const resp = await axios.delete(`https://discord.com/api/v9/users/@me/guilds/${serverId}`, {
-      headers: { 'Authorization': discordClient.token },
-      validateStatus: () => true
-    });
-
-    if (resp.status === 429) return { success: false, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
-    if (resp.status === 204 || resp.status === 200) return { success: true };
-    return { success: false, error: `HTTP ${resp.status}` };
-  } catch (error) {
-    console.error('Leave server error:', error);
-    return { success: false, error: error.message };
+  const r = await discordFetch('DELETE', `/users/@me/guilds/${serverId}`);
+  if (!r.success) {
+    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
+    return { success: false, error: r.error || `HTTP ${r.status}` };
   }
+  return { success: true };
 });
 
-app.whenReady().then(createWindow);
+// ============================================================
+// Persistance locale (checkpoints, watermarks, ledger anti-fantômes)
+// ============================================================
+const cpDir = () => path.join(app.getPath('userData'), 'checkpoints');
+const wmFile = (serverId) => path.join(app.getPath('userData'), `watermark-${serverId}.json`);
+const LEDGER_FILE = () => path.join(app.getPath('userData'), 'cleaned_reactions.json');
+const LEDGER_TTL = 24 * 3600 * 1000;
+
+const isSnowflake = (s) => typeof s === 'string' && /^\d+$/.test(s) && s.length <= 32;
+const isOp = (op) => op === 'removeReactions' || op === 'deleteMessages';
+
+ipcMain.handle('persist:checkpointLoad', async (_, op, serverId) => {
+  if (!isOp(op) || !isSnowflake(serverId)) return null;
+  return readJson(path.join(cpDir(), `${op}-${serverId}.json`));
+});
+ipcMain.handle('persist:checkpointSave', async (_, op, serverId, cp) => {
+  if (!isOp(op) || !isSnowflake(serverId) || !cp || typeof cp !== 'object') return;
+  await writeJson(path.join(cpDir(), `${op}-${serverId}.json`), cp);
+});
+ipcMain.handle('persist:checkpointClear', async (_, op, serverId) => {
+  if (!isOp(op) || !isSnowflake(serverId)) return;
+  try { await fsp.unlink(path.join(cpDir(), `${op}-${serverId}.json`)); } catch {}
+});
+ipcMain.handle('persist:watermarkGet', async (_, serverId) => {
+  if (!isSnowflake(serverId)) return {};
+  const s = await readJson(wmFile(serverId));
+  return (s && typeof s === 'object' && !Array.isArray(s)) ? s : {};
+});
+ipcMain.handle('persist:watermarkSet', async (_, serverId, map) => {
+  if (!isSnowflake(serverId) || !map || typeof map !== 'object') return;
+  await writeJson(wmFile(serverId), map);
+});
+ipcMain.handle('persist:ledgerGet', async () => {
+  const s = await readJson(LEDGER_FILE());
+  return (s && typeof s === 'object' && !Array.isArray(s)) ? s : {};
+});
+ipcMain.handle('persist:ledgerAdd', async (_, keys) => {
+  if (!Array.isArray(keys) || !keys.length) return;
+  const s = (await readJson(LEDGER_FILE())) || {};
+  const now = Date.now();
+  for (const k of keys) if (typeof k === 'string' && k.length <= 200) s[k] = now;
+  await writeJson(LEDGER_FILE(), s);
+});
+// Nettoyage des checkpoints obsolètes (au démarrage)
+async function cleanupCheckpoints() {
+  const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
+  try {
+    const files = await fsp.readdir(cpDir());
+    for (const f of files) {
+      if (!f.endsWith('.json')) continue;
+      try {
+        if ((await fsp.stat(path.join(cpDir(), f))).mtimeMs < cutoff) {
+          await fsp.unlink(path.join(cpDir(), f));
+        }
+      } catch {}
+    }
+  } catch {}
+}
+ipcMain.handle('persist:cleanup', cleanupCheckpoints);
+
+app.whenReady().then(() => {
+  createWindow();
+  cleanupCheckpoints();
+});
 
 app.on('window-all-closed', () => {
   if (discordClient) { try { const p = discordClient.destroy(); if (p?.catch) p.catch(() => {}); } catch {} discordClient = null; }

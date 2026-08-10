@@ -41,21 +41,16 @@ window.toggleDebugLog = () => {
 
   if (window._dlPanel) return;
   const p = document.createElement('div');
-  p.style.cssText = [
-    'position:fixed;bottom:60px;left:4px;width:232px;z-index:10001',
-    'background:#18191c;border:1px solid #303338;border-radius:8px',
-    'box-shadow:0 4px 24px rgba(0,0,0,.6);overflow:hidden',
-    'font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif',
-    'font-size:13px;color:#dcddde',
-  ].join(';');
+  p.className = 'dl-panel';
+  p.style.cssText = 'position:fixed;bottom:60px;left:4px;width:232px;z-index:10001';
   p.innerHTML = [
-    '<div id="dlHeader" style="display:flex;align-items:center;padding:10px 14px;background:#202225;border-bottom:1px solid #303338;gap:6px;cursor:grab;user-select:none">',
-      '<span style="font-weight:600;font-size:14px;color:#fff;flex:1">Debug Log</span>',
-      '<button id="dlCopy" style="background:#2b2d31;border:none;color:#b5bac1;cursor:pointer;font-size:11px;padding:2px 8px;border-radius:4px;line-height:1.5">Copy</button>',
-      '<button id="dlClose" style="background:none;border:none;color:#96989d;cursor:pointer;font-size:20px;line-height:1;padding:2px 4px;border-radius:4px">&times;</button>',
+    '<div id="dlHeader" class="dl-header">',
+      '<span class="dl-title">Debug Log</span>',
+      '<button id="dlCopy" class="dl-btn">Copy</button>',
+      '<button id="dlClose" class="dl-btn dl-close">&times;</button>',
     '</div>',
-    '<div id="dlBody" style="overflow-y:auto;padding:4px 0;min-height:60px;max-height:200px;background:#0d0d0d;font-family:Consolas,\'Courier New\',monospace;font-size:8px;line-height:1.3;color:#a0a0a0"></div>',
-    '<div id="dlResize" style="width:14px;height:14px;position:absolute;bottom:0;right:0;cursor:nwse-resize;background:#424549;clip-path:polygon(100% 0,100% 100%,0 100%)"></div>',
+    '<div id="dlBody" class="dl-body"></div>',
+    '<div id="dlResize" class="dl-resize"></div>',
   ].join('');
   document.body.appendChild(p);
 
@@ -123,7 +118,7 @@ window.log = (msg) => {
       body.removeChild(body.firstChild);
     }
     const e = document.createElement('div');
-    e.style.cssText = 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis;padding:0 6px;color:' + (cls === 'err' ? '#e04e4e' : cls === 'ok' ? '#3ba55d' : cls === 'warn' ? '#d4a72c' : '#a0a0a0');
+    e.className = 'dl-line' + (cls ? ' ' + cls : '');
     e.textContent = msg;
     body.appendChild(e);
     body.scrollTop = body.scrollHeight;
