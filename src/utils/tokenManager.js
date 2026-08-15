@@ -17,10 +17,8 @@ if (!result.tokens.length) {
         }
 
         updateTokensList(result.tokens, {
-            useToken: (token) => {
-                const input = document.getElementById('tokenInput');
-                const btn = document.getElementById('connectBtn');
-                if (input && btn) { input.value = token; btn.click(); }
+            useToken: (name) => {
+                window.connectBySavedToken?.(name);
             },
             deleteToken: async (name) => {
                 try {

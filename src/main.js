@@ -7,6 +7,7 @@ import { showInfoModal } from './utils/ui.js';
 import { copyToClipboard } from './utils/clipboard.js';
 import { getFriendsList } from './utils/discord.js';
 import { escHtml } from './utils/emojiUtils.js';
+import { installAvatarFallbacks } from './utils/domManager.js';
 
 // log capture
 window.__logs = [];
@@ -25,6 +26,9 @@ window.serverManager = new ServerManager(document.getElementById('servers-page')
 window.friendsManager = new FriendsManager(document.getElementById('friends-page'));
 window.groupManager = new GroupManager(document.getElementById('groups-page'));
 
+// R03b : fallback des avatars cassés (événement error en capture, CSP-safe).
+installAvatarFallbacks();
+
 window._dlOpen = false;
 window._dlPanel = null;
 
@@ -42,7 +46,7 @@ window.toggleDebugLog = () => {
   if (window._dlPanel) return;
   const p = document.createElement('div');
   p.className = 'dl-panel';
-  p.style.cssText = 'position:fixed;bottom:60px;left:4px;width:232px;z-index:10001';
+  p.style.cssText = 'position:fixed;bottom:60px;left:84px;width:232px;z-index:10001';
   p.innerHTML = [
     '<div id="dlHeader" class="dl-header">',
       '<span class="dl-title">Debug Log</span>',
@@ -135,12 +139,12 @@ const loginNavItem = document.getElementById('loginNavItem');
 
 function showUserProfile(username, avatar) {
   const userInitial = document.getElementById('userInitial');
-  const userName = document.getElementById('userName');
+  const userAvatarBtn = document.getElementById('userAvatarBtn');
 
   userInitial.innerHTML = avatar
-    ? `<img src="${escHtml(avatar)}" alt="${escHtml(username)}" onerror="this.style.display='none'">`
+    ? `<img src="${escHtml(avatar)}" alt="${escHtml(username)}" data-hide-on-error>`
     : escHtml(username.charAt(0).toUpperCase());
-  userName.textContent = username;
+  userAvatarBtn.dataset.tooltip = username;
   userProfile.classList.add('visible');
 }
 
@@ -158,10 +162,8 @@ function toggleNavItems(show) {
 function switchPage(pageId) {
   pages.forEach(page => {
     page.classList.remove('active');
-    if (page.id === `${pageId}-page`) {
-      setTimeout(() => page.classList.add('active'), 50);
-    }
   });
+  document.getElementById(`${pageId}-page`)?.classList.add('active');
   document.body.classList.toggle('login-active', pageId === 'login');
   const loginPage = document.getElementById('login-page');
   if (loginPage) loginPage.classList.toggle('login-centered', pageId === 'login');
@@ -172,7 +174,9 @@ function switchPage(pageId) {
       item.classList.add('active');
     }
   });
-  if (window._dlOpen) document.getElementById('logNavItem')?.classList.add('active');
+
+  // Le dock de sélection d'une autre page ne doit pas survivre au switch.
+  document.querySelectorAll('.selection-dock').forEach(d => d.classList.remove('show'));
 
   // Load content based on page
   switch (pageId) {
@@ -196,7 +200,7 @@ toggleNavItems(false);
 switchPage('login');
 
 navItems.forEach(item => {
-  if (item.id === 'logNavItem') return;
+  if (!item.dataset.page) return;
   item.addEventListener('click', () => switchPage(item.dataset.page));
 });
 
@@ -209,13 +213,20 @@ document.addEventListener('DOMContentLoaded', async () => {
   }
 });
 
-// Warm up GPU/layout so first page switches are as fluid as the rest
+// Warm up GPU/layout so first page switches are as fluid as the rest.
+// Les pages actives AVANT le warm-up sont restaurées après le double rAF :
+// au premier démarrage (IPC lent), la page courante ne peut plus être
+// effacée par le warm-up → pas de fenêtre vide initiale.
 function warmUpPages() {
   const els = ['login', 'friends', 'servers', 'dms', 'groups'].map(id => document.getElementById(`${id}-page`)).filter(Boolean);
+  const wasActive = new Set(els.filter(el => el.classList.contains('active')));
   document.body.classList.add('warming');
   els.forEach(el => el.classList.add('active'));
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    els.forEach(el => el.classList.remove('active'));
+    els.forEach(el => {
+      el.classList.remove('active');
+      if (wasActive.has(el)) el.classList.add('active');
+    });
     document.body.classList.remove('warming');
   }));
 }
@@ -232,7 +243,6 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
   window._dlOpen = false;
   window._dlPanel?.remove();
   window._dlPanel = null;
-  document.getElementById('logNavItem')?.classList.remove('active');
   hideUserProfile();
   toggleNavItems(false);
   switchPage('login');
@@ -252,14 +262,7 @@ const connectBtn = document.getElementById('connectBtn');
 const tokenInput = document.getElementById('tokenInput');
 const status = document.getElementById('status');
 
-connectBtn.addEventListener('click', async () => {
-  const token = tokenInput.value;
-  if (!token) {
-    status.textContent = 'Please enter a token';
-    status.className = 'error';
-    return;
-  }
-
+async function performConnect(connectPromise) {
   const btnText = connectBtn.querySelector('.btn-text');
   const loader = connectBtn.querySelector('.loader');
   btnText.style.display = 'none';
@@ -267,7 +270,7 @@ connectBtn.addEventListener('click', async () => {
   connectBtn.disabled = true;
 
   try {
-    const result = await window.electronAPI.connectDiscord(token);
+    const result = await connectPromise;
     if (result.success) {
       status.textContent = `Connected as ${result.username}`;
       status.className = 'success';
@@ -286,7 +289,21 @@ connectBtn.addEventListener('click', async () => {
     loader.style.display = 'none';
     connectBtn.disabled = false;
   }
+}
+
+connectBtn.addEventListener('click', async () => {
+  const token = tokenInput.value;
+  if (!token) {
+    status.textContent = 'Please enter a token';
+    status.className = 'error';
+    return;
+  }
+  await performConnect(window.electronAPI.connectDiscord(token));
 });
+
+// SEC-03 : connexion depuis un token sauvegardé — seul le nom circule,
+// le secret reste chiffré dans le main process.
+window.connectBySavedToken = (name) => performConnect(window.electronAPI.connectByName(name));
 
 // Toggle token visibility
 const eyeOpenIcon = document.getElementById('eyeOpenIcon');

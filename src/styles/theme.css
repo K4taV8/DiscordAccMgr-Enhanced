@@ -34,6 +34,9 @@
   --radius-lg: 18px;
   --radius-item: 14px;
   --radius-pill: 999px;
+
+  --bg-bento:        #121215;
+  --radius-bento:    16px;
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }

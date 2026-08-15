@@ -1,15 +1,14 @@
+// RÉFÉRENCE discrub (Souche TS) : encode un emoji pour une URL Discord.
+// Custom → "name:id" (nom BRUT, jamais encodé) ; Unicode → nom URL-encodé.
+// ⚠️ Ne PAS stripper U+FE0F (variation selector) : c'est ce qui rendait les
+// réactions "supprimées" fantômes (le DELETE visait ❤ au lieu de ❤️ et Discord
+// renvoyait 404 → l'outil comptait "supprimé" alors que la réaction restait).
 export function formatEmojiForApi(emoji) {
   if (!emoji) return '';
-  if (emoji.id && emoji.name) {
-    return `${encodeURIComponent(emoji.name.replace(/\uFE0F/g, ''))}:${emoji.id}`;
-  }
   if (emoji.id) {
-    return `_:${emoji.id}`;
+    return `${emoji.name}:${emoji.id}`;
   }
-  const name = (emoji.name || '').replace(/\uFE0F/g, '');
-  if (!name) return '';
-  return encodeURIComponent(name)
-    .replace(/[!'()*]/g, c => '%' + c.charCodeAt(0).toString(16).toUpperCase());
+  return encodeURIComponent(emoji.name || '');
 }
 
 // For text content / HTML attribute values — use in ${...} inside innerHTML

@@ -46,7 +46,7 @@ export function updateTokensList(tokens, handlers) {
       Use
     `;
     useBtn.disabled = !!t.corrupt;
-    useBtn.addEventListener('click', () => handlers.useToken(t.token));
+    useBtn.addEventListener('click', () => handlers.useToken(t.name));
 
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'btn btn-icon-danger';
@@ -65,4 +65,42 @@ export function updateTokensList(tokens, handlers) {
 
   tokenManagement.innerHTML = '';
   tokenElements.forEach(el => tokenManagement.appendChild(el));
+}
+
+// --- CSP (R03b) : délégation d'événements — remplace les handlers inline ---
+// Installe UN listener de clic + UN listener de change sur `container` et route
+// les éléments `[data-action]` vers handlers[action](el, event). `el` est
+// l'élément `[data-action]` (le bouton) — pratique pour le désactiver pendant
+// une opération longue.
+export function delegate(container, handlers) {
+  const dispatch = (e) => {
+    const el = e.target.closest('[data-action]');
+    if (!el || !container.contains(el)) return;
+    // Les checkboxes sont pilotées par `change` (sinon double-feu click+change).
+    if (e.type === 'click' && el.matches('input[type="checkbox"]')) return;
+    const fn = handlers[el.dataset.action];
+    if (fn) fn(el, e);
+  };
+  container.addEventListener('click', dispatch);
+  container.addEventListener('change', dispatch);
+}
+
+// Fallback des avatars : l'événement `error` des <img> ne remonte pas, il faut
+// une capture globale. `data-fallback` → remplace la src ; `data-hide-on-error`
+// → masque l'image cassée. Installée une seule fois (idempotent).
+let avatarFallbackInstalled = false;
+export function installAvatarFallbacks() {
+  if (avatarFallbackInstalled) return;
+  avatarFallbackInstalled = true;
+  document.addEventListener('error', (e) => {
+    const img = e.target;
+    if (!(img instanceof HTMLImageElement)) return;
+    if (img.dataset.fallback) {
+      const fb = img.dataset.fallback;
+      delete img.dataset.fallback; // évite une boucle si le fallback échoue aussi
+      img.src = fb;
+    } else if ('hideOnError' in img.dataset) {
+      img.style.display = 'none';
+    }
+  }, true);
 }

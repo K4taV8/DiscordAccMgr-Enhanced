@@ -6,11 +6,14 @@ import {
   loadWatermark, saveWatermark, watermarkFresh,
 } from './persist.js';
 
-const DISCORD_EPOCH = 1420070400000;
+export const DISCORD_EPOCH = 1420070400000;
 
 // ponytail: snowflake timestamp extraction + generation for time-segmented parallel scanning
-function snowflakeTs(id) { return Number(BigInt(id) >> 22n) + DISCORD_EPOCH; }
-function snowflakeForDate(d) { return ((BigInt(d.getTime()) - BigInt(DISCORD_EPOCH)) << 22n).toString(); }
+export function snowflakeTs(id) { return Number(BigInt(id) >> 22n) + DISCORD_EPOCH; }
+export function snowflakeForDate(d) {
+  // BUG-09 : borne basse à l'epoch Discord — un shift négatif produirait un id invalide.
+  return ((BigInt(Math.max(d.getTime(), DISCORD_EPOCH)) - BigInt(DISCORD_EPOCH)) << 22n).toString();
+}
 
 async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, stopBeforeId) {
   const found = [];
@@ -26,7 +29,6 @@ async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, sto
     // ponytail: 3 tentatives réseau avant d'abandonner le segment (résilience scan)
     for (let attempt = 0; (!result?.success || !result.messages) && attempt < 2; attempt++) {
       if (result?.error === 'Rate limited') {
-        scanLimiter.throttle(result.retryAfter || 1);
         await new Promise(r => setTimeout(r, ((result.retryAfter || 1) * 1000) + 500));
       } else {
         await new Promise(r => setTimeout(r, 1500));
@@ -274,7 +276,6 @@ export async function deleteServerMessages({
           finally { release(); }
           if (r.success) { ok = true; break; }
           if (r.error === 'Rate limited') {
-            deleteLimiter.throttle(r.retryAfter || 5);
             await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 5) * 1000) + 1000));
           } else break;
         } catch (e) { console.error('Delete msg error:', e); await new Promise(resolve => setTimeout(resolve, 2500)); break; }

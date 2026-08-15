@@ -3,12 +3,38 @@ import { showNotification, confirmAction } from '../utils/ui.js';
 import { deleteServerMessages } from '../utils/serverMessageDeleter.js';
 import { removeServerReactions } from '../utils/serverReactionRemover.js';
 import { escHtml } from '../utils/emojiUtils.js';
-import { cachedListRefresh } from '../utils/domManager.js';
+import { cachedListRefresh, delegate } from '../utils/domManager.js';
+import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 
 export class ServerManager {
   constructor(contentArea) {
     this.contentArea = contentArea;
     this.isDeleting = false;
+
+    // R03b : handlers inline → délégation d'événements (CSP sans 'unsafe-inline').
+    const itemId = (el) => el.closest('.bento-card')?.dataset.id;
+    this.actions = {
+      readAll: () => this.readAll(),
+      updateSelected: () => this.updateSelectedServersCount(),
+      toggleView: (el) => listView.toggle(document.getElementById('serversList'), 'servers', el),
+      copy: (el) => copyToClipboard(itemId(el)),
+      mute: (el) => this.muteServer(el, itemId(el)),
+      deleteMessages: (el) => this.deleteServerMessages(itemId(el)),
+      removeReactions: (el) => this.removeServerReactions(itemId(el)),
+      leave: (el) => this.leaveServer(el, itemId(el)),
+    };
+    delegate(contentArea, this.actions);
+
+    this.selectionDock = new FloatingSelectionDock({
+      onSelectAll: () => this.toggleSelectAllServers(),
+      actions: [
+        { label: 'Read', className: 'btn-primary', onClick: () => this.readSelectedServers() },
+        { label: 'Mute', onClick: () => this.muteSelectedServers() },
+        { label: 'Delete Msgs', className: 'btn-danger', onClick: () => this.deleteSelectedServersMessages() },
+        { label: 'Rm Reactions', className: 'btn-danger', onClick: () => this.removeSelectedServersReactions() },
+        { label: 'Leave', className: 'btn-danger', onClick: () => this.leaveSelectedServers() },
+      ],
+    });
   }
 
   async muteServer(btn, serverId) {
@@ -21,7 +47,7 @@ export class ServerManager {
       btn.disabled = false;
     }
   }
-  
+
   async unmuteServer(serverId) {
     try {
       await window.electronAPI.unmuteServer(serverId);
@@ -30,12 +56,12 @@ export class ServerManager {
       console.error('Failed to unmute server:', error);
     }
   }
-  
+
   async muteSelectedServers() {
     const selectedServers = document.querySelectorAll('.server-checkbox:checked');
     let failed = 0;
     for (const checkbox of selectedServers) {
-      const serverItem = checkbox.closest('.list-item');
+      const serverItem = checkbox.closest('.bento-card');
       try {
         const result = await window.electronAPI.muteServer(serverItem.dataset.id);
         if (!result?.success) failed++;
@@ -49,44 +75,42 @@ export class ServerManager {
     }
     this.refreshServersList(true);
   }
-  
+
   async refreshServersList(force = false) {
     try {
       const render = (servers) => {
         const scroller = this.contentArea.closest('.page-container') || this.contentArea;
         const top = scroller.scrollTop;
+        const listMode = listView.isOn('servers');
         this.contentArea.innerHTML = `
-        <h2 class="page-title">Servers List <span class="list-count">${servers.length}</span></h2>
-        <div class="actions-bar">
-          <button id="selectAllServersBtn" class="btn btn-secondary" onclick="window.serverManager.toggleSelectAllServers()">Select All</button>
-          <button id="leaveSelectedServersBtn" class="btn btn-secondary" onclick="window.serverManager.leaveSelectedServers()" disabled>Leave Selected</button>
-          <button id="muteSelectedServersBtn" class="btn btn-secondary" onclick="window.serverManager.muteSelectedServers()" disabled>Mute Selected</button>
-          <button id="deleteSelectedServersMsgBtn" class="btn btn-secondary" onclick="window.serverManager.deleteSelectedServersMessages()" disabled>Delete Selected</button>
-          <button id="removeSelectedServersReactionsBtn" class="btn btn-secondary" onclick="window.serverManager.removeSelectedServersReactions()" disabled>Remove Reactions</button>
-          <button id="readAllBtn" class="btn btn-primary" onclick="window.serverManager.readAll()">Read All</button>
+        <div class="list-toolbar">
+          <h2 class="page-title">Servers List <span class="list-count">${servers.length}</span></h2>
+          <div class="toolbar-actions">
+            ${listView.button('servers')}
+            <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Read All</button>
+          </div>
         </div>
-        <div id="serversList"></div>
+        <div id="serversList" class="bento-grid${listMode ? ' list-view' : ''}"></div>
         `;
         scroller.scrollTop = top;
         const list = document.getElementById('serversList');
-        // Phase C : rendu chunké (50 lignes/frame) — pas de frame bloquée à 200 lignes
+        // Phase C : rendu chunké (50 cartes/frame) — pas de frame bloquée à 200 lignes
         const CHUNK = 50;
-        const row = (server) => `
-          <div class="list-item" data-id="${server.id}">
-            <div class="list-item-left">
-              <input type="checkbox" class="server-checkbox" onchange="window.serverManager.updateSelectedServersCount()">
-              <img src="${escHtml(server.icon)}" alt="${escHtml(server.name)}" loading="lazy">
-              <span>${escHtml(server.name)}</span>
-            </div>
-            <div class="button-group">
-              <button onclick="window.serverManager.copyToClipboard('${server.id}')" class="btn btn-secondary">Copy ID</button>
-              <button onclick="window.serverManager.muteServer(this, '${server.id}')" class="btn btn-secondary">Mute</button>
-              <button onclick="window.serverManager.deleteServerMessages('${server.id}')" class="btn btn-danger">Delete Msgs</button>
-              <button onclick="window.serverManager.removeServerReactions('${server.id}')" class="btn btn-danger">Rm Reactions</button>
-              <button onclick="window.serverManager.leaveServer(this, '${server.id}')" class="btn btn-danger">Leave</button>
-            </div>
-          </div>
-        `;
+        const row = (server) => bentoCard({
+          id: server.id,
+          name: server.name,
+          icon: server.icon,
+          fallbackIcon: '/discord.png',
+          iconAlt: server.name,
+          checkboxClass: 'server-checkbox',
+          badge: server.owner ? { label: '👑 Owner', className: 'is-owner' } : null,
+          quick: [
+            { action: 'mute', label: 'Mute' },
+            { action: 'deleteMessages', label: 'Delete Msgs', danger: true },
+            { action: 'removeReactions', label: 'Rm Reactions', danger: true },
+            { action: 'leave', label: 'Leave', danger: true },
+          ],
+        });
         let i = 0;
         const flush = () => {
           const end = Math.min(i + CHUNK, servers.length);
@@ -95,13 +119,14 @@ export class ServerManager {
           if (i < servers.length) requestAnimationFrame(flush);
         };
         requestAnimationFrame(flush);
+        this.selectionDock.sync(0, 0);
       };
       await cachedListRefresh(this, () => getServersList(force), render, force);
     } catch (error) {
       this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
   }
-  
+
   async readAll() {
     const btn = document.getElementById('readAllBtn');
     const originalText = btn?.textContent;
@@ -112,7 +137,14 @@ export class ServerManager {
       if (btn) btn.disabled = true;
       const result = await window.electronAPI.readAll();
       if (result.success) {
-        showNotification(result.failed > 0 ? `Marked all as read (${result.failed} failed)` : 'Marked all as read!');
+        // RED-3 : distinguer complétion totale / arrêt anticipé (échecs > 1/3).
+        if (result.partial) {
+          showNotification(`Marked ${result.done}/${result.total} as read — ${result.failed} failed, stopped early`);
+        } else if (result.failed > 0) {
+          showNotification(`Marked all as read (${result.failed} failed)`);
+        } else {
+          showNotification('Marked all as read!');
+        }
       } else {
         showNotification('Failed to mark all as read');
       }
@@ -125,40 +157,35 @@ export class ServerManager {
     }
   }
 
+  async readSelectedServers() {
+    const ids = [...document.querySelectorAll('.server-checkbox:checked')]
+      .map(cb => cb.closest('.bento-card')?.dataset.id)
+      .filter(Boolean);
+    if (ids.length === 0) return;
+    let failed = 0;
+    for (const id of ids) {
+      try {
+        const r = await window.electronAPI.readServer(id);
+        if (!r?.success) failed++;
+      } catch (error) {
+        console.error('Failed to read server:', error);
+        failed++;
+      }
+    }
+    showNotification(failed ? `Marked ${ids.length - failed}/${ids.length} as read` : 'Marked selected as read');
+  }
 
   toggleSelectAllServers() {
-    const checkboxes = document.querySelectorAll('.server-checkbox');
-    const selectAllBtn = document.getElementById('selectAllServersBtn');
-    const isSelectAll = selectAllBtn.textContent === 'Select All';
-    
-    checkboxes.forEach(checkbox => {
-      checkbox.checked = isSelectAll;
-    });
-    
-    selectAllBtn.textContent = isSelectAll ? 'Deselect All' : 'Select All';
+    const checkboxes = [...document.querySelectorAll('.server-checkbox')];
+    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !allChecked);
     this.updateSelectedServersCount();
   }
 
   updateSelectedServersCount() {
-    const selectedCount = document.querySelectorAll('.server-checkbox:checked').length;
-    const leaveSelectedBtn = document.getElementById('leaveSelectedServersBtn');
-    const muteSelectedBtn = document.getElementById('muteSelectedServersBtn');
-    const deleteSelectedBtn = document.getElementById('deleteSelectedServersMsgBtn');
-    const removeReactionsBtn = document.getElementById('removeSelectedServersReactionsBtn');
-    
-    leaveSelectedBtn.disabled = selectedCount === 0;
-    muteSelectedBtn.disabled = selectedCount === 0;
-    if (deleteSelectedBtn) {
-      deleteSelectedBtn.disabled = selectedCount === 0;
-      deleteSelectedBtn.textContent = `Delete Selected (${selectedCount})`;
-    }
-    if (removeReactionsBtn) {
-      removeReactionsBtn.disabled = selectedCount === 0;
-      removeReactionsBtn.textContent = `Remove Reactions (${selectedCount})`;
-    }
-    
-    leaveSelectedBtn.textContent = `Leave Selected (${selectedCount})`;
-    muteSelectedBtn.textContent = `Mute Selected (${selectedCount})`;
+    const total = document.querySelectorAll('.server-checkbox').length;
+    const selected = document.querySelectorAll('.server-checkbox:checked').length;
+    this.selectionDock.sync(selected, total);
   }
 
   async leaveSelectedServers() {
@@ -166,7 +193,7 @@ export class ServerManager {
     if (selectedServers.length === 0) return;
     if (!(await confirmAction('Leave Servers', `Leave ${selectedServers.length} selected server(s)? This cannot be undone.`))) return;
     for (const checkbox of selectedServers) {
-      const serverItem = checkbox.closest('.list-item');
+      const serverItem = checkbox.closest('.bento-card');
       try {
         await window.electronAPI.leaveServer(serverItem.dataset.id);
         serverItem.remove();
@@ -182,8 +209,8 @@ export class ServerManager {
     if (!(await confirmAction('Delete Messages', 'Delete ALL your messages in this server? This cannot be undone.'))) return;
     this.isDeleting = true;
     try {
-      const item = document.querySelector(`.list-item[data-id="${serverId}"]`);
-      const serverName = item?.querySelector('span')?.textContent || 'this server';
+      const item = document.querySelector(`.bento-card[data-id="${serverId}"]`);
+      const serverName = item?.querySelector('.bento-name')?.textContent || 'this server';
       await deleteServerMessages({
         serverId,
         serverName,
@@ -204,10 +231,10 @@ export class ServerManager {
     try {
       const selectedServers = document.querySelectorAll('.server-checkbox:checked');
       for (const checkbox of selectedServers) {
-        const serverItem = checkbox.closest('.list-item');
+        const serverItem = checkbox.closest('.bento-card');
         await deleteServerMessages({
           serverId: serverItem.dataset.id,
-          serverName: serverItem.querySelector('span')?.textContent || 'server',
+          serverName: serverItem.querySelector('.bento-name')?.textContent || 'server',
           electronAPI: window.electronAPI,
           onComplete: () => {}
         });
@@ -223,8 +250,8 @@ export class ServerManager {
     if (!(await confirmAction('Remove Reactions', 'Remove all your reactions in this server?'))) return;
     this.isDeleting = true;
     try {
-      const item = document.querySelector(`.list-item[data-id="${serverId}"]`);
-      const serverName = item?.querySelector('span')?.textContent || 'this server';
+      const item = document.querySelector(`.bento-card[data-id="${serverId}"]`);
+      const serverName = item?.querySelector('.bento-name')?.textContent || 'this server';
       await removeServerReactions({
         serverId,
         serverName,
@@ -245,10 +272,10 @@ export class ServerManager {
     try {
       const selectedServers = document.querySelectorAll('.server-checkbox:checked');
       for (const checkbox of selectedServers) {
-        const serverItem = checkbox.closest('.list-item');
+        const serverItem = checkbox.closest('.bento-card');
         await removeServerReactions({
           serverId: serverItem.dataset.id,
-          serverName: serverItem.querySelector('span')?.textContent || 'server',
+          serverName: serverItem.querySelector('.bento-name')?.textContent || 'server',
           electronAPI: window.electronAPI,
           onComplete: () => {}
         });

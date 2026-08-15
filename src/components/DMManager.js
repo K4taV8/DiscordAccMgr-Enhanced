@@ -1,50 +1,68 @@
 import { getDMsList, copyToClipboard } from '../utils/discord.js';
 import { deleteDMMessages } from '../utils/messageDeleter.js';
-import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
+import { removeReactionsFromChannel, removeReactionsBulk } from '../utils/reactionRemover.js';
 import { handleBulkDMActions } from '../utils/bulkDMHandler.js';
 import { confirmAction } from '../utils/ui.js';
-import { escHtml, escJs } from '../utils/emojiUtils.js';
-import { preservePageScroll, cachedListRefresh } from '../utils/domManager.js';
+import { escHtml } from '../utils/emojiUtils.js';
+import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
+import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 
 export class DMManager {
   constructor(contentArea) {
     this.contentArea = contentArea;
     this.isDeleting = false;
+
+    // R03b : handlers inline → délégation d'événements (CSP sans 'unsafe-inline').
+    const item = (el) => el.closest('.bento-card');
+    this.actions = {
+      updateSelected: () => this.updateSelectedCount(),
+      toggleView: (el) => listView.toggle(document.getElementById('dmsList'), 'dms', el),
+      copy: (el) => copyToClipboard(item(el).dataset.id),
+      deleteMessages: (el) => this.deleteDMMessages(item(el).dataset.id, decodeURIComponent(item(el).dataset.username), el.dataset.oldest === 'true'),
+      removeReactions: (el) => this.removeReactions(el, item(el).dataset.id, decodeURIComponent(item(el).dataset.username)),
+      close: (el) => this.closeDM(el, item(el).dataset.id),
+    };
+    delegate(contentArea, this.actions);
+
+    this.selectionDock = new FloatingSelectionDock({
+      onSelectAll: () => this.toggleSelectAllDMs(),
+      actions: [
+        { label: 'Delete Msgs', className: 'btn-danger', onClick: () => this.deleteSelectedMessages() },
+        { label: 'Rm Reactions', className: 'btn-danger', onClick: () => this.removeSelectedReactions() },
+        { label: 'Close DMs', className: 'btn-danger', onClick: () => this.closeSelectedDMs() },
+      ],
+    });
   }
 
   async refreshDMsList(force = false) {
     try {
       const render = (dms) => {
+        const listMode = listView.isOn('dms');
         preservePageScroll(this.contentArea, () => `
-        <h2 class="page-title">DMs List <span class="list-count">${dms.length}</span></h2>
-        <div class="actions-bar">
-          <button id="selectAllDMsBtn" class="btn btn-secondary" onclick="window.dmManager.toggleSelectAllDMs()">Select All</button>
-          <button id="deleteSelectedMessagesBtn" class="btn btn-secondary" onclick="window.dmManager.deleteSelectedMessages()" disabled>Delete Selected Messages</button>
-          <button id="removeSelectedReactionsBtn" class="btn btn-secondary" onclick="window.dmManager.removeSelectedReactions()" disabled>Remove Selected Reactions</button>
-          <button id="closeSelectedDMsBtn" class="btn btn-secondary" onclick="window.dmManager.closeSelectedDMs()" disabled>Close Selected DMs</button>
+        <div class="list-toolbar">
+          <h2 class="page-title">DMs List <span class="list-count">${dms.length}</span></h2>
+          <div class="toolbar-actions">${listView.button('dms')}</div>
         </div>
-        <div id="dmsList">
-          ${dms.map(dm => `
-            <div class="list-item" data-id="${dm.id}" data-username="${encodeURIComponent(dm.username)}">
-              <div class="list-item-left">
-                <input type="checkbox" class="dm-checkbox" onchange="window.dmManager.updateSelectedCount()">
-                <img src="${escHtml(dm.avatar)}" alt="${escHtml(dm.username)}" loading="lazy">
-                <div class="user-info">
-                  <span class="display-name">${escHtml(dm.displayName)}</span>
-                  <span class="username">(${escHtml(dm.username)})</span>
-                </div>
-              </div>
-              <div class="button-group">
-                <button onclick="window.dmManager.copyToClipboard('${dm.id}')" class="btn btn-secondary">Copy ID</button>
-                <button onclick="window.dmManager.deleteDMMessages('${dm.id}', '${escJs(dm.username)}', false)" class="btn btn-secondary">Delete Messages</button>
-                <button onclick="window.dmManager.deleteDMMessages('${dm.id}', '${escJs(dm.username)}', true)" class="btn btn-secondary">Delete Oldest First</button>
-                <button onclick="window.dmManager.removeReactions(this, '${dm.id}', '${escJs(dm.username)}')" class="btn btn-secondary">Remove Reactions</button>
-                <button onclick="window.dmManager.closeDM(this, '${dm.id}')" class="btn btn-danger">Close DM</button>
-              </div>
-            </div>
-          `).join('')}
+        <div id="dmsList" class="bento-grid${listMode ? ' list-view' : ''}">
+          ${(dms || []).map(dm => bentoCard({
+            id: dm.id,
+            attrs: ` data-username="${encodeURIComponent(dm.username)}"`,
+            name: dm.displayName,
+            meta: dm.username ? `@${dm.username}` : '',
+            icon: dm.avatar,
+            iconAlt: dm.displayName,
+            checkboxClass: 'dm-checkbox',
+            badge: { label: 'DM' },
+            quick: [
+              { action: 'deleteMessages', label: 'Delete Msgs', attrs: ' data-oldest="false"', danger: true },
+              { action: 'deleteMessages', label: 'Oldest First', attrs: ' data-oldest="true"', danger: true },
+              { action: 'removeReactions', label: 'Rm Reactions', danger: true },
+              { action: 'close', label: 'Close DM', danger: true },
+            ],
+          })).join('')}
         </div>
       `);
+        this.selectionDock.sync(0, 0);
       };
       await cachedListRefresh(this, () => getDMsList(), render, force);
     } catch (error) {
@@ -53,28 +71,16 @@ export class DMManager {
   }
 
   toggleSelectAllDMs() {
-    const checkboxes = this.contentArea.querySelectorAll('.dm-checkbox');
-    const selectAllBtn = document.getElementById('selectAllDMsBtn');
-    const isSelectAll = selectAllBtn.textContent === 'Select All';
-    
-    checkboxes.forEach(checkbox => checkbox.checked = isSelectAll);
-    selectAllBtn.textContent = isSelectAll ? 'Deselect All' : 'Select All';
+    const checkboxes = [...this.contentArea.querySelectorAll('.dm-checkbox')];
+    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !allChecked);
     this.updateSelectedCount();
   }
 
   updateSelectedCount() {
-    const selectedCount = this.contentArea.querySelectorAll('.dm-checkbox:checked').length;
-    const deleteSelectedBtn = document.getElementById('deleteSelectedMessagesBtn');
-    const closeSelectedBtn = document.getElementById('closeSelectedDMsBtn');
-    const removeSelectedBtn = document.getElementById('removeSelectedReactionsBtn');
-    
-    deleteSelectedBtn.disabled = selectedCount === 0;
-    closeSelectedBtn.disabled = selectedCount === 0;
-    removeSelectedBtn.disabled = selectedCount === 0;
-    
-    deleteSelectedBtn.textContent = `Delete Selected Messages (${selectedCount})`;
-    closeSelectedBtn.textContent = `Close Selected DMs (${selectedCount})`;
-    removeSelectedBtn.textContent = `Remove Selected Reactions (${selectedCount})`;
+    const total = this.contentArea.querySelectorAll('.dm-checkbox').length;
+    const selected = this.contentArea.querySelectorAll('.dm-checkbox:checked').length;
+    this.selectionDock.sync(selected, total);
   }
 
   async deleteSelectedMessages() {
@@ -86,7 +92,7 @@ export class DMManager {
 
     try {
       const selectedDMs = Array.from(document.querySelectorAll('.dm-checkbox:checked')).map(checkbox => {
-        const item = checkbox.closest('.list-item');
+        const item = checkbox.closest('.bento-card');
         return {
           id: item.dataset.id,
           username: decodeURIComponent(item.dataset.username)
@@ -109,7 +115,7 @@ export class DMManager {
 
     try {
       const selectedDMs = Array.from(document.querySelectorAll('.dm-checkbox:checked')).map(checkbox => {
-        const item = checkbox.closest('.list-item');
+        const item = checkbox.closest('.bento-card');
         return {
           id: item.dataset.id,
           username: decodeURIComponent(item.dataset.username)
@@ -190,30 +196,18 @@ export class DMManager {
 
   async removeSelectedReactions() {
     if (this.isDeleting) return;
-    const selectedCount = document.querySelectorAll('.dm-checkbox:checked').length;
-    if (selectedCount === 0) return;
-    if (!(await confirmAction('Remove Reactions', `Remove your reactions in ${selectedCount} selected DM(s)?`))) return;
+    const selectedDMs = Array.from(document.querySelectorAll('.dm-checkbox:checked')).map(checkbox => {
+      const item = checkbox.closest('.bento-card');
+      return { channelId: item.dataset.id, channelName: decodeURIComponent(item.dataset.username) };
+    });
+    if (selectedDMs.length === 0) return;
+    if (!(await confirmAction('Remove Reactions', `Remove your reactions in ${selectedDMs.length} selected DM(s)?`))) return;
     this.isDeleting = true;
 
     try {
-      const selectedDMs = Array.from(document.querySelectorAll('.dm-checkbox:checked')).map(checkbox => {
-        const item = checkbox.closest('.list-item');
-        return { id: item.dataset.id, username: decodeURIComponent(item.dataset.username) };
-      });
-
-      const total = selectedDMs.length;
-      let completed = 0;
-
-      for (const dm of selectedDMs) {
-        await removeReactionsFromChannel({
-          channelId: dm.id,
-          channelName: dm.username,
-          electronAPI: window.electronAPI,
-          skipRefresh: true
-        });
-        completed++;
-      }
-
+      // R03b/bugfix : UNE modal agrégée (plus d'empilement de modals qui
+      // faisait « se lancer et se terminer direct »).
+      await removeReactionsBulk({ targets: selectedDMs, electronAPI: window.electronAPI });
       this.refreshDMsList(true);
     } finally {
       this.isDeleting = false;

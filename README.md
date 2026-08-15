@@ -1,13 +1,13 @@
-# ` 🫐 `︲Discord Account Manager : Gestion de comptes Discord sans client officiel
+# ` 🎤 `︲Discord Account Manager : Gestion de comptes Discord sans client officiel
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Electron-29-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
-  <img src="https://img.shields.io/badge/Node.js-20-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
+  <img src="https://img.shields.io/badge/Electron-43-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
+  <img src="https://img.shields.io/badge/Node.js-22-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
   <img src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
   <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
   <img src="https://img.shields.io/badge/Anti_RateLimit-X_RateLimit_aware-00b87c?style=for-the-badge">
   <img src="https://img.shields.io/badge/Persistence-Checkpoint_%7C_Watermark_%7C_Ledger-4b0082?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Tests-node_test-3ba55d?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Tests-48_verts-3ba55d?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
@@ -75,7 +75,7 @@
 
 * ` 🗂️ `︲**Groupes DM** : gestion complète (lister, quitter, supprimer messages, retirer réactions).
 
-* ` ⭐ `︲**Réactions** : retrait de vos propres réactions (DMs, groupes, serveurs), **avec passes de vérification anti-fantômes** et registre local de confirmation.
+* ` ⭐ `︲**Réactions** : retrait de vos propres réactions (DMs, groupes, serveurs). Fiabilité garantie par le modèle **scan → suppression → vérification** : encodage emoji conforme à Discord (`U+FE0F` conservé — un ❤️ n'est plus envoyé comme ❤), scan **complet** à chaque run (plus de delta par watermark qui sautait des canaux et affichait « 0 réaction »), et **re-scan de contrôle** qui ne comptabilise « supprimé » que si Discord confirme l'absence. Registre local de confirmation (ledger) contre les fantômes du cache `me:true` périmé.
 
 * ` 📖 `︲**Read All** : marquer tous les serveurs comme lus, débit gouverné, **progression live** sur le bouton.
 
@@ -228,7 +228,7 @@
 | **S1** | Ne jamais retirer `getTokens`/`connectDiscord`/`saveToken` de `SENSITIVE_CALLS` (`preload.cjs`) | Tokens en clair dans la console DevTools |
 | **S2** | Ne jamais stocker de token en clair : `safeStorage` + enveloppe `schemaVersion` + **mutex `withTokenLock`** obligatoires | Fuite ou perte de token (race read-modify-write) |
 | **S3** | Ne pas élargir l'allowlist `app:openExternal` (dépôt GitHub uniquement) ni `connect-src 'self'` | Surface d'attaque : une XSS du renderer exfiltrerait les tokens |
-| **S4** | CSP `'unsafe-inline'` = limitation connue : **ne pas ajouter** de handlers inline (préférer `addEventListener`) ; les 36 existants ne doivent être retirés que par une refonte complète | Régression UI ou ouverture XSS |
+| **S4** | CSP `script-src 'self'` en place (les 36 handlers inline ont été migrés vers `addEventListener` / délégation `data-action`). **Ne jamais ré-introduire** de handler inline ni `'unsafe-inline'` dans `script-src` | Réouverture d'une XSS du renderer |
 
 ### 🚫 Cache / Checkpoint / Ledger
 
@@ -255,7 +255,7 @@
 
 | Choix | Justification |
 |---|---|
-| **Electron 29 + Node 20, sans bundler** | Renderer ESM natif chargé tel quel (`index.html` → `src/main.js`), main/preload en `.cjs`. Aucune étape de build de dev. |
+| **Electron 43 + Node 22, sans bundler** | Renderer ESM natif chargé tel quel (`index.html` → `src/main.js`), main/preload en `.cjs`. Aucune étape de build de dev. |
 | **`discordFetch()` unique + `makeRouteScheduler`** | Toute la politique de débit vit au **seul endroit** où l'HTTP est émis. Les limiters renderer ne sont qu'un filet (taux relevés : scan 100 r/s, delete 30 r/s) pour ne jamais brider les bursts que les en-têtes autorisent. |
 | **Bucket par route normalisée (`routeKeyFor`)** | Approximation des « major params » Discord (snowflakes masqués) — suffisant pour éviter les 429 sans modèle exact de bucket, qui n'est pas public pour les jetons utilisateur. |
 | **Persistance JSON atomique plutôt que SQLite/IndexedDB** | Volumes modestes (IDs + curseurs, pas de contenu), zéro dépendance, écriture `tmp+rename` crash-safe. Pas de BBD nécessaire (YAGNI). |
@@ -264,7 +264,7 @@
 | **Scan segmenté (messages serveur)** | La parallélisation temporelle ne débloque pas le débit (plafonné par le limiter) mais rend chaque segment résilient ; la **reprise par canal** couvre l'interruption (un canal `partial` se re-scanne seul). |
 | **`humanDelay` conservé sur les DELETE DM** | Au-delà du rate-limit, la suppression est la route la plus surveillée ; l'humanisation est une protection comportementale. Retirée du scan (lecture, peu risquée). |
 | **`except` larges dans les opérations GUI** | Un crash silencieux journalisé vaut mieux qu'un traceback non géré qui gèle l'UI ; chaque erreur est loggée avec contexte. |
-| **Limitations connues** | CSP `'unsafe-inline'` (36 handlers inline à migrer) · couverture de tests ≈ 63 % sur le sous-ensemble importable (`main.cjs`, composants et deleters non testés unitairement) · `npm run package` non validé avec `type: module` · le `X-RateLimit` des jetons utilisateur n'est pas documenté par Discord — les en-têtes sont la seule vérité. |
+| **Limitations connues** | Couverture de tests ≈ **36 % ligne** sur le périmètre réel (le cœur pur est bien couvert : `helpers.cjs` 100 %, `emojiUtils.js` 100 %, `tokenStore.cjs` 93 % ; les composants UI et `main.cjs` restent peu testés) · `style-src 'unsafe-inline'` conservé (styles inline = risque faible) · le `X-RateLimit` des jetons utilisateur n'est pas documenté par Discord — les en-têtes sont la seule vérité. |
 
 ---
 
@@ -273,12 +273,12 @@
 
 ---
 
-* ` ⚛️ ` ︲**Electron 29** : application de bureau (renderer sandboxé, `contextIsolation`).
-* ` 🟢 ` ︲**Node.js 20** : moteur (main/preload `.cjs`, renderer ESM).
+* ` ⚛️ ` ︲**Electron 43** : application de bureau (renderer sandboxé, `contextIsolation`).
+* ` 🟢 ` ︲**Node.js 22** (bundlé) : moteur (main/preload `.cjs`, renderer ESM).
 * ` 🌐 ` ︲**axios** : HTTP vers l'API Discord (timeout 15 s, `validateStatus`).
 * ` 🤖 ` ︲**discord.js-selfbot-v13** : connexion WebSocket (login uniquement ; toutes les opérations passent par le REST).
 * ` 📦 ` ︲**electron-builder** : packaging Windows (NSIS / dir, mode portable).
-* ` 🧪 ` ︲**node:test** (stdlib) : 6 fichiers, 24 tests — `npm test`, coverage via `npm run test:coverage`.
+* ` 🧪 ` ︲**node:test** (stdlib) : 9 fichiers, 48 tests — `npm test`, coverage via `npm run test:coverage`.
 
 ---
 
@@ -305,7 +305,7 @@ npm install
 npm run start
 ```
 
-4️⃣︲**Lancer les tests (24 tests).**
+4️⃣︲**Lancer les tests (48 tests).**
 
 ```bash
 npm test
@@ -341,7 +341,7 @@ npm run package:portable # exécutable portable (dossier data/ local)
 | Bouton | Action |
 |---|---|
 | `Delete Msgs` | Supprime tous vos messages du serveur — scan + suppression, **reprise par checkpoint** si interrompu |
-| `Rm Reactions` | Retire vos réactions — scan + **2 passes de vérification anti-fantômes**, ledger |
+| `Rm Reactions` | Retire vos réactions — scan complet, suppression, **re-scan de vérification** (jamais de « supprimé » non confirmé) |
 | `Mute` / `Leave` | Mute / quitte le serveur |
 | `Read All` | Marque tout comme lu — **progression `Read All (12/200)`** sur le bouton |
 
@@ -381,11 +381,11 @@ npm run package:portable # exécutable portable (dossier data/ local)
 
 * ` 📊 `︲**Statistiques HTTP** : IPC `app:getHttpStats` (depuis la console : `await window.electronAPI.getHttpStats()`) — compteur de requêtes, **compteur de 429 (objectif : 0)**, budget par route.
 
-* ` 🧪 `︲**Tests** : `npm test` (24 tests — rate limiter, ordonnanceur header-aware, persistance, ESM/escaping) ; `npm run test:coverage` pour la couverture.
+* ` 🧪 `︲**Tests** : `npm test` (48 tests — rate limiter, ordonnanceur header-aware, persistance, tokens, réactions, escaping) ; `npm run test:coverage` pour la couverture.
 
 * ` 🧹 `︲**Cache local** : les fichiers de persistance vivent dans `userData` (Windows : `%APPDATA%\discord-account-manager`) — `checkpoints/`, `watermark-*.json`, `cleaned_reactions.json`, `saved_tokens.json`, `servers_cache.json`. Les supprimer = retour à un état « à froid » (sans perte de tokens si vous ne touchez pas `saved_tokens.json`).
 
-* ` ⚠️ `︲**Points ouverts** (tracés, à traiter par priorité) : migration CSP `'unsafe-inline'` (SEC-02) · scinder `electron/main.cjs` en modules testables (couverture ~20-30 % réelle) · création du `CHANGELOG.md` · formalisation du modèle de permissions dans `OptimizeAI/rules/permissions.md` · validation `npm run package`.
+* ` ⚠️ `︲**Points ouverts** (tracés, à traiter par priorité) : scinder `electron/main.cjs` (monolithe restant) · remonter la couverture réelle (~36 %) vers le seuil de 80 % · création du `CHANGELOG.md` · icône d'application manquante (`src/icons/app-icon.png`) · validation `npm run package`.
 
 ---
 
@@ -397,8 +397,7 @@ npm run package:portable # exécutable portable (dossier data/ local)
 > [!NOTE]
 > Pistes identifiées à partir du code et des rapports d'audit, à valider/prioriser :
 
-* ` 🧪 `︲Étendre la couverture de tests : extraire les helpers purs de `main.cjs` (proxy REST déjà factorisé = bon point de départ), tester les snowflakes/segments.
-* ` 🛡️ `︲Supprimer `'unsafe-inline'` de la CSP en migrant les 36 handlers inline vers `addEventListener` (refonte des composants).
+* ` 🧪 `︲Remonter la couverture réelle (~36 %) vers le seuil de 80 % : tester les deleters/removers et les flux IPC avec `safeStorage` mocké.
 * ` 📜 `︲Créer `CHANGELOG.md` (format Keep a Changelog) — version 1.6.0 candidate.
 * ` 📈 `︲Mesure runtime des Core Web Vitals (Lighthouse/DevTools) à l'occasion d'un lancement.
 * ` 🖥️ `︲Fusion des modules DM/serveur dupliqués (`messageDeleter` ↔ `serverMessageDeleter`, réactions idem) dans un cycle dédié.

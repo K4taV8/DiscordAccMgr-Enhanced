@@ -1,9 +1,10 @@
 import { showProgressModal, confirmAction } from '../utils/ui.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { deleteDMMessages } from '../utils/messageDeleter.js';
-import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
-import { escHtml, escJs } from '../utils/emojiUtils.js';
-import { preservePageScroll, cachedListRefresh } from '../utils/domManager.js';
+import { removeReactionsFromChannel, removeReactionsBulk } from '../utils/reactionRemover.js';
+import { escHtml } from '../utils/emojiUtils.js';
+import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
+import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 
 export class GroupManager {
   constructor(contentArea) {
@@ -14,10 +15,31 @@ export class GroupManager {
         <rect width="32" height="32" rx="16" fill="#5865F2"/>
         <path d="M22 12C22 14.2091 20.2091 16 18 16C15.7909 16 14 14.2091 14 12C14 9.79086 15.7909 8 18 8C20.2091 8 22 9.79086 22 12Z" fill="white"/>
         <path d="M10 20C10 17.7909 11.7909 16 14 16H22C24.2091 16 26 17.7909 26 20V22C26 23.1046 25.1046 24 24 24H12C10.8954 24 10 23.1046 10 22V20Z" fill="white"/>
-        <path d="M12 14C12 15.1046 11.1046 16 10 16C8.89543 16 8 15.1046 8 14C8 12.8954 8.89543 12 10 12C11.1046 12 12 12.8954 12 14Z" fill="white"/>
+        <path d="M12 14C12 15.1046 11.1046 16 10 16C8.89543 16 8 15.1046 8 14C8 12.8954 8.89543 12 10 12C11.1044 12 12 12.8954 12 14Z" fill="white"/>
         <path d="M6 19.5C6 18.1193 7.11929 17 8.5 17H11.5C12.8807 17 14 18.1193 14 19.5V22C14 23.1046 13.1046 24 12 24H8C6.89543 24 6 23.1046 6 22V19.5Z" fill="white"/>
       </svg>
     `)}`;
+
+    // R03b : handlers inline → délégation d'événements (CSP sans 'unsafe-inline').
+    const item = (el) => el.closest('.bento-card');
+    this.actions = {
+      updateSelected: () => this.updateSelectedCount(),
+      toggleView: (el) => listView.toggle(document.getElementById('groupsList'), 'groups', el),
+      copy: (el) => this.copyId(item(el).dataset.id),
+      deleteMessages: (el) => this.deleteMessages(item(el).dataset.id, decodeURIComponent(item(el).dataset.name), el.dataset.oldest === 'true'),
+      removeReactions: (el) => this.removeReactions(el, item(el).dataset.id, decodeURIComponent(item(el).dataset.name)),
+      leave: (el) => this.leaveGroup(el, item(el).dataset.id),
+    };
+    delegate(contentArea, this.actions);
+
+    this.selectionDock = new FloatingSelectionDock({
+      onSelectAll: () => this.toggleSelectAll(),
+      actions: [
+        { label: 'Delete Msgs', className: 'btn-danger', onClick: () => this.deleteSelectedMessages() },
+        { label: 'Rm Reactions', className: 'btn-danger', onClick: () => this.removeSelectedReactions() },
+        { label: 'Leave', className: 'btn-danger', onClick: () => this.leaveSelectedGroups() },
+      ],
+    });
   }
 
   async refreshGroupsList(force = false) {
@@ -27,41 +49,33 @@ export class GroupManager {
           this.contentArea.innerHTML = '<p class="error">Failed to load groups</p>';
           return;
         }
+        const listMode = listView.isOn('groups');
         preservePageScroll(this.contentArea, () => `
-        <h2 class="page-title">Groups List <span class="list-count">${result.groups.length}</span></h2>
-        <div class="actions-bar">
-          <button id="selectAllGroupsBtn" class="btn btn-secondary" onclick="window.groupManager.toggleSelectAll()">Select All</button>
-          <button id="leaveSelectedGroupsBtn" class="btn btn-secondary" onclick="window.groupManager.leaveSelectedGroups()" disabled>Leave Selected</button>
-          <button id="deleteSelectedMessagesBtn" class="btn btn-secondary" onclick="window.groupManager.deleteSelectedMessages()" disabled>Delete Selected Messages</button>
-          <button id="removeSelectedReactionsBtn" class="btn btn-secondary" onclick="window.groupManager.removeSelectedReactions()" disabled>Remove Selected Reactions</button>
+        <div class="list-toolbar">
+          <h2 class="page-title">Groups List <span class="list-count">${result.groups.length}</span></h2>
+          <div class="toolbar-actions">${listView.button('groups')}</div>
         </div>
-        <div id="groupsList">
-          ${result.groups.map(group => `
-            <div class="list-item" data-id="${group.id}" data-name="${encodeURIComponent(group.name)}">
-              <div class="list-item-left">
-                <input type="checkbox" class="group-checkbox" onchange="window.groupManager.updateSelectedCount()">
-                <div class="group-avatar${!group.icon || group.icon === '/discord.png' ? ' default-avatar' : ''}">
-                  <img src="${group.icon === '/discord.png' ? this.defaultGroupIcon : escHtml(group.icon)}"
-                       alt="${escHtml(group.name)}"
-                       loading="lazy"
-                       onerror="this.src='${this.defaultGroupIcon}'">
-                </div>
-                <div class="group-info">
-                  <span class="group-name">${escHtml(group.name)}</span>
-                  <span class="group-members">${group.recipients} members</span>
-                </div>
-              </div>
-              <div class="button-group">
-                <button onclick="window.groupManager.copyId('${group.id}')" class="btn btn-secondary">Copy ID</button>
-                <button onclick="window.groupManager.deleteMessages('${group.id}', '${escJs(group.name)}', false)" class="btn btn-secondary">Delete Messages</button>
-                <button onclick="window.groupManager.deleteMessages('${group.id}', '${escJs(group.name)}', true)" class="btn btn-secondary">Delete Oldest First</button>
-                <button onclick="window.groupManager.removeReactions(this, '${group.id}', '${escJs(group.name)}')" class="btn btn-secondary">Remove Reactions</button>
-                <button onclick="window.groupManager.leaveGroup(this, '${group.id}')" class="btn btn-danger">Leave</button>
-              </div>
-            </div>
-          `).join('')}
+        <div id="groupsList" class="bento-grid${listMode ? ' list-view' : ''}">
+          ${result.groups.map(group => bentoCard({
+            id: group.id,
+            attrs: ` data-name="${encodeURIComponent(group.name)}"`,
+            name: group.name,
+            meta: `${group.recipients} members`,
+            icon: group.icon === '/discord.png' ? this.defaultGroupIcon : group.icon,
+            fallbackIcon: this.defaultGroupIcon,
+            iconAlt: group.name,
+            checkboxClass: 'group-checkbox',
+            badge: { label: 'Group' },
+            quick: [
+              { action: 'deleteMessages', label: 'Delete Msgs', attrs: ' data-oldest="false"', danger: true },
+              { action: 'deleteMessages', label: 'Oldest First', attrs: ' data-oldest="true"', danger: true },
+              { action: 'removeReactions', label: 'Rm Reactions', danger: true },
+              { action: 'leave', label: 'Leave', danger: true },
+            ],
+          })).join('')}
         </div>
       `);
+        this.selectionDock.sync(0, 0);
       };
       await cachedListRefresh(this, () => window.electronAPI.getGroups(), render, force);
     } catch (error) {
@@ -70,28 +84,16 @@ export class GroupManager {
   }
 
   toggleSelectAll() {
-    const checkboxes = this.contentArea.querySelectorAll('.group-checkbox');
-    const selectAllBtn = document.getElementById('selectAllGroupsBtn');
-    const isSelectAll = selectAllBtn.textContent === 'Select All';
-    
-    checkboxes.forEach(checkbox => checkbox.checked = isSelectAll);
-    selectAllBtn.textContent = isSelectAll ? 'Deselect All' : 'Select All';
+    const checkboxes = [...this.contentArea.querySelectorAll('.group-checkbox')];
+    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
+    checkboxes.forEach(cb => cb.checked = !allChecked);
     this.updateSelectedCount();
   }
 
   updateSelectedCount() {
-    const selectedCount = this.contentArea.querySelectorAll('.group-checkbox:checked').length;
-    const leaveSelectedBtn = document.getElementById('leaveSelectedGroupsBtn');
-    const deleteSelectedBtn = document.getElementById('deleteSelectedMessagesBtn');
-    const removeSelectedBtn = document.getElementById('removeSelectedReactionsBtn');
-    
-    leaveSelectedBtn.disabled = selectedCount === 0;
-    deleteSelectedBtn.disabled = selectedCount === 0;
-    removeSelectedBtn.disabled = selectedCount === 0;
-    
-    leaveSelectedBtn.textContent = `Leave Selected (${selectedCount})`;
-    deleteSelectedBtn.textContent = `Delete Selected Messages (${selectedCount})`;
-    removeSelectedBtn.textContent = `Remove Selected Reactions (${selectedCount})`;
+    const total = this.contentArea.querySelectorAll('.group-checkbox').length;
+    const selected = this.contentArea.querySelectorAll('.group-checkbox:checked').length;
+    this.selectionDock.sync(selected, total);
   }
 
   async copyId(id) {
@@ -167,20 +169,11 @@ export class GroupManager {
 
     try {
       const selectedGroups = Array.from(document.querySelectorAll('.group-checkbox:checked')).map(checkbox => {
-        const item = checkbox.closest('.list-item');
-        return { id: item.dataset.id, name: decodeURIComponent(item.dataset.name) };
+        const item = checkbox.closest('.bento-card');
+        return { channelId: item.dataset.id, channelName: decodeURIComponent(item.dataset.name) };
       });
 
-      for (const group of selectedGroups) {
-        await removeReactionsFromChannel({
-          channelId: group.id,
-          channelName: group.name,
-          electronAPI: window.electronAPI,
-          isGroup: true,
-          skipRefresh: true
-        });
-      }
-
+      await removeReactionsBulk({ targets: selectedGroups, electronAPI: window.electronAPI, isGroup: true });
       this.refreshGroupsList(true);
     } finally {
       this.isDeleting = false;
@@ -197,9 +190,9 @@ export class GroupManager {
     const { updateProgress, closeModal } = showProgressModal('Leaving Groups', total);
 
     for (const checkbox of selectedGroups) {
-      const groupItem = checkbox.closest('.list-item');
+      const groupItem = checkbox.closest('.bento-card');
       const groupId = groupItem.dataset.id;
-      
+
       try {
         await window.electronAPI.leaveGroup(groupId);
         completed++;
@@ -229,17 +222,23 @@ export class GroupManager {
     const { updateProgress, closeModal } = showProgressModal('Deleting Messages', total);
 
     for (const checkbox of selectedGroups) {
-      const groupItem = checkbox.closest('.list-item');
+      const groupItem = checkbox.closest('.bento-card');
       const groupId = groupItem.dataset.id;
       const groupName = decodeURIComponent(groupItem.dataset.name);
-      
-      try {
-        await this.deleteMessages(groupId, groupName, false, true);
-        completed++;
-        updateProgress(completed);
-      } catch (error) {
-        console.error('Failed to delete messages:', error);
-      }
+
+      // BUG-08 : appeler deleteDMMessages directement — deleteMessages() se
+      // protège via isDeleting et aurait sauté toute la boucle (no-op silencieux).
+      await deleteDMMessages({
+        channelId: groupId,
+        username: groupName,
+        electronAPI: window.electronAPI,
+        isGroup: true,
+        skipRefresh: true,
+        quiet: true,
+        onComplete: () => {},
+      });
+      completed++;
+      updateProgress(completed);
     }
 
     setTimeout(() => {

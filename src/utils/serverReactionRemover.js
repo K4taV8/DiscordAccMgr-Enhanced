@@ -4,22 +4,30 @@ import { scanLimiter, deleteLimiter } from './rateLimiter.js';
 import { confirmAction } from './ui.js';
 import {
   OP_REACTIONS, loadCheckpoint, saveCheckpoint, clearCheckpoint, newCheckpoint, touch,
-  loadWatermark, saveWatermark, watermarkFresh,
   loadLedger, addLedger, ledgerKey, ledgerFilter,
 } from './persist.js';
 
-const decodeQueue = (str) => {
+export function decodeQueue(str) {
   const [cid, mid, ...rest] = str.split(':');
   return { channelId: cid, messageId: mid, emojiStr: rest.join(':') };
-};
+}
 
-async function scanChannelReactions(channel, electronAPI, log, isCancelled, onPage, opts = {}) {
-  const { stopAtId, suppressed } = opts;
+// Scan COMPLET d'un canal (paginé), sans borne de watermark.
+// ⚠️ Fiabilité : pour les réactions, PAS de delta par watermark — une réaction
+// peut être ajoutée à un ANCIEN message sans que le message le plus récent
+// change. L'ancien watermark sautait des canaux « inchangés » et affichait
+// « 0 réaction » alors qu'il en restait. D'où le scan complet à chaque run.
+// (Le watermark reste légitime pour la SUPPRESSION DE MESSAGES : un message ne
+// s'ajoute qu'à la fin.)
+//
+// `suppressed` = Set de clés ledger (réactions déjà confirmées supprimées/absentes)
+// → les fantômes du cache `me:true` périmé de Discord sont ignorés.
+export async function scanChannelReactions(channel, electronAPI, log, isCancelled, onPage, opts = {}) {
+  const { suppressed } = opts;
   const reactions = [];
   let lastId = null;
   let pages = 0;
   let newestId = null;
-  const isBounded = (id) => stopAtId && BigInt(id) <= BigInt(stopAtId);
   while (!isCancelled()) {
     let result;
     const release = await scanLimiter.acquire();
@@ -29,7 +37,6 @@ async function scanChannelReactions(channel, electronAPI, log, isCancelled, onPa
 
     if (!result.success) {
       if (result.error === 'Rate limited') {
-        scanLimiter.throttle(result.retryAfter || 1);
         await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 1) * 1000) + 500));
         continue;
       }
@@ -39,7 +46,6 @@ async function scanChannelReactions(channel, electronAPI, log, isCancelled, onPa
     if (!result.messages || !result.messages.length) break;
     if (newestId === null) newestId = result.messages[0].id;
     for (const msg of result.messages) {
-      if (isBounded(msg.id)) break;
       if (msg.reactions) {
         for (const r of msg.reactions) {
           if (r.me !== true) continue;
@@ -54,7 +60,7 @@ async function scanChannelReactions(channel, electronAPI, log, isCancelled, onPa
     pages++;
     if (onPage) onPage(pages);
     const lastMsg = result.messages[result.messages.length - 1];
-    if (result.messages.length < 100 || isBounded(lastMsg.id)) break;
+    if (result.messages.length < 100) break;
     lastId = lastMsg.id;
   }
   return { reactions, skipped: false, newestId };
@@ -71,7 +77,6 @@ export async function removeServerReactions({
     if (!resume) { await clearCheckpoint(OP_REACTIONS, serverId); checkpoint = null; }
   }
   const suppressed = ledgerFilter(await loadLedger());
-  const watermark = await loadWatermark(serverId);
   const ledgerPending = [];
 
   const flushLedger = async () => {
@@ -79,15 +84,6 @@ export async function removeServerReactions({
     const keys = ledgerPending.splice(0, ledgerPending.length);
     for (const k of keys) suppressed.set(k, Date.now());
     await addLedger(keys);
-  };
-
-  const finalizeWatermark = async () => {
-    const wm = {};
-    let changed = false;
-    for (const [chId, state] of Object.entries(checkpoint.channels)) {
-      if (state.status === 'scanned' && state.newestId) { wm[chId] = { newestId: state.newestId, scannedAt: Date.now() }; changed = true; }
-    }
-    if (changed) await saveWatermark(serverId, wm);
   };
 
   const t = createTaskPanel(serverName, '[RmReactions]');
@@ -133,32 +129,14 @@ export async function removeServerReactions({
           if (status) status.textContent = `#${ch.name} (${idx + 1}/${channels.length})`;
           if (progressNum) progressNum.textContent = (idx + 1).toString();
           try {
-            let stopAtId = null;
-            // Delta (watermark) : canal inchangé → skip ; sinon scan borné aux nouveaux messages
-            const wm = watermark[ch.id];
-            if (watermarkFresh(wm)) {
-              const rel = await scanLimiter.acquire();
-              let probe;
-              try { probe = await electronAPI.getChannelMessages(ch.id, null); }
-              finally { rel(); }
-              if (probe.success && probe.messages?.length) {
-                if (probe.messages[0].id === wm.newestId) {
-                  state.status = 'scanned';
-                  state.newestId = wm.newestId;
-                  state.found = 0;
-                  checkpoint = touch(checkpoint);
-                  await saveCheckpoint(OP_REACTIONS, serverId, checkpoint);
-                  scanned++;
-                  updateBar((scanned / channels.length) * 100);
-                  continue;
-                }
-                stopAtId = wm.newestId;
-              }
-            }
+            // Fiabilité : PAS de delta par watermark. Une réaction peut être
+            // ajoutée à un ANCIEN message sans que le message le plus récent
+            // change → le watermark sautait des canaux et affichait « 0 réaction »
+            // alors qu'il en restait. Scan complet à chaque run.
             state.status = 'scanning';
             const { reactions, skipped, newestId } = await scanChannelReactions(ch, electronAPI, log, shouldStop, p => {
               if (details) details.textContent = `#${ch.name}: page ${p}`;
-            }, { stopAtId, suppressed });
+            }, { suppressed });
             state.newestId = newestId || state.newestId;
             state.status = skipped ? 'partial' : 'scanned';
             state.found = reactions.length;
@@ -201,7 +179,6 @@ export async function removeServerReactions({
         actionBtn.style.background = '#3ba55d';
         actionBtn.disabled = false;
         actionBtn.onclick = () => cleanExit(onComplete);
-        await finalizeWatermark();
         await clearCheckpoint(OP_REACTIONS, serverId);
         safeTimeout(() => cleanExit(onComplete), 3000);
         return;
@@ -237,7 +214,6 @@ export async function removeServerReactions({
           finally { release(); }
           if (r.success || r.error === 'noReaction') { ok = true; break; }
           if (r.error === 'Rate limited') {
-            deleteLimiter.throttle(r.retryAfter || 3);
             const waitTime = ((r.retryAfter || 3) * 1000) + 500;
             log(`429 wait ${waitTime}ms (attempt ${attempt + 1})`);
             await new Promise(resolve => setTimeout(resolve, waitTime));
@@ -306,7 +282,6 @@ export async function removeServerReactions({
             finally { release(); }
             if (r.success || r.error === 'noReaction') { ok = true; break; }
             if (r.error === 'Rate limited') {
-              deleteLimiter.throttle(r.retryAfter || 3);
               await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 3) * 1000) + 500));
             }
           } catch (e) {
@@ -345,7 +320,6 @@ export async function removeServerReactions({
     actionBtn.disabled = false;
     actionBtn.onclick = () => cleanExit(onComplete);
 
-    await finalizeWatermark();
     await clearCheckpoint(OP_REACTIONS, serverId);
     safeTimeout(() => cleanExit(onComplete), 5000);
   } catch (err) {

@@ -87,11 +87,13 @@ export async function deleteDMMessages({
       const newDeletableMessages = messages.filter(msg => {
         if (isGroup) {
           if (!msg.author || msg.author.id !== currentUserId) return false;
+          // BUG-01 : msg.type est un entier Discord, pas une chaîne — la
+          // comparaison à 'VOICE_MESSAGE' était morte. Les messages vocaux sont
+          // portés par attachments (audio), déjà couverts ci-dessous.
           return (
             (typeof msg.content === 'string' && msg.content.trim().length > 0) ||
             (msg.attachments || 0) > 0 ||
-            (msg.embeds || 0) > 0 ||
-            msg.type === 'VOICE_MESSAGE'
+            (msg.embeds || 0) > 0
           );
         } else {
           return msg.isDeletable;
@@ -139,7 +141,6 @@ export async function deleteDMMessages({
             finally { release(); }
             if (r.success) { ok = true; break; }
             if (r.error === 'Rate limited') {
-              deleteLimiter.throttle(r.retryAfter || 5);
               await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 5) * 1000) + 1000));
             } else break;
           }
@@ -153,7 +154,6 @@ export async function deleteDMMessages({
             finally { release(); }
             if (r.success) { ok = true; break; }
             if (r.error === 'Rate limited') {
-              deleteLimiter.throttle(r.retryAfter || 5);
               await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 5) * 1000) + 1000));
             } else break;
           }

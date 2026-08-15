@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   saveToken: wrap('saveToken', (name, token) => ipcRenderer.invoke('tokens:save', name, token)),
   deleteToken: wrap('deleteToken', (name) => ipcRenderer.invoke('tokens:delete', name)),
   deleteAllTokens: wrap('deleteAllTokens', () => ipcRenderer.invoke('tokens:deleteAll')),
+  connectByName: wrap('connectByName', (name) => ipcRenderer.invoke('tokens:connectByName', name)),
 
   openExternal: wrap('openExternal', (url) => ipcRenderer.invoke('app:openExternal', url)),
   getAppVersion: wrap('getAppVersion', () => ipcRenderer.invoke('app:getVersion')),
@@ -37,6 +38,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   muteServer: wrap('muteServer', (serverId) => ipcRenderer.invoke('discord:muteServer', serverId)),
   unmuteServer: wrap('unmuteServer', (serverId) => ipcRenderer.invoke('discord:unmuteServer', serverId)),
   readAll: wrap('readAll', () => ipcRenderer.invoke('discord:readAll')),
+  readServer: wrap('readServer', (serverId) => ipcRenderer.invoke('discord:readServer', serverId)),
   onReadAllProgress: (callback) => {
     const listener = (_event, data) => callback(data);
     ipcRenderer.on('readall:progress', listener);

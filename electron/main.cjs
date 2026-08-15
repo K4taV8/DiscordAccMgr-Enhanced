@@ -8,6 +8,8 @@ const fsp = require('fs/promises');
 axios.defaults.timeout = 15000;
 
 const { readJson, writeJson } = require('./persist.cjs');
+const { routeKeyFor, isSnowflake, isOp } = require('./helpers.cjs');
+const { createTokenStore } = require('./tokenStore.cjs');
 
 // Portable data directory setup
 const isPortable = process.env.PORTABLE_BUILD === 'true' || (app.isPackaged && fs.existsSync(path.join(path.dirname(process.execPath), '.portable')));
@@ -43,6 +45,9 @@ if (!fs.existsSync(tokensPath)) {
   fs.writeFileSync(tokensPath, '[]', 'utf8');
 }
 
+// R05#2 : logique token extraite dans tokenStore.cjs (safeStorage + chemin injectés → testable).
+const tokenStore = createTokenStore({ safeStorage, tokensPath });
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -58,6 +63,7 @@ function createWindow() {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: false,
+      paintingWhenInitiallyHidden: true,
     },
     backgroundColor: '#1a1b1e'
   });
@@ -115,6 +121,22 @@ async function discordFetch(method, path, { data, params } = {}) {
   }
 }
 
+// BUG-07 : mutations simples avec retry borné sur 429 (cohérent avec les
+// suppressions de messages). 3 tentatives + Retry-After, puis échec explicite.
+async function discordMutate(method, path, { data, params } = {}) {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const r = await discordFetch(method, path, { data, params });
+    if (r.success) return { success: true };
+    if (r.status === 429) {
+      const wait = r.retryAfter || 5;
+      await new Promise(res => setTimeout(res, (wait * 1000) + 500));
+      continue;
+    }
+    return { success: false, error: r.error || `HTTP ${r.status}` };
+  }
+  return { success: false, error: 'Rate limited' };
+}
+
 ipcMain.handle('discord:getGroups', async () => {
   const r = await discordFetch('GET', '/users/@me/channels');
   if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
@@ -130,12 +152,7 @@ ipcMain.handle('discord:getGroups', async () => {
 });
 
 ipcMain.handle('discord:leaveGroup', async (_, groupId) => {
-  const r = await discordFetch('DELETE', `/channels/${groupId}`);
-  if (!r.success) {
-    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
-  }
-  return { success: true };
+  return discordMutate('DELETE', `/channels/${groupId}`);
 });
 
 async function fetchChannelMessagesRest(channelId, beforeId = null, afterId = null) {
@@ -164,7 +181,9 @@ async function fetchChannelMessagesRest(channelId, beforeId = null, afterId = nu
     reactions: (msg.reactions || []).map(ra => ({
       emoji: { id: ra.emoji.id, name: ra.emoji.name },
       count: ra.count,
-      me: Boolean(ra.me || ra.me_burst)
+      // me_burst (super-réactions) exclu : elles utilisent un autre endpoint et
+      // un DELETE normal renverrait 404 → compté "supprimé" à tort.
+      me: Boolean(ra.me)
     }))
   }));
   return { success: true, currentUserId: uid, messages: msgs };
@@ -188,7 +207,9 @@ ipcMain.handle('discord:getMessage', async (_, channelId, messageId) => {
     reactions: (msg.reactions || []).map(ra => ({
       emoji: { id: ra.emoji.id, name: ra.emoji.name },
       count: ra.count,
-      me: Boolean(ra.me || ra.me_burst)
+      // me_burst (super-réactions) exclu : elles utilisent un autre endpoint et
+      // un DELETE normal renverrait 404 → compté "supprimé" à tort.
+      me: Boolean(ra.me)
     }))
   };
 });
@@ -204,21 +225,11 @@ ipcMain.handle('discord:deleteGroupMessage', async (_, channelId, messageId) => 
 });
 
 ipcMain.handle('discord:muteServer', async (_, serverId) => {
-  const r = await discordFetch('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: true } });
-  if (!r.success) {
-    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
-  }
-  return { success: true };
+  return discordMutate('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: true } });
 });
 
 ipcMain.handle('discord:unmuteServer', async (_, serverId) => {
-  const r = await discordFetch('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: false } });
-  if (!r.success) {
-    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
-  }
-  return { success: true };
+  return discordMutate('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: false } });
 });
 
 // ponytail: ordonnanceurs côté main = autorité débit. Lecture nominale 25 r/s,
@@ -231,67 +242,81 @@ const deleteScheduler = makeRouteScheduler({ nominalRatePerSec: 4, burst: 2, max
 // Statistiques HTTP (phase E) — exposées via app:getHttpStats
 const httpStats = { requests: 0, rateLimited: 0, byRoute: new Map() };
 
-// Clé de route normalisée : snowflakes masqués (~bucket Discord, major params)
-function routeKeyFor(path) {
-  return path.replace(/\/\d+(?=\/|$)/g, '/:id');
-}
-
 ipcMain.handle('discord:readAll', async () => {
   try {
     if (!discordClient?.token) {
       return { success: false, error: 'Not connected' };
     }
 
+    // ARCH-03 : tout HTTP repasse par discordFetch (G1). Le bucket de route est
+    // normalisé par routeKeyFor — un seul budget partagé pour tous les /guilds/:id/ack
+    // (l'ancien acquire(`/guilds/<id>/ack`) créait un bucket distinct par guild).
     let allGuilds = [];
     let lastId = null;
     let firstPageOk = false;
     while (true) {
-      await readScheduler.acquire('/users/@me/guilds');
-      const params = new URLSearchParams({ limit: '100' });
-      if (lastId) params.set('after', lastId);
-      const resp = await axios.get(`https://discord.com/api/v9/users/@me/guilds?${params}`, {
-        headers: { 'Authorization': discordClient.token },
-        validateStatus: () => true
-      });
-      readScheduler.applyHeaders('/users/@me/guilds', resp.headers);
-      if (resp.status !== 200) break;
+      const params = { limit: 100 };
+      if (lastId) params.after = lastId;
+      // RED-1 : retry borné sur la pagination de la liste (cohérent avec la boucle ack).
+      let r;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        r = await discordFetch('GET', '/users/@me/guilds', { params });
+        if (r.success) break;
+        if (r.status === 429) {
+          const wait = r.retryAfter || 1;
+          await new Promise(res => setTimeout(res, (wait * 1000) + 500));
+          continue;
+        }
+        break; // 401/403 : pas de retry utile
+      }
+      if (!r?.success) break;
       firstPageOk = true;
-      allGuilds = allGuilds.concat(resp.data);
-      if (resp.data.length < 100) break;
-      lastId = resp.data[resp.data.length - 1].id;
+      allGuilds = allGuilds.concat(r.data);
+      if (r.data.length < 100) break;
+      lastId = r.data[r.data.length - 1].id;
     }
     if (allGuilds.length === 0 && !firstPageOk) {
       return { success: false, error: 'Failed to fetch servers' };
     }
 
     let failed = 0;
+    let done = 0;
     const total = allGuilds.length;
-    for (let i = 0; i < total; i++) {
-      const guild = allGuilds[i];
-      for (let attempt = 0; attempt < 3; attempt++) {
-        try {
-          await readScheduler.acquire(`/guilds/${guild.id}/ack`);
-          const ack = await axios.put(`https://discord.com/api/v9/guilds/${guild.id}/ack`, { token: null }, {
-            headers: { 'Authorization': discordClient.token },
-            validateStatus: () => true
-          });
-          readScheduler.applyHeaders(`/guilds/${guild.id}/ack`, ack.headers);
-          if (ack.status === 429) {
-            const wait = parseInt(ack.headers?.['retry-after']) || 1;
-            await new Promise(r => setTimeout(r, (wait * 1000) + 500));
-            continue;
-          }
-          break;
-        } catch (e) {
-          if (attempt === 2) { failed++; console.error(`Failed to mark guild ${guild.id} as read:`, e.message); }
-          else await new Promise(r => setTimeout(r, 1000));
-        }
-      }
-      mainWindow?.webContents.send('readall:progress', { done: i + 1, total, failed });
-      if (failed > total / 3) break; // ponytail: se retire si les erreurs s'accumulent — on n'ignore pas un serveur en panne indéfiniment
-    }
 
-    return { success: true, failed };
+    const ackGuild = async (guild) => {
+      let ok = false;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const ack = await discordFetch('PUT', `/guilds/${guild.id}/ack`, { data: { token: null } });
+        if (ack.success) { ok = true; break; }
+        if (ack.status === 429) {
+          const wait = ack.retryAfter || 1;
+          await new Promise(r => setTimeout(r, (wait * 1000) + 500));
+          continue;
+        }
+        break; // 403/401 : non-réussite comptabilisée en échec
+      }
+      if (!ok) failed++;
+      done++;
+      mainWindow?.webContents.send('readall:progress', { done, total, failed });
+    };
+
+    // P-01 : traitement parallèle borné à 12 workers (== readScheduler.maxConcurrent) —
+    // le débit réel reste gouverné par les en-têtes X-RateLimit-* côté main.
+    // L'ancienne boucle séquentielle faisait 200 PUT à la chaîne ; on ne dépasse
+    // jamais le budget du scheduler, on cesse simplement d'empiler les nouveaux
+    // ack dès que les échecs dépassent 1/3.
+    const CONCURRENCY = 12;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < total && failed <= total / 3) {
+        const i = cursor++;
+        await ackGuild(allGuilds[i]);
+      }
+    }
+    await Promise.all(Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker()));
+
+    // RED-3 : retour explicite — partial=true quand des guilds n'ont pas été tentées.
+    return { success: true, failed, done, total, partial: done < total };
   } catch (error) {
     console.error('Read all error:', error);
     return { success: false, error: error.message };
@@ -312,115 +337,24 @@ ipcMain.handle('app:openExternal', async (_, url) => {
   }
 });
 
-// Token management — encrypted at rest via safeStorage
-// Storage schema: { schemaVersion: 1, tokens: [...] } — migrated from legacy flat array
-const TOKEN_SCHEMA_VERSION = 1;
+// Token management — encrypted at rest via safeStorage.
+// R05#2 : la logique (chiffrement, schéma, mutex) vit dans tokenStore.cjs —
+// testable avec un safeStorage mocké. main.cjs n'expose que les IPC handlers.
+ipcMain.handle('tokens:save', (_, name, token) => tokenStore.save(name, token));
 
-async function readTokensFile() {
-  const raw = await fsp.readFile(tokensPath, 'utf8');
-  const parsed = JSON.parse(raw);
-  if (Array.isArray(parsed)) {
-    // Legacy format: flat array -> migrate to versioned envelope
-    const migrated = { schemaVersion: TOKEN_SCHEMA_VERSION, tokens: parsed };
-    await fsp.writeFile(tokensPath, JSON.stringify(migrated, null, 2));
-    return migrated;
-  }
-  return parsed;
-}
+ipcMain.handle('tokens:get', () => tokenStore.list());
 
-async function writeTokensFile(store) {
-  // BUG-03 : écriture atomique (tmp + rename) — pas de fichier tronqué en cas de crash
-  const tmp = tokensPath + '.tmp';
-  await fsp.writeFile(tmp, JSON.stringify({ schemaVersion: TOKEN_SCHEMA_VERSION, tokens: store }, null, 2));
-  await fsp.rename(tmp, tokensPath);
-}
+ipcMain.handle('tokens:delete', (_, name) => tokenStore.remove(name));
 
-// BUG-03 : mutex — sérialise les read-modify-write (save/get/delete) pour éviter les pertes de mise à jour
-let tokenOp = Promise.resolve();
-const withTokenLock = (fn) => {
-  const p = tokenOp.then(fn);
-  tokenOp = p.then(() => {}, () => {});
-  return p;
-};
+ipcMain.handle('tokens:deleteAll', () => tokenStore.removeAll());
 
-function encryptToken(token) {
-  return 'enc:' + safeStorage.encryptString(token).toString('base64');
-}
-
-function decryptToken(stored) {
-  if (typeof stored === 'string' && stored.startsWith('enc:')) {
-    return safeStorage.decryptString(Buffer.from(stored.slice(4), 'base64'));
-  }
-  return null;
-}
-
-ipcMain.handle('tokens:save', (_, name, token) => withTokenLock(async () => {
-  if (!safeStorage.isEncryptionAvailable()) {
-    return { success: false, error: 'Cannot save: secure storage unavailable. On Linux, install libsecret.' };
-  }
-  try {
-    const store = await readTokensFile();
-    const tokens = store.tokens || [];
-    if (tokens.some(t => t.name === name)) {
-      return { success: false, error: 'A token with this name already exists' };
-    }
-    tokens.push({ name, token: encryptToken(token) });
-    await writeTokensFile(tokens);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: 'Failed to save token' };
-  }
-}));
-
-ipcMain.handle('tokens:get', () => withTokenLock(async () => {
-  try {
-    const store = await readTokensFile();
-    const tokens = store.tokens || [];
-    let hasLegacy = false;
-
-    const result = tokens.map(t => {
-      if (typeof t.token === 'string' && t.token.startsWith('enc:')) {
-        try {
-          return { ...t, token: decryptToken(t.token) };
-        } catch {
-          return { ...t, token: null, corrupt: true }; // BUG-07 : garder l'entrée pour que l'utilisateur la voie/supprime
-        }
-      }
-      hasLegacy = true;
-      return { ...t, token: t.token };
-    }).filter(t => t !== null);
-
-    if (hasLegacy && safeStorage.isEncryptionAvailable()) {
-      const encrypted = result.map(t => ({ ...t, token: encryptToken(t.token) }));
-      await writeTokensFile(encrypted);
-    }
-
-    return { success: true, tokens: result };
-  } catch (error) {
-    return { success: false, error: 'Failed to load tokens' };
-  }
-}));
-
-ipcMain.handle('tokens:delete', (_, name) => withTokenLock(async () => {
-  try {
-    const store = await readTokensFile();
-    const tokens = store.tokens || [];
-    const newTokens = tokens.filter(t => t.name !== name);
-    await writeTokensFile(newTokens);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: 'Failed to delete token' };
-  }
-}));
-
-ipcMain.handle('tokens:deleteAll', () => withTokenLock(async () => {
-  try {
-    await writeTokensFile([]);
-    return { success: true };
-  } catch (error) {
-    return { success: false, error: 'Failed to delete tokens' };
-  }
-}));
+// SEC-03 : connexion par nom — le secret est lu/déchiffré dans le main et ne
+// transite jamais vers le renderer. Le mutex n'est tenu que pendant la lecture.
+ipcMain.handle('tokens:connectByName', async (_, name) => {
+  const resolved = await tokenStore.resolveByName(name);
+  if (resolved.error) return { success: false, error: resolved.error };
+  return connectDiscord(resolved.token);
+});
 
 // Updates disabled
 ipcMain.handle('app:checkUpdates', async () => ({ success: true, hasUpdate: false }));
@@ -437,7 +371,7 @@ ipcMain.handle('app:getHttpStats', async () => ({
 }));
 
 // Discord handlers
-ipcMain.handle('discord:connect', async (_, token) => {
+async function connectDiscord(token) {
   if (connecting) return { success: false, error: 'Already connecting' };
   connecting = true;
   try {
@@ -461,7 +395,9 @@ ipcMain.handle('discord:connect', async (_, token) => {
   } finally {
     connecting = false;
   }
-});
+}
+
+ipcMain.handle('discord:connect', async (_, token) => connectDiscord(token));
 
 ipcMain.handle('discord:getFriends', async () => {
   const r = await discordFetch('GET', '/users/@me/relationships');
@@ -506,19 +442,16 @@ ipcMain.handle('discord:deleteDMMessage', async (_, channelId, messageId) => {
 });
 
 ipcMain.handle('discord:closeDM', async (_, channelId) => {
-  const r = await discordFetch('DELETE', `/channels/${channelId}`);
-  if (!r.success) {
-    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
-  }
-  return { success: true };
+  return discordMutate('DELETE', `/channels/${channelId}`);
 });
 
 ipcMain.handle('discord:removeOwnReaction', async (_, channelId, messageId, rawEmojiKey) => {
   if (!rawEmojiKey) return { success: false, error: 'empty emoji key' };
 
-  const key = rawEmojiKey.includes(':') ? rawEmojiKey : rawEmojiKey.replace(/%EF%B8%8F/g, '');
-  const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${key}/@me`);
+  // La clé vient déjà de formatEmojiForApi (référence discrub) : "name:id" brut
+  // ou unicode URL-encodé AVEC variation selector. Ne PAS re-stripper %EF%B8%8F
+  // (U+FE0F) — c'était la cause des réactions "supprimées" qui restaient en place.
+  const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${rawEmojiKey}/@me`);
 
   if (!r.success) {
     // anti-fantômes : 404 = réaction confirmée absente (ok) ; 400 = requête invalide (échec visible, pas silencieux)
@@ -540,12 +473,7 @@ ipcMain.handle('discord:getReactions', async (_, channelId, messageId, emoji, af
 });
 
 ipcMain.handle('discord:deleteFriend', async (_, friendId) => {
-  const r = await discordFetch('DELETE', `/users/@me/relationships/${friendId}`);
-  if (!r.success) {
-    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
-  }
-  return { success: true };
+  return discordMutate('DELETE', `/users/@me/relationships/${friendId}`);
 });
 
 // Phase C : cache persistant de la liste des serveurs (lancement instantané).
@@ -553,21 +481,23 @@ ipcMain.handle('discord:deleteFriend', async (_, friendId) => {
 const SERVERS_CACHE_TTL = 30000;
 const serversCachePath = () => path.join(app.getPath('userData'), 'servers_cache.json');
 
-function readServersCache() {
+// ARCH-04 : cache serveurs en écriture atomique (tmp+rename, async) via persist.cjs —
+// plus de fs synchrone dans le main process, cohérent avec P1.
+async function readServersCache() {
   try {
-    const { at, servers } = JSON.parse(fs.readFileSync(serversCachePath(), 'utf8'));
+    const { at, servers } = (await readJson(serversCachePath())) || {};
     if (Date.now() - at < SERVERS_CACHE_TTL && Array.isArray(servers)) return servers;
   } catch {}
   return null;
 }
 
 function writeServersCache(servers) {
-  try { fs.writeFileSync(serversCachePath(), JSON.stringify({ at: Date.now(), servers })); } catch {}
+  return writeJson(serversCachePath(), { at: Date.now(), servers }).catch(() => {});
 }
 
 ipcMain.handle('discord:getServers', async (_, force = false) => {
   if (!force) {
-    const cached = readServersCache();
+    const cached = await readServersCache();
     if (cached) return { success: true, servers: cached };
   }
   const r = await discordFetch('GET', '/users/@me/guilds');
@@ -576,11 +506,12 @@ ipcMain.handle('discord:getServers', async (_, force = false) => {
   const servers = r.data.map(server => ({
     id: server.id,
     name: server.name,
+    owner: !!server.owner,
     icon: server.icon
       ? `https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png`
       : '/discord.png'
   }));
-  writeServersCache(servers);
+  await writeServersCache(servers);
   return { success: true, servers };
 });
 
@@ -606,12 +537,12 @@ ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
 });
 
 ipcMain.handle('discord:leaveServer', async (_, serverId) => {
-  const r = await discordFetch('DELETE', `/users/@me/guilds/${serverId}`);
-  if (!r.success) {
-    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
-  }
-  return { success: true };
+  return discordMutate('DELETE', `/users/@me/guilds/${serverId}`);
+});
+
+// Marquage "lu" d'un seul serveur (le dock de sélection) — même ack que readAll.
+ipcMain.handle('discord:readServer', async (_, serverId) => {
+  return discordFetch('PUT', `/guilds/${serverId}/ack`, { data: { token: null } });
 });
 
 // ============================================================
@@ -622,8 +553,6 @@ const wmFile = (serverId) => path.join(app.getPath('userData'), `watermark-${ser
 const LEDGER_FILE = () => path.join(app.getPath('userData'), 'cleaned_reactions.json');
 const LEDGER_TTL = 24 * 3600 * 1000;
 
-const isSnowflake = (s) => typeof s === 'string' && /^\d+$/.test(s) && s.length <= 32;
-const isOp = (op) => op === 'removeReactions' || op === 'deleteMessages';
 
 ipcMain.handle('persist:checkpointLoad', async (_, op, serverId) => {
   if (!isOp(op) || !isSnowflake(serverId)) return null;
