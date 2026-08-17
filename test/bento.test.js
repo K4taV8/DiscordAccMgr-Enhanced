@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { bentoCard } from '../src/components/bento.js';
 
-test('bentoCard renders all actions directly, no dropdown menu', () => {
+test('bentoCard renders all actions directly with emoji + theme', () => {
   const html = bentoCard({
     id: '123',
     name: 'CaffeineMC',
@@ -12,10 +12,10 @@ test('bentoCard renders all actions directly, no dropdown menu', () => {
     checkboxClass: 'server-checkbox',
     badge: { label: 'Owner', className: 'is-owner' },
     quick: [
-      { action: 'mute', label: 'Mute' },
-      { action: 'deleteMessages', label: 'Delete Msgs', danger: true },
-      { action: 'removeReactions', label: 'Rm Reactions', danger: true },
-      { action: 'leave', label: 'Leave', danger: true },
+      { action: 'mute', label: 'Mute', emoji: '🔕' },
+      { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️' },
+      { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
+      { action: 'leave', label: 'Leave', theme: 'crimson', emoji: '🚪' },
     ],
   });
   assert.ok(html.includes('class="bento-card"'));
@@ -24,13 +24,22 @@ test('bentoCard renders all actions directly, no dropdown menu', () => {
   assert.ok(html.includes('bento-badge is-owner'));
   assert.ok(html.includes('data-fallback="/discord.png"'));
   assert.ok(html.includes('class="bento-foot"'));
-  // Les 4 actions sont visibles directement (pas de menuToggle/bento-menu).
-  assert.ok(html.includes('class="foot-btn" data-action="mute">Mute'));
-  assert.ok(html.includes('class="foot-btn danger" data-action="deleteMessages">Delete Msgs'));
-  assert.ok(html.includes('class="foot-btn danger" data-action="removeReactions">Rm Reactions'));
-  assert.ok(html.includes('class="foot-btn danger" data-action="leave">Leave'));
-  assert.ok(!html.includes('menuToggle'));
-  assert.ok(!html.includes('bento-menu'));
+  // 4 actions visibles directement, avec emoji et thème.
+  assert.ok(html.includes('class="foot-btn" data-action="mute">🔕 Mute'));
+  assert.ok(html.includes('class="foot-btn danger" data-action="deleteMessages">🗑️ Delete Msgs'));
+  assert.ok(html.includes('class="foot-btn amber" data-action="removeReactions">💥 Rm Reactions'));
+  assert.ok(html.includes('class="foot-btn crimson" data-action="leave">🚪 Leave'));
+});
+
+test('bentoCard keeps the selection circle in its own header zone', () => {
+  const html = bentoCard({ id: '1', name: 'x', icon: 'i', checkboxClass: 'c' });
+  // La checkbox vit dans la HeaderBar (avant le body), jamais sur l'avatar.
+  const head = html.slice(0, html.indexOf('bento-body'));
+  assert.ok(head.includes('type="checkbox"'));
+  const body = html.slice(html.indexOf('bento-body'), html.indexOf('bento-ident'));
+  assert.ok(body.includes('class="bento-avatar"'));
+  assert.ok(body.includes('<img'));
+  assert.ok(!body.includes('type="checkbox"'));
 });
 
 test('bentoCard forwards extra attrs on quick action buttons', () => {
@@ -39,9 +48,10 @@ test('bentoCard forwards extra attrs on quick action buttons', () => {
     name: 'x',
     icon: 'i',
     checkboxClass: 'c',
-    quick: [{ action: 'deleteMessages', label: 'Delete Msgs', attrs: ' data-oldest="true"', danger: true }],
+    quick: [{ action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', attrs: ' data-oldest="true"' }],
   });
   assert.ok(html.includes('data-action="deleteMessages" data-oldest="true"'));
+  assert.ok(html.includes('class="foot-btn danger"'));
 });
 
 test('bentoCard renders inline [ID] badge next to the name', () => {

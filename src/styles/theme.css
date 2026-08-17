@@ -1,42 +1,157 @@
 /* ============================================================
-   DESIGN SYSTEM PREMIUM — DARK MONOCHROME & BRAND ACCENTS
+   DESIGN SYSTEM — DARK SLATE / LIGHT PORTFOLIO + BRAND ACCENTS
+   data-theme="dark|light" sur <html> (défaut : dark).
    ============================================================ */
 
-:root {
-  --bg-body:        #0B0B0C;
-  --bg-surface:     #1C1C1E;
-  --bg-card:        #2C2C2E;
-  --bg-card-hover:  #3A3A3C;
+:root, :root[data-theme="dark"] {
+  --bg-body:          #0f1015;
+  --bg-sidebar:       #16171d;
+  --bg-surface:       #16171d;
+  --bg-card:          #21232c;
+  --bg-card-hover:    #2a2d38;
+  --bg-bento:         #21232c;
 
-  --text-primary:   #E0E0E6;
-  --text-secondary: #98989F;
-  --border-color:   rgba(255, 255, 255, 0.07);
+  --text-primary:     #f4f4f5;
+  --text-secondary:   #a1a1aa;
+  --border-color:     rgba(255, 255, 255, 0.08);
+  --border-subtle:    rgba(255, 255, 255, 0.05);
+  --border-strong:    rgba(255, 255, 255, 0.18);
+  --hover-overlay:    rgba(255, 255, 255, 0.03);
 
-  --brand:          #8E95E1;
-  --brand-glow:     rgba(142, 149, 225, 0.18);
-  --brand-dim:      rgba(142, 149, 225, 0.08);
-  --brand-border:   rgba(142, 149, 225, 0.20);
-  --brand-text:     #0B0B0C;
+  --brand:            #8E95E1;
+  --brand-glow:       rgba(142, 149, 225, 0.18);
+  --brand-dim:        rgba(142, 149, 225, 0.08);
+  --brand-border:     rgba(142, 149, 225, 0.20);
+  --brand-text:       #0B0B0C;
 
-  --success:        #3BA55D;
-  --success-glow:   rgba(59, 165, 93, 0.2);
-  --danger:         #ED4245;
-  --danger-glow:    rgba(237, 66, 69, 0.2);
+  --success:          #3BA55D;
+  --success-glow:     rgba(59, 165, 93, 0.2);
+  --danger:           #ED4245;
+  --danger-glow:      rgba(237, 66, 69, 0.2);
+
+  --btn-neutre-bg:        #2d303e;
+  --btn-neutre-text:      #e4e4e7;
+  --btn-neutre-border:    rgba(255, 255, 255, 0.08);
+
+  --btn-danger-bg:        rgba(239, 68, 68, 0.1);
+  --btn-danger-text:      #fca5a5;
+  --btn-danger-border:    rgba(239, 68, 68, 0.2);
+  --btn-danger-hover-bg:      rgba(239, 68, 68, 0.18);
+  --btn-danger-hover-text:    #fecaca;
+  --btn-danger-hover-border:  rgba(239, 68, 68, 0.35);
+
+  --btn-amber-bg:        rgba(245, 158, 11, 0.1);
+  --btn-amber-text:      #fde68a;
+  --btn-amber-border:    rgba(245, 158, 11, 0.2);
+  --btn-amber-hover-bg:      rgba(245, 158, 11, 0.18);
+  --btn-amber-hover-text:    #fef3c7;
+  --btn-amber-hover-border:  rgba(245, 158, 11, 0.35);
+
+  --btn-crimson-bg:        rgba(225, 29, 72, 0.15);
+  --btn-crimson-text:      #fecdd3;
+  --btn-crimson-border:    rgba(225, 29, 72, 0.3);
+  --btn-crimson-hover-bg:      rgba(225, 29, 72, 0.25);
+  --btn-crimson-hover-text:    #ffe4e6;
+  --btn-crimson-hover-border:  rgba(225, 29, 72, 0.45);
+
+  --owner-badge-bg:       rgba(240, 178, 50, 0.1);
+  --owner-badge-text:     #f0b232;
+  --owner-badge-border:   rgba(240, 178, 50, 0.28);
+
+  --action-grid-bg:       rgba(255, 255, 255, 0.02);
+  --action-grid-border:   rgba(255, 255, 255, 0.05);
+
+  --checkbox-border:      rgba(255, 255, 255, 0.35);
+  --dock-bg:              rgba(22, 23, 29, 0.75);
+  --bg-spotlight:         #2a2d36;
+
+  --card-shadow:          0 4px 20px rgba(0, 0, 0, 0.3);
 
   --shadow-1:        4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(255, 255, 255, 0.025);
   --shadow-2:        8px 8px 22px rgba(0, 0, 0, 0.65), -4px -4px 12px rgba(255, 255, 255, 0.02);
   --shadow-convex:   5px 5px 12px rgba(0, 0, 0, 0.60), -3px -3px 8px rgba(255, 255, 255, 0.03);
   --shadow-concave:  inset 3px 3px 8px rgba(0, 0, 0, 0.50), inset -3px -3px 8px rgba(255, 255, 255, 0.025);
   --shadow-brand:    0 4px 22px rgba(142, 149, 225, 0.22);
+}
 
+:root[data-theme="light"] {
+  --bg-body:          #f0f2f5;
+  --bg-sidebar:       #e5e8ef;
+  --bg-surface:       #ffffff;
+  --bg-card:          #ffffff;
+  --bg-card-hover:    #f8fafc;
+  --bg-bento:         #ffffff;
+
+  --text-primary:     #18181b;
+  --text-secondary:   #71717a;
+  --border-color:     rgba(0, 0, 0, 0.08);
+  --border-subtle:    rgba(0, 0, 0, 0.05);
+  --border-strong:    rgba(0, 0, 0, 0.18);
+  --hover-overlay:    rgba(0, 0, 0, 0.03);
+
+  --brand:            #6366f1;
+  --brand-glow:       rgba(99, 102, 241, 0.18);
+  --brand-dim:        rgba(99, 102, 241, 0.08);
+  --brand-border:     rgba(99, 102, 241, 0.25);
+  --brand-text:       #ffffff;
+
+  --success:          #16a34a;
+  --success-glow:     rgba(22, 163, 74, 0.18);
+  --danger:           #dc2626;
+  --danger-glow:      rgba(220, 38, 38, 0.18);
+
+  --btn-neutre-bg:        #e2e8f0;
+  --btn-neutre-text:      #334155;
+  --btn-neutre-border:    rgba(0, 0, 0, 0.08);
+
+  --btn-danger-bg:        #fee2e2;
+  --btn-danger-text:      #b91c1c;
+  --btn-danger-border:    #fecaca;
+  --btn-danger-hover-bg:      #fecaca;
+  --btn-danger-hover-text:    #991b1b;
+  --btn-danger-hover-border:  #fca5a5;
+
+  --btn-amber-bg:        #fef3c7;
+  --btn-amber-text:      #b45309;
+  --btn-amber-border:    #fde68a;
+  --btn-amber-hover-bg:      #fde68a;
+  --btn-amber-hover-text:    #92400e;
+  --btn-amber-hover-border:  #fcd34d;
+
+  --btn-crimson-bg:        #ffe4e6;
+  --btn-crimson-text:      #be123c;
+  --btn-crimson-border:    #fecdd3;
+  --btn-crimson-hover-bg:      #fecdd3;
+  --btn-crimson-hover-text:    #9f1239;
+  --btn-crimson-hover-border:  #fda4af;
+
+  --owner-badge-bg:       rgba(245, 158, 11, 0.15);
+  --owner-badge-text:     #b45309;
+  --owner-badge-border:   rgba(245, 158, 11, 0.3);
+
+  --action-grid-bg:       rgba(0, 0, 0, 0.02);
+  --action-grid-border:   rgba(0, 0, 0, 0.06);
+
+  --checkbox-border:      rgba(0, 0, 0, 0.35);
+  --dock-bg:              rgba(255, 255, 255, 0.75);
+  --bg-spotlight:         #ffffff;
+
+  --card-shadow:          0 10px 25px -5px rgba(0, 0, 0, 0.06);
+
+  --shadow-1:        0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-2:        0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.03);
+  --shadow-convex:   0 2px 6px rgba(0, 0, 0, 0.08);
+  --shadow-concave:  inset 0 1px 3px rgba(0, 0, 0, 0.08);
+  --shadow-brand:    0 4px 22px rgba(99, 102, 241, 0.25);
+}
+
+:root {
   --radius-sm: 8px;
   --radius-md: 12px;
   --radius-lg: 18px;
   --radius-item: 14px;
   --radius-pill: 999px;
-
-  --bg-bento:        #121215;
-  --radius-bento:    16px;
+  --radius-bento: 16px;
   --transition-fast: 0.15s cubic-bezier(0.4, 0, 0.2, 1);
   --transition-smooth: 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
@@ -51,6 +166,7 @@ body {
   line-height: 1.5;
   overflow-x: hidden;
   -webkit-font-smoothing: antialiased;
+  transition: background-color var(--transition-smooth), color var(--transition-smooth);
 }
 
 h1 { font-size: 16px; font-weight: 600; letter-spacing: -0.01em; color: var(--text-primary); }
@@ -82,7 +198,7 @@ p, span, label, input {
 }
 
 .card:hover, .bento-card:hover {
-  background: var(--bg-card);
+  background: var(--bg-card-hover);
   border-color: var(--brand-border);
   box-shadow: var(--shadow-brand);
   transform: translateY(-2px);
@@ -122,12 +238,12 @@ p, span, label, input {
 .btn-secondary {
   background: var(--bg-card);
   color: var(--text-primary);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
 }
 
 .btn-secondary:hover {
   background: var(--bg-card-hover);
-  border-color: rgba(255, 255, 255, 0.18);
+  border-color: var(--border-strong);
 }
 
 .btn-ghost {
@@ -137,20 +253,20 @@ p, span, label, input {
 }
 
 .btn-ghost:hover {
-  background: rgba(255, 255, 255, 0.05);
+  background: var(--hover-overlay);
   color: var(--text-primary);
 }
 
 .btn-danger {
   background: rgba(237, 66, 69, 0.08);
-  color: #ED4245;
+  color: var(--danger);
   border: 1px solid rgba(237, 66, 69, 0.25);
 }
 
 .btn-danger:hover {
-  background: #ED4245;
+  background: var(--danger);
   color: #FFFFFF;
-  border-color: #ED4245;
+  border-color: var(--danger);
   box-shadow: 0 4px 12px rgba(237, 66, 69, 0.3);
 }
 

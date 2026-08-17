@@ -49,7 +49,7 @@ export class FriendsManager {
             checkboxClass: 'friend-checkbox',
             badge: { label: 'Friend' },
             quick: [
-              { action: 'remove', label: 'Remove', danger: true },
+              { action: 'remove', label: 'Remove', theme: 'crimson', emoji: '🚫' },
             ],
           })).join('')}
         </div>

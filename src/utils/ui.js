@@ -94,7 +94,7 @@ export const showInfoModal = async () => {
   icon.innerHTML = '<svg width="26" height="26" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
 
   const title = document.createElement('h2');
-  title.textContent = 'Discord Account Manager';
+  title.textContent = 'Discord Account Manager - Enhanced Forked By KataV8';
 
   let versionText = '';
   try {
@@ -104,6 +104,10 @@ export const showInfoModal = async () => {
   const badge = document.createElement('span');
   badge.className = 'version-badge';
   badge.textContent = `Version ${versionText || '1.5.6'}`;
+
+  const forkNote = document.createElement('p');
+  forkNote.className = 'info-author';
+  forkNote.textContent = 'Forked & Enhanced by KataV8';
 
   const author = document.createElement('p');
   author.className = 'info-author';
@@ -140,6 +144,7 @@ export const showInfoModal = async () => {
   content.appendChild(icon);
   content.appendChild(title);
   content.appendChild(badge);
+  content.appendChild(forkNote);
   content.appendChild(author);
   content.appendChild(links);
   content.appendChild(divider);

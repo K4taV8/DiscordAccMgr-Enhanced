@@ -67,10 +67,10 @@ export class GroupManager {
             checkboxClass: 'group-checkbox',
             badge: { label: 'Group' },
             quick: [
-              { action: 'deleteMessages', label: 'Delete Msgs', attrs: ' data-oldest="false"', danger: true },
-              { action: 'deleteMessages', label: 'Oldest First', attrs: ' data-oldest="true"', danger: true },
-              { action: 'removeReactions', label: 'Rm Reactions', danger: true },
-              { action: 'leave', label: 'Leave', danger: true },
+              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="false"' },
+              { action: 'deleteMessages', label: 'Oldest First', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="true"' },
+              { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
+              { action: 'leave', label: 'Leave', theme: 'crimson', emoji: '🚪' },
             ],
           })).join('')}
         </div>

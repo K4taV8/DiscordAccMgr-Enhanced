@@ -22,24 +22,27 @@ export const listView = {
 // BentoCard — rendu HTML d'une carte de grille. Fonction pure.
 // cfg: { id, name, meta, icon, fallbackIcon, iconAlt, checkboxClass,
 //        badge: {label,className}|null, attrs,
-//        quick: [{action,label,danger,attrs}] }  // boutons texte, tous visibles
-// Identité (avatar + nom + [ID] inline) regroupée ; pied = grille d'actions 2x2.
+//        quick: [{action,label,emoji,theme,attrs}] }  // boutons texte, tous visibles
+// theme: 'danger' | 'amber' | 'crimson' | undefined (slate neutre).
+// HeaderBar = cercle de sélection (gauche) + badge statut (droite) ;
+// l'avatar est libre de toute superposition ; pied = grille 2x2.
 export function bentoCard(cfg) {
   const badge = cfg.badge
     ? `<span class="bento-badge${cfg.badge.className ? ' ' + cfg.badge.className : ''}">${escHtml(cfg.badge.label)}</span>`
     : '';
+  const head = `<div class="bento-head">
+        <input type="checkbox" class="${cfg.checkboxClass}" data-action="updateSelected" aria-label="Select">
+        ${badge}
+      </div>`;
   const foot = cfg.quick?.length
     ? `<div class="bento-foot">${cfg.quick.map(q => `
-        <button type="button" class="foot-btn${q.danger ? ' danger' : ''}" data-action="${q.action}"${q.attrs || ''}>${escHtml(q.label)}</button>`).join('')}</div>`
+        <button type="button" class="foot-btn${q.theme ? ' ' + q.theme : ''}" data-action="${q.action}"${q.attrs || ''}>${q.emoji ? q.emoji + ' ' : ''}${escHtml(q.label)}</button>`).join('')}</div>`
     : '';
   return `
     <div class="bento-card" data-id="${escHtml(cfg.id)}"${cfg.attrs || ''}>
-      <div class="bento-head">
-        <input type="checkbox" class="${cfg.checkboxClass}" data-action="updateSelected" aria-label="Select">
-        ${badge}
-      </div>
+      ${head}
       <div class="bento-body">
-        <div class="bento-icon">
+        <div class="bento-avatar">
           <img src="${escHtml(cfg.icon)}" alt="${escHtml(cfg.iconAlt || cfg.name)}" loading="lazy"${cfg.fallbackIcon ? ` data-fallback="${escHtml(cfg.fallbackIcon)}"` : ''}>
         </div>
         <div class="bento-ident">

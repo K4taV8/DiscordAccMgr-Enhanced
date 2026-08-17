@@ -1,4 +1,4 @@
-# ` 🫐 `︲Discord Account Manager : Gestion de comptes Discord sans client officiel
+# ` 🎤 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
 
 <p align="center">
   <img src="https://img.shields.io/badge/Electron-43-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
@@ -7,7 +7,7 @@
   <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
   <img src="https://img.shields.io/badge/Anti_RateLimit-X_RateLimit_aware-00b87c?style=for-the-badge">
   <img src="https://img.shields.io/badge/Persistence-Checkpoint_%7C_Watermark_%7C_Ledger-4b0082?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Tests-48_verts-3ba55d?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Tests-52_verts-3ba55d?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
@@ -29,16 +29,17 @@
 2. [`✨`︲Fonctionnalités.](#fonctionnalites)
 3. [`🧩`︲Architecture du projet.](#architecture)
 4. [`⚡`︲Performances et optimisations.](#performances)
-5. [`🛡️`︲Garde-fous & Do Not Break.](#gardefous)
-6. [`⚖️`︲Choix techniques & limitations.](#choices)
-7. [`🧰`︲Technologies utilisées.](#technologies)
-8. [`🛠️`︲Installation.](#installation)
-9. [`▶️`︲Utilisation.](#utilisation)
-10. [`⚙️`︲Configuration.](#configuration)
-11. [`🔧`︲Maintenance & débogage.](#maintenance)
-12. [`🗺️`︲Roadmap.](#roadmap)
-13. [`🤝`︲Contribution.](#contribution)
-14. [`📜`︲Licence.](#licence)
+5. [`🎨`︲Interface : Sidebar Icon-Rail, Bento Grid & Thèmes.](#interface)
+6. [`🛡️`︲Garde-fous & Do Not Break.](#gardefous)
+7. [`⚖️`︲Choix techniques & limitations.](#choices)
+8. [`🧰`︲Technologies utilisées.](#technologies)
+9. [`🛠️`︲Installation.](#installation)
+10. [`▶️`︲Utilisation.](#utilisation)
+11. [`⚙️`︲Configuration.](#configuration)
+12. [`🔧`︲Maintenance & débogage.](#maintenance)
+13. [`🗺️`︲Roadmap.](#roadmap)
+14. [`🤝`︲Contribution.](#contribution)
+15. [`📜`︲Licence.](#licence)
 
 ---
 
@@ -56,7 +57,7 @@
 
 | Sous-système | Fichiers | Rôle |
 |---|---|---|
-| **UI (renderer, ESM)** | `src/` — `components/` (4 managers), `utils/` | Interface, opérations lourdes (scan/suppression), rendu fluide |
+| **UI (renderer, ESM)** | `src/` — `components/` (4 managers + `bento.js`), `utils/` | Interface, opérations lourdes (scan/suppression), rendu fluide |
 | **Pont (preload)** | `electron/preload.cjs` | `contextBridge` isolé, redaction des IPC sensibles |
 | **Noyau (main, CJS)** | `electron/main.cjs`, `rateLimiter.cjs`, `persist.cjs` | **Autorité débit** (ordonnanceur header-aware), persistance atomique, sécurité des tokens |
 
@@ -100,7 +101,7 @@
 │   RENDERER  (src/ · ESM · sandbox · contextIsolation)            │
 │                                                                  │
 │   components/  ServerManager · DMManager · GroupManager          │
-│                FriendsManager · ProgressBar                      │
+│                FriendsManager · ProgressBar · bento.js           │
 │   utils/       serverMessageDeleter · serverReactionRemover      │
 │                messageDeleter · reactionRemover · persist.js     │
 │   limiters renderer = FILET (scan 100 r/s · delete 30 r/s)       │
@@ -186,9 +187,9 @@
 
 ## UI/UX — fluidité
 
-* ` 🎨 `︲**Design system léger** : variables CSS dans `src/styles/theme.css` (`:root`), thème sombre, breakpoints réels dans `app.css` — **768 / 640 / 480 px**.
+* ` 🎨 `︲**Design system léger** : variables CSS dans `src/styles/theme.css` — thèmes **dark** (défaut) et **light** pilotés par `data-theme` sur `<html>` (persisté en localStorage), breakpoints réels dans `app.css` — **768 / 640 / 480 px**.
 
-* ` 📜 `︲**Rendu chunké** des listes serveurs : 50 lignes par frame (`requestAnimationFrame`) — plus de frame bloquée sur 200 entrées.
+* ` 📜 `︲**Rendu chunké** des listes serveurs : 50 cartes par frame (`requestAnimationFrame`) — plus de frame bloquée sur 200 entrées.
 
 * ` 🔄 `︲**Scroll préservé** après chaque rafraîchissement de liste (`preservePageScroll`).
 
@@ -196,9 +197,46 @@
 
 * ` ⚡ `︲**Warm-up GPU/layout** au démarrage (`warmUpPages`) : les premiers changements de page sont aussi fluides que les suivants.
 
-* ` 🖥️ `︲**Panneau de log debug** intégré (draggable, resizable, copie, cap 500 lignes) et `window.__logs` capé à 5000 lignes — pas de fuite mémoire.
+* ` 🖥️ `︲**Panneau de log debug** intégré (draggable, resizable, copie, cap 500 lignes) et `window.__logs` capé à 5000 lignes — pas de fuite mémoire. Ouvert via `window.toggleDebugLog()` depuis la console DevTools (le bouton nav « Log » a été retiré).
 
 * ` 📉 `︲**Mapping minimal des messages** : `attachments`/`embeds`/`sticker_items`/`message_snapshots` transmis en **nombres** (`(x || 0) > 0`) au lieu de tableaux complets — parsing plus léger, `reactions` conservé complet (nécessaire).
+
+---
+
+<a id="interface"></a>
+# `🎨`︲Interface : Sidebar Icon-Rail, Bento Grid & Thèmes.
+
+---
+
+## Sidebar Icon-Rail (76px)
+
+* ` 🧊 `︲**Barre latérale compacte** (240px → 76px) : chaque onglet (**Friends / Servers / DMs / Groups**) est un **icon box** carré `48×48` (`border-radius: 12px`, fond `--bg-card`), icône centrée, **tooltip** au survol (`data-tooltip`, pur CSS, sans JS).
+* ` 💜 `︲**Onglet actif** : fond `--brand` + icône sombre + glow violet.
+* ` 👤 `︲**Profil compact** : avatar + bouton déconnexion (power) en boxes — le nom/texte ont été retirés.
+* ` 🌗 `︲**Toggle de thème** (orb 38px) au-dessus de l'avatar : bascule `data-theme="dark|light"` sur `<html>`, persisté en localStorage, micro-animation de rotation, tooltip dynamique (« Passer en mode clair / sombre »).
+* Le bouton nav « Log » a été **retiré** — le panneau de log debug reste accessible via `window.toggleDebugLog()` (console).
+
+## Bento Grid (cartes)
+
+* ` 🃏 `︲**Composant unifié** `src/components/bento.js` : `bentoCard()` partagé par les **4 managers** (Serveurs, DMs, Groups, Friends) + `FloatingSelectionDock` (dock d'actions groupées) + `listView` (toggle Grid/Liste).
+* ` 🧱 `︲**Anatomie de carte** : en-tête (cercle de sélection `(○)` autonome à gauche, badge de statut à droite — `👑 Owner`, `DM`, `Group`, `Friend`) · identité (avatar `40×40` **dégagé de toute superposition** + nom + badge `[ID]` inline + sous-titre) · **grille d'actions 2×2** en bas.
+* ` ✅ `︲**Sélection multiple** : cercle autonome (aucun chevauchement / clipping sur l'avatar) ; **Dock flottant** glassmorphism (bas-centre) avec compteur, *Select All* et actions groupées (*Read*, *Mute*, *Delete Msgs*, *Rm Reactions*, *Leave*, *Close*, *Remove*) — les boutons statiques du haut ont été supprimés.
+* ` 🔀 `︲**Toggle Grid / Liste** (persisté par page en localStorage) : même DOM, bascule **CSS seule** (`.list-view`).
+* ` 🎨 `︲**Actions toujours visibles, texte + emoji, codées par thème de dangerosité** — aucun menu déroulant :
+  `🔕 Mute` (slate neutre) · `🗑️ Delete Msgs` (rouge mât) · `💥 Rm Reactions` (ambre) · `🚪 Leave` / `Close DM` / `🚫 Remove` (crimson).
+* ` 🆔 `︲**Badge `[ID]`** inline à côté du nom : copie l'ID en 1 clic (toast « Copied to clipboard! »).
+
+## Thèmes Clair / Sombre
+
+* ` 🌗 `︲**Dark Slate** (défaut) : `#0f1015` app · `#16171d` sidebar · `#21232c` cartes · `#f4f4f5` texte · `#8E95E1` brand.
+* ` ☀️ `︲**Light Portfolio** : `#f0f2f5` app · `#e5e8ef` sidebar · `#ffffff` cartes · `#18181b` texte · `#6366f1` brand.
+* ` 🎛️ `︲Toutes les couleurs passent par les variables CSS (`theme.css`, `:root[data-theme="dark|light"]`) ; **transition douce** `background-color / color / border-color` au changement de thème.
+* ` 📊 `︲Variables ajoutées : `--bg-sidebar`, `--btn-{neutre,danger,amber,crimson}-*`, `--owner-badge-*`, `--action-grid-*`, `--dock-bg`, `--checkbox-border`, `--hover-overlay`, `--border-subtle/strong`, `--card-shadow`.
+
+## Backend lié
+
+* ` 🏷️ `︲Titre de l'app + modal À propos : **« Discord Account Manager - Enhanced Forked By KataV8 »**, mention **« Forked & Enhanced by KataV8 »** sous la version.
+* ` 🖥️ `︲IPC ajouté : `discord:readServer` (marquage « lu » d'un serveur — ack simple, même pattern que `readAll`) + champ `owner` dans la liste des serveurs (badge `👑 Owner`).
 
 ---
 
@@ -278,7 +316,7 @@
 * ` 🌐 ` ︲**axios** : HTTP vers l'API Discord (timeout 15 s, `validateStatus`).
 * ` 🤖 ` ︲**discord.js-selfbot-v13** : connexion WebSocket (login uniquement ; toutes les opérations passent par le REST).
 * ` 📦 ` ︲**electron-builder** : packaging Windows (NSIS / dir, mode portable).
-* ` 🧪 ` ︲**node:test** (stdlib) : 9 fichiers, 48 tests — `npm test`, coverage via `npm run test:coverage`.
+* ` 🧪 ` ︲**node:test** (stdlib) : 10 fichiers, 52 tests — `npm test`, coverage via `npm run test:coverage`.
 
 ---
 
@@ -305,7 +343,7 @@ npm install
 npm run start
 ```
 
-4️⃣︲**Lancer les tests (48 tests).**
+4️⃣︲**Lancer les tests (52 tests).**
 
 ```bash
 npm test
@@ -334,15 +372,17 @@ npm run package:portable # exécutable portable (dossier data/ local)
 
 1️⃣︲**Se connecter.** Collez votre token utilisateur (bouton œil pour afficher). Le token peut être enregistré localement (chiffré `safeStorage`) pour un usage ultérieur.
 
-2️⃣︲**Naviguer.** Les onglets **Friends / Servers / DMs / Groups** chargent les listes (cache 30 s, refetch en arrière-plan).
+2️⃣︲**Naviguer.** Les onglets **Friends / Servers / DMs / Groups** chargent les listes en **vue Bento Grid** (cartes) par défaut (cache 30 s, refetch en arrière-plan) ; bascule **Liste compacte** via le toggle d'en-tête (persisté par page).
 
 3️⃣︲**Opérations par serveur** (onglet Servers, boutons de ligne) :
 
 | Bouton | Action |
 |---|---|
-| `Delete Msgs` | Supprime tous vos messages du serveur — scan + suppression, **reprise par checkpoint** si interrompu |
-| `Rm Reactions` | Retire vos réactions — scan complet, suppression, **re-scan de vérification** (jamais de « supprimé » non confirmé) |
-| `Mute` / `Leave` | Mute / quitte le serveur |
+| `[ID]` | Copie l'ID du serveur dans le presse-papiers (toast de confirmation) |
+| `🔕 Mute` | Mute / unmute le serveur |
+| `🗑️ Delete Msgs` | Supprime tous vos messages du serveur — scan + suppression, **reprise par checkpoint** si interrompu |
+| `💥 Rm Reactions` | Retire vos réactions — scan complet, suppression, **re-scan de vérification** (jamais de « supprimé » non confirmé) |
+| `🚪 Leave` | Quitte le serveur |
 | `Read All` | Marque tout comme lu — **progression `Read All (12/200)`** sur le bouton |
 
 4️⃣︲**Lire la progression.** Chaque opération affiche un panneau : phase, compteur, **ETA**, barre de progression, bouton **Stop**.
@@ -377,11 +417,11 @@ npm run package:portable # exécutable portable (dossier data/ local)
 
 ---
 
-* ` 🐞 `︲**Panneau de log** : bouton Log (nav) — draggable, redimensionnable, copie dans le presse-papiers, cap 500 lignes. Logs aussi dans la console DevTools (`Ctrl+Shift+I`).
+* ` 🐞 `︲**Panneau de log** : ouvert via `window.toggleDebugLog()` dans la console DevTools (`Ctrl+Shift+I`) — draggable, redimensionnable, copie dans le presse-papiers, cap 500 lignes.
 
 * ` 📊 `︲**Statistiques HTTP** : IPC `app:getHttpStats` (depuis la console : `await window.electronAPI.getHttpStats()`) — compteur de requêtes, **compteur de 429 (objectif : 0)**, budget par route.
 
-* ` 🧪 `︲**Tests** : `npm test` (48 tests — rate limiter, ordonnanceur header-aware, persistance, tokens, réactions, escaping) ; `npm run test:coverage` pour la couverture.
+* ` 🧪 `︲**Tests** : `npm test` (52 tests — rate limiter, ordonnanceur header-aware, persistance, tokens, réactions, escaping, structure `bentoCard`) ; `npm run test:coverage` pour la couverture.
 
 * ` 🧹 `︲**Cache local** : les fichiers de persistance vivent dans `userData` (Windows : `%APPDATA%\discord-account-manager`) — `checkpoints/`, `watermark-*.json`, `cleaned_reactions.json`, `saved_tokens.json`, `servers_cache.json`. Les supprimer = retour à un état « à froid » (sans perte de tokens si vous ne touchez pas `saved_tokens.json`).
 

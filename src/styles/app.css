@@ -92,12 +92,13 @@
 /* --- Sidebar --- */
 .nav-sidebar {
   width: 76px;
-  background: var(--bg-body);
+  background: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
   height: 100%;
   border-right: 1px solid var(--border-color);
   flex-shrink: 0;
+  transition: background-color var(--transition-smooth), border-color var(--transition-smooth);
 }
 
 .nav-items {
@@ -127,16 +128,16 @@
   cursor: pointer;
   border-radius: 12px;
   border: 1px solid var(--border-color);
-  background: var(--bg-surface);
+  background: var(--bg-card);
   user-select: none;
   flex-shrink: 0;
   max-width: 100%;
 }
 
 .nav-item:hover {
-  background: var(--bg-card);
+  background: var(--bg-card-hover);
   color: var(--text-primary);
-  border-color: rgba(255, 255, 255, 0.12);
+  border-color: var(--border-strong);
 }
 
 .nav-item.active {
@@ -227,6 +228,58 @@
 .nav-disconnect svg {
   width: 20px;
   height: 20px;
+}
+
+/* --- Toggle Thème (Orb) --- */
+.theme-toggle {
+  width: 38px;
+  height: 38px;
+  min-width: 38px;
+  min-height: 38px;
+  padding: 0;
+  margin: 0 auto 12px auto;
+  border-radius: 50%;
+  background: linear-gradient(145deg, var(--bg-card), var(--bg-surface));
+  border: 1px solid var(--border-color);
+  box-shadow: var(--shadow-convex), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  color: var(--text-secondary);
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.theme-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--brand-border);
+  transform: scale(1.08);
+}
+
+.theme-toggle svg {
+  width: 18px;
+  height: 18px;
+}
+
+/* Défaut (dark) : soleil ; mode clair : lune. */
+.theme-toggle .icon-sun { display: inline-flex; }
+.theme-toggle .icon-moon { display: none; }
+
+:root[data-theme="light"] .theme-toggle .icon-sun { display: none; }
+:root[data-theme="light"] .theme-toggle .icon-moon { display: inline-flex; }
+
+.theme-toggle.rotating { animation: themeSpin 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
+
+@keyframes themeSpin {
+  from { transform: rotate(0deg) scale(1); }
+  to { transform: rotate(360deg) scale(1); }
+}
+
+/* Transition douce du thème sur les surfaces majeures. */
+.main-content,
+.title-bar,
+.user-profile,
+.bento-badge,
+.list-count {
+  transition: background-color var(--transition-smooth), color var(--transition-smooth), border-color var(--transition-smooth);
 }
 
 /* --- Page Containers --- */
@@ -340,7 +393,7 @@ body.warming .page-container {
 .token-item:last-child { border-bottom: none; }
 
 .token-item:hover {
-  background: rgba(255, 255, 255, 0.03);
+  background: var(--hover-overlay);
 }
 
 .token-item .name {
@@ -444,7 +497,7 @@ body.login-active .main-content {
 
 .login-centered .login-divider {
   height: 1px;
-  background: rgba(255, 255, 255, 0.07);
+  background: var(--border-color);
   margin: 6px 0 16px;
 }
 
@@ -557,7 +610,7 @@ body.login-active .main-content {
   border-radius: 10px;
   background: rgba(239, 68, 68, 0.12);
   border: 1.5px solid rgba(239, 68, 68, 0.45);
-  color: #ff5f63;
+  color: var(--danger);
   cursor: pointer;
   transition: all var(--transition-fast);
 }
@@ -701,13 +754,13 @@ body.login-active .main-content {
 .bento-card {
   position: relative;
   background: var(--bg-bento);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-bento);
-  padding: 18px;
+  padding: 16px;
   display: flex;
   flex-direction: column;
   gap: 10px;
-  transition: transform var(--transition-smooth), border-color var(--transition-smooth), box-shadow var(--transition-smooth);
+  transition: transform var(--transition-smooth), border-color var(--transition-smooth), box-shadow var(--transition-smooth), background-color var(--transition-smooth);
 }
 
 .bento-card:hover {
@@ -716,11 +769,49 @@ body.login-active .main-content {
   box-shadow: var(--shadow-brand);
 }
 
+/* HeaderBar : cercle de sélection à gauche, badge de statut à droite. */
 .bento-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
+  width: 100%;
+  margin-bottom: 12px;
+}
+
+/* Cercle de sélection autonome — espace dédié, aucun chevauchement sur l'avatar. */
+.bento-head input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border-radius: 50%;
+  border: 1.5px solid var(--checkbox-border);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.bento-head input[type="checkbox"]:hover {
+  border-color: var(--brand);
+  background: rgba(142, 149, 225, 0.15);
+}
+
+.bento-head input[type="checkbox"]:checked {
+  background-color: var(--brand);
+  border-color: var(--brand);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M20 6L9 17l-5-5'/%3E%3C/svg%3E");
+  background-size: 12px 12px;
+  background-position: center;
+  background-repeat: no-repeat;
+  box-shadow: 0 0 8px var(--brand-glow);
+}
+
+.bento-head input[type="checkbox"]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 2px;
 }
 
 .bento-badge {
@@ -736,31 +827,33 @@ body.login-active .main-content {
 }
 
 .bento-badge.is-owner {
-  background: rgba(240, 178, 50, 0.1);
-  color: #f0b232;
-  border-color: rgba(240, 178, 50, 0.28);
+  background: var(--owner-badge-bg);
+  color: var(--owner-badge-text);
+  border-color: var(--owner-badge-border);
 }
 
-.bento-icon {
-  width: 44px;
-  height: 44px;
+/* Masque d'image autonome : PP dégagée de toute superposition. */
+.bento-avatar {
+  width: 40px;
+  height: 40px;
   border-radius: 12px;
   overflow: hidden;
   background: var(--bg-card);
   flex-shrink: 0;
 }
 
-.bento-icon img {
+.bento-avatar img {
   width: 100%;
   height: 100%;
   object-fit: cover;
   display: block;
 }
 
-/* Bloc identité : avatar + nom/handle + [ID] inline regroupés. */
+/* Bloc identité : avatar + colonne texte côte à côte (pas d'empilement). */
 .bento-body {
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  align-items: center;
   gap: 12px;
   min-width: 0;
 }
@@ -798,7 +891,7 @@ body.login-active .main-content {
   line-height: 1.6;
   color: var(--text-secondary);
   background: transparent;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-subtle);
   border-radius: 6px;
   cursor: pointer;
   transition: all var(--transition-fast);
@@ -822,11 +915,12 @@ body.login-active .main-content {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 8px;
-  margin-top: auto;
+  margin-top: 16px;
   padding: 8px;
-  background: rgba(255, 255, 255, 0.02);
-  border: 1px solid rgba(255, 255, 255, 0.05);
+  background: var(--action-grid-bg);
+  border: 1px solid var(--action-grid-border);
   border-radius: 10px;
+  transition: background-color var(--transition-smooth), border-color var(--transition-smooth);
 }
 
 .bento-foot .foot-btn { width: 100%; }
@@ -834,19 +928,20 @@ body.login-active .main-content {
 /* Action unique (ex: Remove) → pleine largeur. */
 .bento-foot:has(.foot-btn:only-child) { grid-template-columns: 1fr; }
 
+/* Thème Slate/neutre par défaut (Mute). */
 .foot-btn {
-  min-height: 30px;
-  padding: 5px 6px;
+  min-height: 36px;
+  padding: 6px 8px;
   border-radius: 8px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.2;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: var(--bg-card);
-  color: var(--text-primary);
-  border: 1px solid var(--border-color);
+  background: var(--btn-neutre-bg);
+  color: var(--btn-neutre-text);
+  border: 1px solid var(--btn-neutre-border);
   cursor: pointer;
   transition: all var(--transition-fast);
   text-align: center;
@@ -856,20 +951,46 @@ body.login-active .main-content {
 .foot-btn:hover {
   background: var(--bg-card-hover);
   color: var(--text-primary);
-  border-color: var(--brand-border);
+  border-color: var(--border-strong);
 }
 
-/* Destructives : fond sombre, texte/bordure rouge subtile. */
+/* Rouge Mât — suppression de contenu. */
 .foot-btn.danger {
-  color: #ff6b70;
-  background: rgba(239, 68, 68, 0.08);
-  border-color: rgba(239, 68, 68, 0.2);
+  background: var(--btn-danger-bg);
+  color: var(--btn-danger-text);
+  border-color: var(--btn-danger-border);
 }
 
 .foot-btn.danger:hover {
-  background: rgba(239, 68, 68, 0.18);
-  border-color: rgba(239, 68, 68, 0.35);
-  color: #ff6b70;
+  background: var(--btn-danger-hover-bg);
+  color: var(--btn-danger-hover-text);
+  border-color: var(--btn-danger-hover-border);
+}
+
+/* Ambre — purge de réactions. */
+.foot-btn.amber {
+  background: var(--btn-amber-bg);
+  color: var(--btn-amber-text);
+  border-color: var(--btn-amber-border);
+}
+
+.foot-btn.amber:hover {
+  background: var(--btn-amber-hover-bg);
+  color: var(--btn-amber-hover-text);
+  border-color: var(--btn-amber-hover-border);
+}
+
+/* Crimson Danger — quitter / fermer / retirer. */
+.foot-btn.crimson {
+  background: var(--btn-crimson-bg);
+  color: var(--btn-crimson-text);
+  border-color: var(--btn-crimson-border);
+}
+
+.foot-btn.crimson:hover {
+  background: var(--btn-crimson-hover-bg);
+  color: var(--btn-crimson-hover-text);
+  border-color: var(--btn-crimson-hover-border);
 }
 
 .btn-xs {
@@ -888,18 +1009,15 @@ body.login-active .main-content {
 .bento-grid.list-view .bento-card {
   flex-direction: row;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding: 10px 16px;
 }
 
-.bento-grid.list-view .bento-head { flex: none; }
+.bento-grid.list-view .bento-head { flex: none; width: auto; margin-bottom: 0; }
 
 .bento-grid.list-view .bento-badge { display: none; }
 
 .bento-grid.list-view .bento-body {
-  flex-direction: row;
-  align-items: center;
-  gap: 12px;
   flex: 1;
   min-width: 0;
 }
@@ -912,7 +1030,7 @@ body.login-active .main-content {
 
 .bento-grid.list-view .bento-name-row { min-width: 0; }
 
-.bento-grid.list-view .bento-icon { width: 40px; height: 40px; flex: none; }
+.bento-grid.list-view .bento-avatar { width: 36px; height: 36px; }
 
 .bento-grid.list-view .bento-name { flex: none; max-width: 240px; font-size: 14px; }
 
@@ -942,10 +1060,10 @@ body.login-active .main-content {
   align-items: center;
   gap: 8px;
   padding: 10px 14px;
-  background: rgba(28, 28, 30, 0.72);
+  background: var(--dock-bg);
   backdrop-filter: blur(12px);
   -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  border: 1px solid var(--border-color);
   border-radius: 14px;
   box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
   z-index: 10000;
@@ -981,19 +1099,6 @@ input[type="checkbox"]:focus-visible {
   outline: 2px solid var(--brand);
   outline-offset: 2px;
   border-radius: 4px;
-}
-
-/* --- Actions Bar --- */
-.actions-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.actions-bar .btn {
-  flex: 0 0 auto;
 }
 
 /* --- Info Modal --- */

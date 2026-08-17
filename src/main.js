@@ -21,6 +21,28 @@ window.__logs = [];
   };
 });
 
+// Thème clair/sombre — appliqué tôt (défaut dark), persisté en localStorage.
+const THEME_KEY = 'dam:theme';
+const rootEl = document.documentElement;
+rootEl.dataset.theme = localStorage.getItem(THEME_KEY) || 'dark';
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const setThemeTooltip = (theme) => {
+  if (!themeToggleBtn) return;
+  const label = theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre';
+  themeToggleBtn.dataset.tooltip = label;
+  themeToggleBtn.title = label;
+};
+setThemeTooltip(rootEl.dataset.theme);
+themeToggleBtn?.addEventListener('click', () => {
+  const next = rootEl.dataset.theme === 'dark' ? 'light' : 'dark';
+  rootEl.dataset.theme = next;
+  localStorage.setItem(THEME_KEY, next);
+  setThemeTooltip(next);
+  themeToggleBtn.classList.remove('rotating');
+  void themeToggleBtn.offsetWidth; // relance l'animation
+  themeToggleBtn.classList.add('rotating');
+});
+
 window.dmManager = new DMManager(document.getElementById('dms-page'));
 window.serverManager = new ServerManager(document.getElementById('servers-page'));
 window.friendsManager = new FriendsManager(document.getElementById('friends-page'));

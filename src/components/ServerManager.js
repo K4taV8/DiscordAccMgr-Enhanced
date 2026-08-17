@@ -105,10 +105,10 @@ export class ServerManager {
           checkboxClass: 'server-checkbox',
           badge: server.owner ? { label: '👑 Owner', className: 'is-owner' } : null,
           quick: [
-            { action: 'mute', label: 'Mute' },
-            { action: 'deleteMessages', label: 'Delete Msgs', danger: true },
-            { action: 'removeReactions', label: 'Rm Reactions', danger: true },
-            { action: 'leave', label: 'Leave', danger: true },
+            { action: 'mute', label: 'Mute', emoji: '🔕' },
+            { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️' },
+            { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
+            { action: 'leave', label: 'Leave', theme: 'crimson', emoji: '🚪' },
           ],
         });
         let i = 0;

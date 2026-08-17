@@ -54,10 +54,10 @@ export class DMManager {
             checkboxClass: 'dm-checkbox',
             badge: { label: 'DM' },
             quick: [
-              { action: 'deleteMessages', label: 'Delete Msgs', attrs: ' data-oldest="false"', danger: true },
-              { action: 'deleteMessages', label: 'Oldest First', attrs: ' data-oldest="true"', danger: true },
-              { action: 'removeReactions', label: 'Rm Reactions', danger: true },
-              { action: 'close', label: 'Close DM', danger: true },
+              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="false"' },
+              { action: 'deleteMessages', label: 'Oldest First', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="true"' },
+              { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
+              { action: 'close', label: 'Close DM', theme: 'crimson', emoji: '🚪' },
             ],
           })).join('')}
         </div>
