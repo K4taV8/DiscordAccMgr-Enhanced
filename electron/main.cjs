@@ -11,30 +11,56 @@ const { readJson, writeJson } = require('./persist.cjs');
 const { routeKeyFor, isSnowflake, isOp } = require('./helpers.cjs');
 const { createTokenStore } = require('./tokenStore.cjs');
 
-// Portable data directory setup
-const isPortable = process.env.PORTABLE_BUILD === 'true' || (app.isPackaged && fs.existsSync(path.join(path.dirname(process.execPath), '.portable')));
+// 100% portable : TOUTES les données (userData, session, cache, crashDumps,
+// logs) vivent dans un dossier data/ à côté de l'app — jamais dans %APPDATA%.
 let appRoot;
 try { appRoot = app.isPackaged ? path.dirname(process.execPath) : path.join(__dirname, '..'); } catch { appRoot = path.join(__dirname, '..'); }
 
-if (isPortable) {
-  const dataDir = path.join(appRoot, 'data');
-  const portablePaths = {
-    userData: path.join(dataDir, 'userData'),
-    sessionData: path.join(dataDir, 'sessionData'),
-    cache: path.join(dataDir, 'cache'),
-    crashDumps: path.join(dataDir, 'crashDumps'),
-    logs: path.join(dataDir, 'logs'),
-  };
+const dataDir = path.join(appRoot, 'data');
+const portablePaths = {
+  userData: path.join(dataDir, 'userData'),
+  sessionData: path.join(dataDir, 'sessionData'),
+  cache: path.join(dataDir, 'cache'),
+  crashDumps: path.join(dataDir, 'crashDumps'),
+  logs: path.join(dataDir, 'logs'),
+};
+try {
+  Object.values(portablePaths).forEach(p => fs.mkdirSync(p, { recursive: true }));
+  Object.entries(portablePaths).forEach(([name, p]) => app.setPath(name, p));
+} catch (err) {
+  console.error('Failed to initialize local data directory:', err.message);
+  dialog.showErrorBox('Portable Mode Error',
+    'Cannot write to application data directory.\nPlease ensure the application folder is writable.');
+  process.exit(1);
+}
+
+// Migration ponctuelle : rapatrie une fois les données de l'ancien userData
+// %APPDATA% (jetons chiffrés, checkpoints, watermarks, ledger, cache serveurs)
+// vers le dossier local — pour ne rien perdre au passage en mode portable.
+function migrateLegacyUserData(localUserData) {
   try {
-    Object.values(portablePaths).forEach(p => fs.mkdirSync(p, { recursive: true }));
-    Object.entries(portablePaths).forEach(([name, p]) => app.setPath(name, p));
+    const legacy = path.join(app.getPath('appData'), 'discord-account-manager');
+    if (legacy === localUserData) return;
+    const legacyTokens = path.join(legacy, 'saved_tokens.json');
+    if (!fs.existsSync(legacyTokens)) return;
+    if (fs.existsSync(path.join(localUserData, 'saved_tokens.json'))) return; // déjà migré
+    fs.mkdirSync(localUserData, { recursive: true });
+    ['saved_tokens.json', 'cleaned_reactions.json', 'servers_cache.json'].forEach(f => {
+      const src = path.join(legacy, f);
+      if (fs.existsSync(src)) fs.copyFileSync(src, path.join(localUserData, f));
+    });
+    const legacyCp = path.join(legacy, 'checkpoints');
+    if (fs.existsSync(legacyCp)) fs.cpSync(legacyCp, path.join(localUserData, 'checkpoints'), { recursive: true });
+    for (const f of fs.readdirSync(legacy)) {
+      if (f.startsWith('watermark-') && f.endsWith('.json')) {
+        fs.copyFileSync(path.join(legacy, f), path.join(localUserData, f));
+      }
+    }
   } catch (err) {
-    console.error('Failed to initialize portable data directory:', err.message);
-    dialog.showErrorBox('Portable Mode Error',
-      'Cannot write to application data directory.\nPlease ensure the application folder is writable.');
-    process.exit(1);
+    console.error('Legacy userData migration skipped:', err.message);
   }
 }
+migrateLegacyUserData(portablePaths.userData);
 
 let mainWindow;
 let discordClient = null;
@@ -45,8 +71,24 @@ if (!fs.existsSync(tokensPath)) {
   fs.writeFileSync(tokensPath, '[]', 'utf8');
 }
 
-// R05#2 : logique token extraite dans tokenStore.cjs (safeStorage + chemin injectés → testable).
+// R05#2 : logique token extraite dans tokenStore.cjs (safeStorage + chemins injectés → testable).
 const tokenStore = createTokenStore({ safeStorage, tokensPath });
+
+// R05#3 : verrou mono-instance — deux copies simultanées partageraient le même
+// userData et la 2e échouerait à créer son cache disque (« Unable to move the
+// cache: Access denied » / « Gpu Cache Creation failed »). La 2e instance se
+// contente de ramener la 1re au premier plan.
+const gotTheLock = app.requestSingleInstanceLock();
+if (!gotTheLock) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+}
 
 function createWindow() {
   mainWindow = new BrowserWindow({

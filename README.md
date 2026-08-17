@@ -1,4 +1,4 @@
-# ` 🪻 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
+﻿# ` 🎤 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
 
 <p align="center">
   <img src="https://img.shields.io/badge/Electron-43-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
@@ -315,7 +315,7 @@
 * ` 🟢 ` ︲**Node.js 22** (bundlé) : moteur (main/preload `.cjs`, renderer ESM).
 * ` 🌐 ` ︲**axios** : HTTP vers l'API Discord (timeout 15 s, `validateStatus`).
 * ` 🤖 ` ︲**discord.js-selfbot-v13** : connexion WebSocket (login uniquement ; toutes les opérations passent par le REST).
-* ` 📦 ` ︲**electron-builder** : packaging Windows (NSIS / dir, mode portable).
+* ` 📦 ` ︲**electron-builder** : packaging Windows (NSIS / dir) — 100% portable.
 * ` 🧪 ` ︲**node:test** (stdlib) : 10 fichiers, 52 tests — `npm test`, coverage via `npm run test:coverage`.
 
 ---
@@ -354,7 +354,7 @@ npm run test:coverage
 
 ```bash
 npm run package          # NSIS + dir
-npm run package:portable # exécutable portable (dossier data/ local)
+npm run package:portable # identique à package (toujours portable, dossier data/ local)
 ```
 
 > [!NOTE]
@@ -408,7 +408,7 @@ npm run package:portable # exécutable portable (dossier data/ local)
 
 * ` 🔑 `︲**Tokens** : chiffrés `safeStorage` (préfixe `enc:`), enveloppe `schemaVersion: 1`, migration automatique de l'ancien format plat, entrées corrompues marquées (supprimables), écritures sérialisées par mutex.
 
-* ` ⚙️ `︲**Environnement** : `ELECTRON_DEV=1` force l'ouverture des DevTools en build packagé. Mode portable : fichier `.portable` + données dans `data/` à côté de l'exécutable.
+* ` ⚙️ `︲**Environnement** : `ELECTRON_DEV=1` force l'ouverture des DevTools en build packagé. 100% portable : toutes les données (userData, session, cache, crashDumps, logs) vivent dans `data/` à côté de l'exécutable — aucun écrit dans `%APPDATA%` (migration automatique ponctuelle de l'ancien userData).
 
 ---
 
@@ -423,7 +423,7 @@ npm run package:portable # exécutable portable (dossier data/ local)
 
 * ` 🧪 `︲**Tests** : `npm test` (52 tests — rate limiter, ordonnanceur header-aware, persistance, tokens, réactions, escaping, structure `bentoCard`) ; `npm run test:coverage` pour la couverture.
 
-* ` 🧹 `︲**Cache local** : les fichiers de persistance vivent dans `userData` (Windows : `%APPDATA%\discord-account-manager`) — `checkpoints/`, `watermark-*.json`, `cleaned_reactions.json`, `saved_tokens.json`, `servers_cache.json`. Les supprimer = retour à un état « à froid » (sans perte de tokens si vous ne touchez pas `saved_tokens.json`).
+* ` 🧹 `︲**Cache local** : les fichiers de persistance vivent dans `data/userData/` à côté de l'exécutable — `checkpoints/`, `watermark-*.json`, `cleaned_reactions.json`, `saved_tokens.json`, `servers_cache.json`. Les supprimer = retour à un état « à froid » (sans perte de tokens si vous ne touchez pas `saved_tokens.json`).
 
 * ` ⚠️ `︲**Points ouverts** (tracés, à traiter par priorité) : scinder `electron/main.cjs` (monolithe restant) · remonter la couverture réelle (~36 %) vers le seuil de 80 % · création du `CHANGELOG.md` · icône d'application manquante (`src/icons/app-icon.png`) · validation `npm run package`.
 
