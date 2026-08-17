@@ -1,4 +1,4 @@
-﻿# ` 🎤 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
+﻿# ` 🪻 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
 
 <p align="center">
   <img src="https://img.shields.io/badge/Electron-43-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
