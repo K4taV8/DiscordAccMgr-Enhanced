@@ -67,82 +67,159 @@
 
   --card-shadow:          0 4px 20px rgba(0, 0, 0, 0.3);
 
-  --shadow-1:        4px 4px 12px rgba(0, 0, 0, 0.55), -2px -2px 8px rgba(255, 255, 255, 0.025);
-  --shadow-2:        8px 8px 22px rgba(0, 0, 0, 0.65), -4px -4px 12px rgba(255, 255, 255, 0.02);
-  --shadow-convex:   5px 5px 12px rgba(0, 0, 0, 0.60), -3px -3px 8px rgba(255, 255, 255, 0.03);
-  --shadow-concave:  inset 3px 3px 8px rgba(0, 0, 0, 0.50), inset -3px -3px 8px rgba(255, 255, 255, 0.025);
+  --shadow-1:        4px 4px 8px rgba(0, 0, 0, 0.45), -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-2:        4px 6px 12px rgba(0, 0, 0, 0.5), -2px -2px 6px rgba(255, 255, 255, 0.015);
+  --shadow-convex:   3px 3px 8px rgba(0, 0, 0, 0.45), -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-concave:  inset 2px 2px 6px rgba(0, 0, 0, 0.4), inset -2px -2px 6px rgba(255, 255, 255, 0.02);
   --shadow-brand:    0 4px 22px rgba(142, 149, 225, 0.22);
 }
 
-:root[data-theme="light"] {
-  --bg-body:          #f0f2f5;
-  --bg-sidebar:       #e5e8ef;
+:root[data-theme="light"], .light-theme {
+  --bg-body:          #ebedf0;
+  --bg-sidebar:       #e3e5e8;
   --bg-surface:       #ffffff;
   --bg-card:          #ffffff;
-  --bg-card-hover:    #f8fafc;
+  --bg-card-hover:    #f8f9fa;
   --bg-bento:         #ffffff;
+  --bg-input:         #e3e5e8;
+  --bg-modal:         #ffffff;
 
-  --text-primary:     #18181b;
-  --text-secondary:   #71717a;
+  --text-primary:     #1e1f22;
+  --text-secondary:   #4e5058;
+  --text-muted:       #6d6f78;
   --border-color:     rgba(0, 0, 0, 0.08);
+  --border-card:      rgba(0, 0, 0, 0.06);
   --border-subtle:    rgba(0, 0, 0, 0.05);
   --border-strong:    rgba(0, 0, 0, 0.18);
   --hover-overlay:    rgba(0, 0, 0, 0.03);
 
-  --brand:            #6366f1;
-  --brand-glow:       rgba(99, 102, 241, 0.18);
-  --brand-dim:        rgba(99, 102, 241, 0.08);
-  --brand-border:     rgba(99, 102, 241, 0.25);
+  --brand:            #5865f2;
+  --accent:           #5865f2;
+  --accent-hover:     #4752c4;
+  --accent-light:     #e0e3ff;
+  --brand-glow:       rgba(88, 101, 242, 0.18);
+  --brand-dim:        #e0e3ff;
+  --brand-border:     rgba(88, 101, 242, 0.25);
   --brand-text:       #ffffff;
 
-  --success:          #16a34a;
-  --success-glow:     rgba(22, 163, 74, 0.18);
-  --danger:           #dc2626;
-  --danger-glow:      rgba(220, 38, 38, 0.18);
+  --success:          #168044;
+  --success-glow:     rgba(22, 128, 68, 0.18);
+  --danger:           #d83a3d;
+  --danger-bg:        rgba(237, 66, 69, 0.1);
+  --danger-text:      #d83a3d;
+  --danger-border:    rgba(237, 66, 69, 0.25);
+  --danger-glow:      rgba(237, 66, 69, 0.18);
 
-  --btn-neutre-bg:        #e2e8f0;
-  --btn-neutre-text:      #334155;
+  --btn-neutre-bg:        #f8f9fa;
+  --btn-neutre-text:      #1e1f22;
   --btn-neutre-border:    rgba(0, 0, 0, 0.08);
+  --btn-danger-bg:        rgba(237, 66, 69, 0.1);
+  --btn-danger-text:      #d83a3d;
+  --btn-danger-border:    rgba(237, 66, 69, 0.25);
+  --btn-danger-hover-bg:  #d83a3d;
+  --btn-danger-hover-text:#ffffff;
+  --btn-danger-hover-border: #d83a3d;
 
-  --btn-danger-bg:        #fee2e2;
-  --btn-danger-text:      #b91c1c;
-  --btn-danger-border:    #fecaca;
-  --btn-danger-hover-bg:      #fecaca;
-  --btn-danger-hover-text:    #991b1b;
-  --btn-danger-hover-border:  #fca5a5;
+  --btn-amber-bg:        #fff4d6;
+  --btn-amber-text:      #8a5a00;
+  --btn-amber-border:    rgba(180, 120, 0, 0.25);
+  --btn-amber-hover-bg:  #f0b232;
+  --btn-amber-hover-text:#1e1f22;
+  --btn-amber-hover-border: #f0b232;
+  --btn-crimson-bg:      #ffe7ea;
+  --btn-crimson-text:    #b4233f;
+  --btn-crimson-border:  rgba(180, 35, 63, 0.25);
+  --btn-crimson-hover-bg:#b4233f;
+  --btn-crimson-hover-text:#ffffff;
+  --btn-crimson-hover-border:#b4233f;
 
-  --btn-amber-bg:        #fef3c7;
-  --btn-amber-text:      #b45309;
-  --btn-amber-border:    #fde68a;
-  --btn-amber-hover-bg:      #fde68a;
-  --btn-amber-hover-text:    #92400e;
-  --btn-amber-hover-border:  #fcd34d;
-
-  --btn-crimson-bg:        #ffe4e6;
-  --btn-crimson-text:      #be123c;
-  --btn-crimson-border:    #fecdd3;
-  --btn-crimson-hover-bg:      #fecdd3;
-  --btn-crimson-hover-text:    #9f1239;
-  --btn-crimson-hover-border:  #fda4af;
-
-  --owner-badge-bg:       rgba(245, 158, 11, 0.15);
-  --owner-badge-text:     #b45309;
-  --owner-badge-border:   rgba(245, 158, 11, 0.3);
-
-  --action-grid-bg:       rgba(0, 0, 0, 0.02);
+  --owner-badge-bg:       #fff4d6;
+  --owner-badge-text:     #8a5a00;
+  --owner-badge-border:   rgba(180, 120, 0, 0.3);
+  --action-grid-bg:       #f8f9fa;
   --action-grid-border:   rgba(0, 0, 0, 0.06);
-
   --checkbox-border:      rgba(0, 0, 0, 0.35);
-  --dock-bg:              rgba(255, 255, 255, 0.75);
+  --dock-bg:              rgba(255, 255, 255, 0.94);
   --bg-spotlight:         #ffffff;
 
-  --card-shadow:          0 10px 25px -5px rgba(0, 0, 0, 0.06);
+  --card-shadow:          0 2px 8px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.02);
+  --modal-shadow:         0 12px 32px rgba(0, 0, 0, 0.12);
+  --shadow-1:             var(--card-shadow);
+  --shadow-2:             var(--modal-shadow);
+  --shadow-convex:        0 2px 6px rgba(0, 0, 0, 0.05);
+  --shadow-concave:       inset 0 1px 3px rgba(0, 0, 0, 0.06);
+  --shadow-brand:         0 4px 14px rgba(88, 101, 242, 0.18);
+}
 
-  --shadow-1:        0 1px 3px rgba(0, 0, 0, 0.06), 0 1px 2px rgba(0, 0, 0, 0.04);
-  --shadow-2:        0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 4px 10px rgba(0, 0, 0, 0.03);
-  --shadow-convex:   0 2px 6px rgba(0, 0, 0, 0.08);
-  --shadow-concave:  inset 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-brand:    0 4px 22px rgba(99, 102, 241, 0.25);
+:root[data-theme="discord"] {
+  --bg-body:          #313338;
+  --bg-sidebar:       #2b2d31;
+  --bg-surface:       #2b2d31;
+  --bg-card:          #2b2d31;
+  --bg-card-hover:    #383a40;
+  --bg-bento:         #2b2d31;
+
+  --text-primary:     #f2f3f5;
+  --text-secondary:   #949ba4;
+  --border-color:     #3f4147;
+  --border-subtle:    rgba(255, 255, 255, 0.06);
+  --border-strong:    rgba(255, 255, 255, 0.16);
+  --hover-overlay:    rgba(255, 255, 255, 0.04);
+
+  --brand:            #5865f2;
+  --brand-glow:       rgba(88, 101, 242, 0.25);
+  --brand-dim:        rgba(88, 101, 242, 0.12);
+  --brand-border:     rgba(88, 101, 242, 0.35);
+  --brand-text:       #ffffff;
+
+  --success:          #23a55a;
+  --success-glow:     rgba(35, 165, 90, 0.2);
+  --danger:           #f23f43;
+  --danger-glow:      rgba(242, 63, 67, 0.2);
+
+  --btn-neutre-bg:        #1e1f22;
+  --btn-neutre-text:      #dbdee1;
+  --btn-neutre-border:    rgba(255, 255, 255, 0.08);
+
+  --btn-danger-bg:        rgba(242, 63, 67, 0.12);
+  --btn-danger-text:      #f2a3a5;
+  --btn-danger-border:    rgba(242, 63, 67, 0.3);
+  --btn-danger-hover-bg:      rgba(242, 63, 67, 0.2);
+  --btn-danger-hover-text:    #f5c2c3;
+  --btn-danger-hover-border:  rgba(242, 63, 67, 0.45);
+
+  --btn-amber-bg:        rgba(245, 158, 11, 0.12);
+  --btn-amber-text:      #f5d58a;
+  --btn-amber-border:    rgba(245, 158, 11, 0.28);
+  --btn-amber-hover-bg:      rgba(245, 158, 11, 0.2);
+  --btn-amber-hover-text:    #f7e2b0;
+  --btn-amber-hover-border:  rgba(245, 158, 11, 0.4);
+
+  --btn-crimson-bg:        rgba(225, 29, 72, 0.15);
+  --btn-crimson-text:      #f5a3b5;
+  --btn-crimson-border:    rgba(225, 29, 72, 0.35);
+  --btn-crimson-hover-bg:      rgba(225, 29, 72, 0.25);
+  --btn-crimson-hover-text:    #f8c0cc;
+  --btn-crimson-hover-border:  rgba(225, 29, 72, 0.5);
+
+  --owner-badge-bg:       rgba(240, 178, 50, 0.12);
+  --owner-badge-text:     #f0b232;
+  --owner-badge-border:   rgba(240, 178, 50, 0.3);
+
+  --action-grid-bg:       rgba(255, 255, 255, 0.02);
+  --action-grid-border:   rgba(255, 255, 255, 0.05);
+
+  --checkbox-border:      rgba(255, 255, 255, 0.35);
+  --dock-bg:              rgba(30, 31, 34, 0.8);
+  --bg-spotlight:         #2b2d31;
+
+  --card-shadow:          0 4px 20px rgba(0, 0, 0, 0.35);
+
+  --shadow-1:        4px 4px 8px rgba(0, 0, 0, 0.4), -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-2:        4px 6px 12px rgba(0, 0, 0, 0.45), -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-convex:   3px 3px 8px rgba(0, 0, 0, 0.45), -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-concave:  inset 2px 2px 6px rgba(0, 0, 0, 0.4), inset -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-brand:    0 4px 22px rgba(88, 101, 242, 0.3);
 }
 
 :root {
@@ -189,8 +266,8 @@ p, span, label, input {
 ::-webkit-scrollbar-thumb:hover { background: var(--bg-card-hover); }
 
 .card, .bento-card, .tools-category {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-color);
+  background: var(--bg-card);
+  border: 1px solid var(--border-card, var(--border-color));
   border-radius: var(--radius-md);
   padding: 14px;
   box-shadow: var(--shadow-1);
@@ -201,7 +278,6 @@ p, span, label, input {
   background: var(--bg-card-hover);
   border-color: var(--brand-border);
   box-shadow: var(--shadow-brand);
-  transform: translateY(-2px);
 }
 
 .btn {
@@ -258,16 +334,16 @@ p, span, label, input {
 }
 
 .btn-danger {
-  background: rgba(237, 66, 69, 0.08);
-  color: var(--danger);
-  border: 1px solid rgba(237, 66, 69, 0.25);
+  background: var(--danger-bg, rgba(237, 66, 69, 0.08));
+  color: var(--danger-text, var(--danger));
+  border: 1px solid var(--danger-border, rgba(237, 66, 69, 0.25));
 }
 
 .btn-danger:hover {
   background: var(--danger);
   color: #FFFFFF;
   border-color: var(--danger);
-  box-shadow: 0 4px 12px rgba(237, 66, 69, 0.3);
+  box-shadow: 0 4px 12px var(--danger-glow);
 }
 
 .btn:disabled {
@@ -281,8 +357,7 @@ p, span, label, input {
   position: fixed;
   inset: 0;
   background: rgba(11, 11, 12, 0.82);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
+  background: rgba(15, 17, 23, 0.85);
   display: flex;
   align-items: center;
   justify-content: center;

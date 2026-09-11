@@ -1,4 +1,4 @@
-﻿# ` 🪻 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
+﻿# ` 🎤 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
 
 <p align="center">
   <img src="https://img.shields.io/badge/Electron-43-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
@@ -187,7 +187,7 @@
 
 ## UI/UX — fluidité
 
-* ` 🎨 `︲**Design system léger** : variables CSS dans `src/styles/theme.css` — thèmes **dark** (défaut) et **light** pilotés par `data-theme` sur `<html>` (persisté en localStorage), breakpoints réels dans `app.css` — **768 / 640 / 480 px**.
+* ` 🎨 `︲**Design system léger** : variables CSS dans `src/styles/theme.css` — thèmes **dark** (défaut) / **light** / **discord** pilotés par `data-theme` sur `<html>` (cycle au clic, persisté en localStorage), breakpoints réels dans `app.css` — **768 / 640 / 480 px**.
 
 * ` 📜 `︲**Rendu chunké** des listes serveurs : 50 cartes par frame (`requestAnimationFrame`) — plus de frame bloquée sur 200 entrées.
 
@@ -213,7 +213,7 @@
 * ` 🧊 `︲**Barre latérale compacte** (240px → 76px) : chaque onglet (**Friends / Servers / DMs / Groups**) est un **icon box** carré `48×48` (`border-radius: 12px`, fond `--bg-card`), icône centrée, **tooltip** au survol (`data-tooltip`, pur CSS, sans JS).
 * ` 💜 `︲**Onglet actif** : fond `--brand` + icône sombre + glow violet.
 * ` 👤 `︲**Profil compact** : avatar + bouton déconnexion (power) en boxes — le nom/texte ont été retirés.
-* ` 🌗 `︲**Toggle de thème** (orb 38px) au-dessus de l'avatar : bascule `data-theme="dark|light"` sur `<html>`, persisté en localStorage, micro-animation de rotation, tooltip dynamique (« Passer en mode clair / sombre »).
+* ` 🌗 `︲**Toggle de thème** (orb 38px) au-dessus de l'avatar : bascule `data-theme="dark|light|discord"` sur `<html>` (cycle Sombre → Clair → Discord), persisté en localStorage
 * Le bouton nav « Log » a été **retiré** — le panneau de log debug reste accessible via `window.toggleDebugLog()` (console).
 
 ## Bento Grid (cartes)
@@ -230,7 +230,8 @@
 
 * ` 🌗 `︲**Dark Slate** (défaut) : `#0f1015` app · `#16171d` sidebar · `#21232c` cartes · `#f4f4f5` texte · `#8E95E1` brand.
 * ` ☀️ `︲**Light Portfolio** : `#f0f2f5` app · `#e5e8ef` sidebar · `#ffffff` cartes · `#18181b` texte · `#6366f1` brand.
-* ` 🎛️ `︲Toutes les couleurs passent par les variables CSS (`theme.css`, `:root[data-theme="dark|light"]`) ; **transition douce** `background-color / color / border-color` au changement de thème.
+* ` 🎮 `︲**Discord Dark** : `#313338` app · `#2b2d31` cartes/sidebar · `#1e1f22` neutre · `#5865f2` (Blurple) · `#f2f3f5` texte.
+* ` 🎛️ `︲Toutes les couleurs passent par les variables CSS (`theme.css`, `:root[data-theme="dark|light|discord"]`) ; **transition douce** `background-color / color / border-color` au changement de thème.
 * ` 📊 `︲Variables ajoutées : `--bg-sidebar`, `--btn-{neutre,danger,amber,crimson}-*`, `--owner-badge-*`, `--action-grid-*`, `--dock-bg`, `--checkbox-border`, `--hover-overlay`, `--border-subtle/strong`, `--card-shadow`.
 
 ## Backend lié

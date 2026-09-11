@@ -8,6 +8,9 @@ import { copyToClipboard } from './utils/clipboard.js';
 import { getFriendsList } from './utils/discord.js';
 import { escHtml } from './utils/emojiUtils.js';
 import { installAvatarFallbacks } from './utils/domManager.js';
+import { showUserProfileModal } from './components/UserProfileModal.js';
+import { showHelpModal } from './components/HelpModal.js';
+import { PackageManager } from './components/PackageManager.js';
 
 // log capture
 window.__logs = [];
@@ -21,20 +24,28 @@ window.__logs = [];
   };
 });
 
-// Thème clair/sombre — appliqué tôt (défaut dark), persisté en localStorage.
-const THEME_KEY = 'dam:theme';
+// Thème sombre → clair → discord → sombre — appliqué tôt (défaut dark), persisté.
+const THEME_KEY = 'theme';
+const THEMES = ['dark', 'light', 'discord'];
+const THEME_NEXT_LABEL = {
+  dark: 'Passer en mode clair',
+  light: 'Passer en mode Discord',
+  discord: 'Passer en mode sombre',
+};
 const rootEl = document.documentElement;
-rootEl.dataset.theme = localStorage.getItem(THEME_KEY) || 'dark';
+let savedTheme = localStorage.getItem(THEME_KEY);
+if (!THEMES.includes(savedTheme)) savedTheme = 'dark';
+rootEl.dataset.theme = savedTheme;
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const setThemeTooltip = (theme) => {
   if (!themeToggleBtn) return;
-  const label = theme === 'dark' ? 'Passer en mode clair' : 'Passer en mode sombre';
+  const label = THEME_NEXT_LABEL[THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]];
   themeToggleBtn.dataset.tooltip = label;
   themeToggleBtn.title = label;
 };
-setThemeTooltip(rootEl.dataset.theme);
+setThemeTooltip(savedTheme);
 themeToggleBtn?.addEventListener('click', () => {
-  const next = rootEl.dataset.theme === 'dark' ? 'light' : 'dark';
+  const next = THEMES[(THEMES.indexOf(rootEl.dataset.theme) + 1) % THEMES.length];
   rootEl.dataset.theme = next;
   localStorage.setItem(THEME_KEY, next);
   setThemeTooltip(next);
@@ -43,10 +54,17 @@ themeToggleBtn?.addEventListener('click', () => {
   themeToggleBtn.classList.add('rotating');
 });
 
+// Clic sur l'avatar → modale de profil utilisateur (état de session).
+document.getElementById('userAvatarBtn').addEventListener('click', () => showUserProfileModal(window.currentUser));
+
+// Clic sur « ? » → modale d'aide.
+document.getElementById('helpBtn').addEventListener('click', () => showHelpModal());
+
 window.dmManager = new DMManager(document.getElementById('dms-page'));
 window.serverManager = new ServerManager(document.getElementById('servers-page'));
 window.friendsManager = new FriendsManager(document.getElementById('friends-page'));
 window.groupManager = new GroupManager(document.getElementById('groups-page'));
+window.packageManager = new PackageManager(document.getElementById('package-page'));
 
 // R03b : fallback des avatars cassés (événement error en capture, CSP-safe).
 installAvatarFallbacks();
@@ -214,6 +232,9 @@ function switchPage(pageId) {
     case 'groups':
       window.groupManager.refreshGroupsList();
       break;
+    case 'package':
+      window.packageManager.render();
+      break;
   }
 }
 
@@ -240,7 +261,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 // au premier démarrage (IPC lent), la page courante ne peut plus être
 // effacée par le warm-up → pas de fenêtre vide initiale.
 function warmUpPages() {
-  const els = ['login', 'friends', 'servers', 'dms', 'groups'].map(id => document.getElementById(`${id}-page`)).filter(Boolean);
+  const els = ['login', 'friends', 'servers', 'dms', 'groups', 'package'].map(id => document.getElementById(`${id}-page`)).filter(Boolean);
   const wasActive = new Set(els.filter(el => el.classList.contains('active')));
   document.body.classList.add('warming');
   els.forEach(el => el.classList.add('active'));
@@ -265,6 +286,7 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
   window._dlOpen = false;
   window._dlPanel?.remove();
   window._dlPanel = null;
+  window.currentUser = null;
   hideUserProfile();
   toggleNavItems(false);
   switchPage('login');
@@ -296,6 +318,7 @@ async function performConnect(connectPromise) {
     if (result.success) {
       status.textContent = `Connected as ${result.username}`;
       status.className = 'success';
+      window.currentUser = result.user;
       showUserProfile(result.username, result.avatar);
       toggleNavItems(true);
       switchPage('friends');

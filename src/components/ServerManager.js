@@ -1,4 +1,4 @@
-import { getServersList, copyToClipboard } from '../utils/discord.js';
+﻿import { getServersList, copyToClipboard } from '../utils/discord.js';
 import { showNotification, confirmAction } from '../utils/ui.js';
 import { deleteServerMessages } from '../utils/serverMessageDeleter.js';
 import { removeServerReactions } from '../utils/serverReactionRemover.js';
@@ -28,11 +28,12 @@ export class ServerManager {
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.toggleSelectAllServers(),
       actions: [
-        { label: 'Read', className: 'btn-primary', onClick: () => this.readSelectedServers() },
-        { label: 'Mute', onClick: () => this.muteSelectedServers() },
-        { label: 'Delete Msgs', className: 'btn-danger', onClick: () => this.deleteSelectedServersMessages() },
-        { label: 'Rm Reactions', className: 'btn-danger', onClick: () => this.removeSelectedServersReactions() },
-        { label: 'Leave', className: 'btn-danger', onClick: () => this.leaveSelectedServers() },
+        { label: '👁️ Marquer comme lu', className: 'btn-primary', onClick: () => this.readSelectedServers() },
+        { label: '🔕 Muter', onClick: () => this.muteSelectedServers() },
+        { label: '🗑️ Supprimer les messages', className: 'btn-danger', onClick: () => this.deleteSelectedServersMessages() },
+        { label: '💥 Supprimer les réactions', className: 'btn-danger', onClick: () => this.removeSelectedServersReactions() },
+        { label: '⚡ Nettoyer & Quitter', className: 'dock-combo', onClick: () => this.cleanAndLeaveSelected() },
+        { label: '🚪 Quitter', className: 'btn-danger', onClick: () => this.leaveSelectedServers() },
       ],
     });
   }
@@ -100,7 +101,7 @@ export class ServerManager {
           id: server.id,
           name: server.name,
           icon: server.icon,
-          fallbackIcon: '/discord.png',
+          fallbackIcon: 'https://cdn.discordapp.com/embed/avatars/0.png',
           iconAlt: server.name,
           checkboxClass: 'server-checkbox',
           badge: server.owner ? { label: '👑 Owner', className: 'is-owner' } : null,
@@ -297,6 +298,34 @@ export class ServerManager {
     } catch (error) {
       console.error('Failed to leave server:', error);
       btn.disabled = false;
+    }
+  }
+
+  // Combo 3-en-1 : Delete messages → Remove reactions → Leave, dans l'ordre.
+  // Chaque étape tolère l'échec ; la sortie (Leave) est toujours tentée.
+  async cleanAndLeaveSelected() {
+    if (this.isDeleting) return;
+    const items = [...document.querySelectorAll('.server-checkbox:checked')]
+      .map(cb => cb.closest('.bento-card'))
+      .filter(Boolean);
+    if (items.length === 0) return;
+    if (!(await confirmAction('Nettoyer & Quitter', `Delete messages, remove reactions and leave ${items.length} selected server(s)? This cannot be undone.`))) return;
+    this.isDeleting = true;
+    try {
+      for (const item of items) {
+        const serverId = item.dataset.id;
+        const serverName = item.querySelector('.bento-name')?.textContent || 'server';
+        try {
+          await deleteServerMessages({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
+        } catch (e) { console.error('Combo delete failed:', e); }
+        try {
+          await removeServerReactions({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
+        } catch (e) { console.error('Combo reactions failed:', e); }
+        try { await window.electronAPI.leaveServer(serverId); } catch (e) { console.error('Combo leave failed:', e); }
+      }
+      this.refreshServersList(true);
+    } finally {
+      this.isDeleting = false;
     }
   }
 }

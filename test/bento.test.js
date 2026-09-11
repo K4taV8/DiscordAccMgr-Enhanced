@@ -42,6 +42,21 @@ test('bentoCard keeps the selection circle in its own header zone', () => {
   assert.ok(!body.includes('type="checkbox"'));
 });
 
+test('bentoCard uses custom avatarHtml when provided (group stack)', () => {
+  const html = bentoCard({
+    id: '1',
+    name: 'g',
+    icon: null,
+    checkboxClass: 'c',
+    avatarHtml: '<span class="group-avatar-stack"><img src="a1"><img src="a2"></span>',
+  });
+  const avatarBlock = html.slice(html.indexOf('bento-avatar'), html.indexOf('bento-ident'));
+  assert.ok(avatarBlock.includes('group-avatar-stack'));
+  assert.ok(avatarBlock.includes('src="a1"'));
+  assert.ok(avatarBlock.includes('src="a2"'));
+  assert.ok(!avatarBlock.includes('src="null"'));
+});
+
 test('bentoCard forwards extra attrs on quick action buttons', () => {
   const html = bentoCard({
     id: '1',

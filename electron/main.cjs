@@ -1,4 +1,10 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require('electron');
+﻿const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require('electron');
+
+// Switches Chromium pour accélérer le cold boot et limiter la VRAM.
+app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
+app.commandLine.appendSwitch('enable-zero-copy');
+app.commandLine.appendSwitch('force_high_performance_gpu');
+app.commandLine.appendSwitch('v8-cache-options', 'code');
 const path = require('path');
 const axios = require('axios');
 const fs = require('fs');
@@ -93,7 +99,7 @@ if (!gotTheLock) {
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
-    height: 800,
+    height: 925,
     center: true,
     minWidth: 770,
     minHeight: 600,
@@ -107,7 +113,7 @@ function createWindow() {
       spellcheck: false,
       paintingWhenInitiallyHidden: true,
     },
-    backgroundColor: '#1a1b1e'
+    backgroundColor: '#0f1117'
   });
 
   mainWindow.loadFile('./index.html');
@@ -115,9 +121,6 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
-    if (!app.isPackaged || process.env.ELECTRON_DEV === '1') {
-      mainWindow.webContents.openDevTools({ mode: 'detach' });
-    }
   });
 }
 
@@ -187,8 +190,13 @@ ipcMain.handle('discord:getGroups', async () => {
     .map(group => ({
       id: group.id,
       name: group.name || 'Unnamed Group',
-      icon: group.icon ? `https://cdn.discordapp.com/channel-icons/${group.id}/${group.icon}.png` : '/discord.png',
-      recipients: group.recipients?.length || 0
+      icon: group.icon ? `https://cdn.discordapp.com/channel-icons/${group.id}/${group.icon}.png` : null,
+      recipients: group.recipients?.length || 0,
+      // 2 premiers destinataires (avatar) → stack natif Discord si pas d'icône.
+      members: (group.recipients || []).slice(0, 2).map(r => ({
+        id: r.id,
+        avatar: r.avatar ? `https://cdn.discordapp.com/avatars/${r.id}/${r.avatar}.png?size=64` : null,
+      })),
     }));
   return { success: true, groups };
 });
@@ -424,12 +432,20 @@ async function connectDiscord(token) {
     await next.login(token);
     if (discordClient) { try { const p = discordClient.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
     discordClient = next;
+    // R05#4 : l'objet user (id, global_name, avatar) part avec le résultat de
+    // connexion → la modale profil l'a sans API call.
+    const u = next.user;
+    const cdn = (base, hash) => hash ? `https://cdn.discordapp.com/${base}/${u.id}/${hash}.${hash.startsWith('a_') ? 'gif' : 'png'}` : null;
     return {
       success: true,
-      username: next.user.tag,
-      avatar: next.user.avatar
-        ? `https://cdn.discordapp.com/avatars/${next.user.id}/${next.user.avatar}.png?size=64`
-        : '/discord.png'
+      username: u.tag,
+      avatar: cdn('avatars', u.avatar) ? `${cdn('avatars', u.avatar)}?size=64` : 'https://cdn.discordapp.com/embed/avatars/0.png',
+      user: {
+        id: u.id,
+        username: u.username,
+        displayName: u.globalName || u.username,
+        avatar: cdn('avatars', u.avatar),
+      },
     };
   } catch (error) {
     console.error('Connect error:', error.message);
@@ -451,7 +467,7 @@ ipcMain.handle('discord:getFriends', async () => {
       id: friend.user.id,
       username: friend.user.username,
       displayName: friend.user.global_name || friend.user.username,
-      avatar: friend.user.avatar ? `https://cdn.discordapp.com/avatars/${friend.user.id}/${friend.user.avatar}.png` : '/discord.png'
+      avatar: friend.user.avatar ? `https://cdn.discordapp.com/avatars/${friend.user.id}/${friend.user.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png'
     }));
 
   return { success: true, friends };
@@ -468,7 +484,7 @@ ipcMain.handle('discord:getDMs', async () => {
       displayName: dm.recipients?.[0]?.global_name || dm.recipients?.[0]?.username || 'Unknown User',
       avatar: dm.recipients?.[0]?.avatar
         ? `https://cdn.discordapp.com/avatars/${dm.recipients[0].id}/${dm.recipients[0].avatar}.png`
-        : '/discord.png'
+        : 'https://cdn.discordapp.com/embed/avatars/0.png'
     }));
   return { success: true, dms };
 });
@@ -551,7 +567,7 @@ ipcMain.handle('discord:getServers', async (_, force = false) => {
     owner: !!server.owner,
     icon: server.icon
       ? `https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png`
-      : '/discord.png'
+      : 'https://cdn.discordapp.com/embed/avatars/0.png'
   }));
   await writeServersCache(servers);
   return { success: true, servers };

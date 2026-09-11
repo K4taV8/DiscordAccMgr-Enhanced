@@ -21,7 +21,7 @@ export class FriendsManager {
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.toggleSelectAll(),
       actions: [
-        { label: 'Remove', className: 'btn-danger', onClick: () => this.removeSelected() },
+        { label: '🚫 Supprimer', className: 'btn-danger', onClick: () => this.removeSelected() },
       ],
     });
   }

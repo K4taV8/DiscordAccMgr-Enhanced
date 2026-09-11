@@ -61,8 +61,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getChannelMessages: wrap('getChannelMessages', (channelId, beforeId, afterId) => ipcRenderer.invoke('discord:getChannelMessages', channelId, beforeId, afterId)),
   getMessage: wrap('getMessage', (channelId, messageId) => ipcRenderer.invoke('discord:getMessage', channelId, messageId)),
   deleteGroupMessage: wrap('deleteGroupMessage', (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId)),
+  deletePackageMessage: wrap('deletePackageMessage', (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId)),
 
-  removeOwnReaction: wrap('removeOwnReaction', (channelId, messageId, emoji) => ipcRenderer.invoke('discord:removeOwnReaction', channelId, messageId, emoji))
+  removeOwnReaction: wrap('removeOwnReaction', (channelId, messageId, emoji) => ipcRenderer.invoke('discord:removeOwnReaction', channelId, messageId, emoji)),
 });
 
 // Persistance locale (checkpoints / watermarks / ledger anti-fantômes)

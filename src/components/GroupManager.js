@@ -10,15 +10,6 @@ export class GroupManager {
   constructor(contentArea) {
     this.contentArea = contentArea;
     this.isDeleting = false;
-    this.defaultGroupIcon = `data:image/svg+xml,${encodeURIComponent(`
-      <svg width="32" height="32" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <rect width="32" height="32" rx="16" fill="#5865F2"/>
-        <path d="M22 12C22 14.2091 20.2091 16 18 16C15.7909 16 14 14.2091 14 12C14 9.79086 15.7909 8 18 8C20.2091 8 22 9.79086 22 12Z" fill="white"/>
-        <path d="M10 20C10 17.7909 11.7909 16 14 16H22C24.2091 16 26 17.7909 26 20V22C26 23.1046 25.1046 24 24 24H12C10.8954 24 10 23.1046 10 22V20Z" fill="white"/>
-        <path d="M12 14C12 15.1046 11.1046 16 10 16C8.89543 16 8 15.1046 8 14C8 12.8954 8.89543 12 10 12C11.1044 12 12 12.8954 12 14Z" fill="white"/>
-        <path d="M6 19.5C6 18.1193 7.11929 17 8.5 17H11.5C12.8807 17 14 18.1193 14 19.5V22C14 23.1046 13.1046 24 12 24H8C6.89543 24 6 23.1046 6 22V19.5Z" fill="white"/>
-      </svg>
-    `)}`;
 
     // R03b : handlers inline → délégation d'événements (CSP sans 'unsafe-inline').
     const item = (el) => el.closest('.bento-card');
@@ -26,7 +17,7 @@ export class GroupManager {
       updateSelected: () => this.updateSelectedCount(),
       toggleView: (el) => listView.toggle(document.getElementById('groupsList'), 'groups', el),
       copy: (el) => this.copyId(item(el).dataset.id),
-      deleteMessages: (el) => this.deleteMessages(item(el).dataset.id, decodeURIComponent(item(el).dataset.name), el.dataset.oldest === 'true'),
+      deleteMessages: (el) => this.deleteMessages(item(el).dataset.id, decodeURIComponent(item(el).dataset.name)),
       removeReactions: (el) => this.removeReactions(el, item(el).dataset.id, decodeURIComponent(item(el).dataset.name)),
       leave: (el) => this.leaveGroup(el, item(el).dataset.id),
     };
@@ -35,9 +26,10 @@ export class GroupManager {
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.toggleSelectAll(),
       actions: [
-        { label: 'Delete Msgs', className: 'btn-danger', onClick: () => this.deleteSelectedMessages() },
-        { label: 'Rm Reactions', className: 'btn-danger', onClick: () => this.removeSelectedReactions() },
-        { label: 'Leave', className: 'btn-danger', onClick: () => this.leaveSelectedGroups() },
+        { label: '🗑️ Supprimer les messages', className: 'btn-danger', onClick: () => this.deleteSelectedMessages() },
+        { label: '💥 Supprimer les réactions', className: 'btn-danger', onClick: () => this.removeSelectedReactions() },
+        { label: '⚡ Nettoyer & Quitter', className: 'dock-combo', onClick: () => this.cleanAndLeaveSelected() },
+        { label: '🚪 Quitter', className: 'btn-danger', onClick: () => this.leaveSelectedGroups() },
       ],
     });
   }
@@ -50,6 +42,26 @@ export class GroupManager {
           return;
         }
         const listMode = listView.isOn('groups');
+        const GROUP_DEFAULT_AVATAR = 'https://cdn.discordapp.com/embed/avatars/0.png';
+        // recipients exclut l'utilisateur connecté → +1 pour le total.
+        const memberLabel = (count) => {
+          const total = (count || 0) + 1;
+          return total === 1 ? '1 membre (Seul)' : `${total} membres`;
+        };
+        // Avatar natif Discord : icône CDN si présente, sinon stack des 2 premiers membres.
+        const avatarFor = (g) => {
+          if (g.icon) return null; // image CDN standard (rendue par bentoCard)
+          const members = g.members || [];
+          const av1 = members[0]?.avatar || GROUP_DEFAULT_AVATAR;
+          if (members.length < 2) {
+            return `<img src="${escHtml(av1)}" alt="${escHtml(g.name)}" loading="lazy">`;
+          }
+          const av2 = members[1]?.avatar || GROUP_DEFAULT_AVATAR;
+          return `<span class="group-avatar-stack">
+            <img class="group-avatar-stack-back" src="${escHtml(av1)}" alt="" loading="lazy">
+            <img class="group-avatar-stack-front" src="${escHtml(av2)}" alt="" loading="lazy">
+          </span>`;
+        };
         preservePageScroll(this.contentArea, () => `
         <div class="list-toolbar">
           <h2 class="page-title">Groups List <span class="list-count">${result.groups.length}</span></h2>
@@ -60,15 +72,15 @@ export class GroupManager {
             id: group.id,
             attrs: ` data-name="${encodeURIComponent(group.name)}"`,
             name: group.name,
-            meta: `${group.recipients} members`,
-            icon: group.icon === '/discord.png' ? this.defaultGroupIcon : group.icon,
-            fallbackIcon: this.defaultGroupIcon,
+            meta: memberLabel(group.recipients),
+            icon: group.icon ? `${group.icon}?size=128` : null,
+            fallbackIcon: group.icon ? GROUP_DEFAULT_AVATAR : null,
             iconAlt: group.name,
+            avatarHtml: avatarFor(group),
             checkboxClass: 'group-checkbox',
             badge: { label: 'Group' },
             quick: [
-              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="false"' },
-              { action: 'deleteMessages', label: 'Oldest First', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="true"' },
+              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️' },
               { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
               { action: 'leave', label: 'Leave', theme: 'crimson', emoji: '🚪' },
             ],
@@ -246,5 +258,40 @@ export class GroupManager {
       this.isDeleting = false;
       this.refreshGroupsList(true);
     }, 1000);
+  }
+
+  // Combo 3-en-1 : Delete messages → Remove reactions → Leave, dans l'ordre.
+  // Chaque étape tolère l'échec ; la sortie (Leave) est toujours tentée.
+  async cleanAndLeaveSelected() {
+    if (this.isDeleting) return;
+    const selected = Array.from(document.querySelectorAll('.group-checkbox:checked')).map(checkbox => {
+      const item = checkbox.closest('.bento-card');
+      return { groupId: item.dataset.id, name: decodeURIComponent(item.dataset.name) };
+    });
+    if (selected.length === 0) return;
+    if (!(await confirmAction('Nettoyer & Quitter', `Delete messages, remove reactions and leave ${selected.length} selected group(s)?`))) return;
+    this.isDeleting = true;
+    try {
+      for (const g of selected) {
+        try {
+          await deleteDMMessages({
+            channelId: g.groupId,
+            username: g.name,
+            electronAPI: window.electronAPI,
+            isGroup: true,
+            skipRefresh: true,
+            quiet: true,
+            onComplete: () => {},
+          });
+        } catch (e) { console.error('Combo delete failed:', e); }
+        try {
+          await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, onComplete: () => {} });
+        } catch (e) { console.error('Combo reactions failed:', e); }
+        try { await window.electronAPI.leaveGroup(g.groupId); } catch (e) { console.error('Combo leave failed:', e); }
+      }
+      this.refreshGroupsList(true);
+    } finally {
+      this.isDeleting = false;
+    }
   }
 }

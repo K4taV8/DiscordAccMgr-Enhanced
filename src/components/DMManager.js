@@ -18,7 +18,7 @@ export class DMManager {
       updateSelected: () => this.updateSelectedCount(),
       toggleView: (el) => listView.toggle(document.getElementById('dmsList'), 'dms', el),
       copy: (el) => copyToClipboard(item(el).dataset.id),
-      deleteMessages: (el) => this.deleteDMMessages(item(el).dataset.id, decodeURIComponent(item(el).dataset.username), el.dataset.oldest === 'true'),
+      deleteMessages: (el) => this.deleteDMMessages(item(el).dataset.id, decodeURIComponent(item(el).dataset.username)),
       removeReactions: (el) => this.removeReactions(el, item(el).dataset.id, decodeURIComponent(item(el).dataset.username)),
       close: (el) => this.closeDM(el, item(el).dataset.id),
     };
@@ -27,9 +27,10 @@ export class DMManager {
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.toggleSelectAllDMs(),
       actions: [
-        { label: 'Delete Msgs', className: 'btn-danger', onClick: () => this.deleteSelectedMessages() },
-        { label: 'Rm Reactions', className: 'btn-danger', onClick: () => this.removeSelectedReactions() },
-        { label: 'Close DMs', className: 'btn-danger', onClick: () => this.closeSelectedDMs() },
+        { label: '🗑️ Supprimer les messages', className: 'btn-danger', onClick: () => this.deleteSelectedMessages() },
+        { label: '💥 Supprimer les réactions', className: 'btn-danger', onClick: () => this.removeSelectedReactions() },
+        { label: '⚡ Nettoyer & Quitter', className: 'dock-combo', onClick: () => this.cleanAndCloseSelected() },
+        { label: '🚪 Fermer les DM', className: 'btn-danger', onClick: () => this.closeSelectedDMs() },
       ],
     });
   }
@@ -54,8 +55,7 @@ export class DMManager {
             checkboxClass: 'dm-checkbox',
             badge: { label: 'DM' },
             quick: [
-              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="false"' },
-              { action: 'deleteMessages', label: 'Oldest First', theme: 'danger', emoji: '🗑️', attrs: ' data-oldest="true"' },
+              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️' },
               { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
               { action: 'close', label: 'Close DM', theme: 'crimson', emoji: '🚪' },
             ],
@@ -208,6 +208,33 @@ export class DMManager {
       // R03b/bugfix : UNE modal agrégée (plus d'empilement de modals qui
       // faisait « se lancer et se terminer direct »).
       await removeReactionsBulk({ targets: selectedDMs, electronAPI: window.electronAPI });
+      this.refreshDMsList(true);
+    } finally {
+      this.isDeleting = false;
+    }
+  }
+
+  // Combo 3-en-1 : Delete messages → Remove reactions → Close, dans l'ordre.
+  // Chaque étape tolère l'échec ; la sortie (Close) est toujours tentée.
+  async cleanAndCloseSelected() {
+    if (this.isDeleting) return;
+    const selected = Array.from(document.querySelectorAll('.dm-checkbox:checked')).map(checkbox => {
+      const item = checkbox.closest('.bento-card');
+      return { channelId: item.dataset.id, username: decodeURIComponent(item.dataset.username) };
+    });
+    if (selected.length === 0) return;
+    if (!(await confirmAction('Nettoyer & Quitter', `Delete messages, remove reactions and close ${selected.length} selected DM(s)?`))) return;
+    this.isDeleting = true;
+    try {
+      for (const dm of selected) {
+        try {
+          await deleteDMMessages({ channelId: dm.channelId, username: dm.username, electronAPI: window.electronAPI, onComplete: () => {}, skipRefresh: true, quiet: true });
+        } catch (e) { console.error('Combo delete failed:', e); }
+        try {
+          await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, onComplete: () => {} });
+        } catch (e) { console.error('Combo reactions failed:', e); }
+        try { await window.electronAPI.closeDM(dm.channelId); } catch (e) { console.error('Combo close failed:', e); }
+      }
       this.refreshDMsList(true);
     } finally {
       this.isDeleting = false;
