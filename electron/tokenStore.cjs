@@ -158,7 +158,27 @@ function createTokenStore({ safeStorage, tokensPath }) {
           token = null;
         }
         if (!token) return { error: 'Token is corrupted or not securely stored (re-save it)' };
-        return { token };
+        // userId optionnel : stocke cote main, sert a reutiliser la session en
+        // cours ("meme compte") au lieu de re-loggner - perf + limite de sessions.
+        return entry.userId ? { token, userId: String(entry.userId) } : { token };
+      });
+    },
+
+    // Enrichit une entree avec l'identifiant du compte apres un login reussi.
+    async setUserId(name, userId) {
+      return withLock(async () => {
+        if (typeof name !== 'string' || !name) return { success: false, error: 'Invalid token name' };
+        const store = await readTokensFile();
+        const tokens = store.tokens || [];
+        const entry = tokens.find(t => t.name === name);
+        if (!entry) return { success: false, error: 'Token not found' };
+        entry.userId = String(userId);
+        try {
+          await writeTokensFile(tokens);
+          return { success: true };
+        } catch {
+          return { success: false, error: 'Failed to update token' };
+        }
       });
     },
   };

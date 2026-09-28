@@ -420,8 +420,6 @@ npm run package:portable # identique à package (toujours portable, dossier data
 
 * ` 🐞 `︲**Panneau de log** : ouvert via `window.toggleDebugLog()` dans la console DevTools (`Ctrl+Shift+I`) — draggable, redimensionnable, copie dans le presse-papiers, cap 500 lignes.
 
-* ` 📊 `︲**Statistiques HTTP** : IPC `app:getHttpStats` (depuis la console : `await window.electronAPI.getHttpStats()`) — compteur de requêtes, **compteur de 429 (objectif : 0)**, budget par route.
-
 * ` 🧪 `︲**Tests** : `npm test` (52 tests — rate limiter, ordonnanceur header-aware, persistance, tokens, réactions, escaping, structure `bentoCard`) ; `npm run test:coverage` pour la couverture.
 
 * ` 🧹 `︲**Cache local** : les fichiers de persistance vivent dans `data/userData/` à côté de l'exécutable — `checkpoints/`, `watermark-*.json`, `cleaned_reactions.json`, `saved_tokens.json`, `servers_cache.json`. Les supprimer = retour à un état « à froid » (sans perte de tokens si vous ne touchez pas `saved_tokens.json`).

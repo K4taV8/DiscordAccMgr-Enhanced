@@ -20,8 +20,10 @@
     "fflate": "^0.8.3"
   },
   "devDependencies": {
+    "@types/node": "^26.6.3",
     "electron": "^43.4.0",
-    "electron-builder": "^26.15.3"
+    "electron-builder": "^26.15.3",
+    "typescript": "^7.0.2"
   },
   "build": {
     "appId": "com.discord.accoun.tmanager",

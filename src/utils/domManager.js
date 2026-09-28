@@ -1,4 +1,5 @@
 // BUG-08 : préserver le scroll après un refresh de liste (le scroll vit sur le .page-container)
+import { LIST_CACHE_TTL } from './pagePreloader.js';
 export function preservePageScroll(contentArea, render) {
   const scroller = contentArea.closest('.page-container') || contentArea;
   const top = scroller.scrollTop;
@@ -8,7 +9,7 @@ export function preservePageScroll(contentArea, render) {
 }
 
 // Cache liste : navigation instantanée, refetch après 30s ; force=true après une mutation
-export async function cachedListRefresh(self, fetchFn, renderFn, force = false, ttl = 30000) {
+export async function cachedListRefresh(self, fetchFn, renderFn, force = false, ttl = LIST_CACHE_TTL) {
   if (!force && self._cache && Date.now() - self._cache.at < ttl) {
     renderFn(self._cache.data);
     return;

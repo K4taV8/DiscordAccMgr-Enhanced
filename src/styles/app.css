@@ -266,44 +266,85 @@
   height: 18px;
 }
 
-/* Icône = prochain thème du cycle (dark→sun, light→discord, discord→moon). */
-.theme-toggle .icon-sun,
-.theme-toggle .icon-moon,
-.theme-toggle .icon-discord { display: none; }
-
-:root[data-theme="dark"] .theme-toggle .icon-sun { display: inline-flex; }
-:root[data-theme="light"] .theme-toggle .icon-discord { display: inline-flex; }
-:root[data-theme="discord"] .theme-toggle .icon-moon { display: inline-flex; }
-
-.theme-toggle.rotating { animation: themeSpin 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
-
-@keyframes themeSpin {
-  from { transform: rotate(0deg) scale(1); }
-  to { transform: rotate(360deg) scale(1); }
+/* L'icône est rendue par main.js depuis le registre (utils/theme.js) et
+   montre le thème COURANT — plus le suivant du cycle, qui n'existe plus.
+   Les règles .icon-sun / .icon-moon / .icon-discord sont mortes : supprimées. */
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* --- Bouton Aide (?) — halo discret invitant à découvrir l'outil --- */
+/* --- Sélecteur de thème (popover Bento) --- */
+/* Positionné en fixed + left/top calculés par ThemeSelector.js : aucune
+   propriété ne doit fausser getBoundingClientRect, mesuré à l'ouverture.
+   D'où une animation sans scale (translateY ne change pas width/height). */
+.theme-popover {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 900; /* sous .modal-overlay (9999) : la modale d'aide reste au-dessus */
+  padding: 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-bento);
+  box-shadow: var(--shadow-2);
+  animation: themePopIn var(--transition-fast) ease-out;
+}
+
+@keyframes themePopIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+/* 2 colonnes : la grille accepte 3 comme 4 tuiles sans retouche. */
+.theme-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.theme-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 12px 8px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast),
+              color var(--transition-fast), transform var(--transition-fast);
+}
+
+.theme-tile:hover {
+  background: var(--bg-card-hover);
+  border-color: var(--brand-border);
+  color: var(--text-primary);
+  transform: translateY(-1px);
+}
+
+.theme-tile.is-active {
+  background: var(--brand-dim);
+  border-color: var(--brand);
+  color: var(--text-primary);
+}
+
+.theme-tile-icon { display: inline-flex; }
+.theme-tile-icon svg { width: 20px; height: 20px; }
+.theme-tile-label { font-size: 11px; font-weight: 600; }
+
+/* --- Bouton Aide (?) --- */
+/* Le halo pulsant (helpPulse) a ete retire : il clignotait en permanence et
+   concurrençait le popover de thème, ouvert au bouton voisin. */
 .help-btn { color: var(--text-secondary); }
 
 .help-btn:hover {
   color: var(--text-primary);
   border-color: var(--brand-border);
-}
-
-.help-btn::after {
-  content: '';
-  position: absolute;
-  inset: -3px;
-  border-radius: 14px;
-  border: 1px solid var(--brand);
-  opacity: 0;
-  animation: helpPulse 2.4s ease-in-out infinite;
-}
-
-@keyframes helpPulse {
-  0% { opacity: 0; transform: scale(1); }
-  50% { opacity: 0.55; transform: scale(1.05); }
-  100% { opacity: 0; transform: scale(1); }
 }
 
 /* --- Modale d'aide --- */
@@ -725,7 +766,7 @@ body.login-active .main-content {
 
 .login-centered .login-box .btn-secondary.btn-saved {
   background: var(--success);
-  color: #ffffff;
+  color: var(--on-success, #ffffff);
   border-color: var(--success);
   box-shadow: 0 2px 10px var(--success-glow);
 }
@@ -1440,7 +1481,7 @@ input[type="checkbox"]:focus-visible {
 .loader {
   width: 16px;
   height: 16px;
-  border: 2px solid var(--text-primary);
+  border: 2px solid currentColor;
   border-bottom-color: transparent;
   border-radius: 50%;
   display: inline-block;

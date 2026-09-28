@@ -10,7 +10,10 @@ import { escHtml } from './utils/emojiUtils.js';
 import { installAvatarFallbacks } from './utils/domManager.js';
 import { showUserProfileModal } from './components/UserProfileModal.js';
 import { showHelpModal } from './components/HelpModal.js';
+import { toggleThemeSelector } from './components/ThemeSelector.js';
+import { applyTheme, readStoredTheme, THEME_BUTTON_ICON } from './utils/theme.js';
 import { PackageManager } from './components/PackageManager.js';
+import { configurePreloads, preloadPage, preloadPages, isPageCachedFresh, clearPageCaches } from './utils/pagePreloader.js';
 
 // log capture
 window.__logs = [];
@@ -24,35 +27,15 @@ window.__logs = [];
   };
 });
 
-// Thème sombre → clair → discord → sombre — appliqué tôt (défaut dark), persisté.
-const THEME_KEY = 'theme';
-const THEMES = ['dark', 'light', 'discord'];
-const THEME_NEXT_LABEL = {
-  dark: 'Passer en mode clair',
-  light: 'Passer en mode Discord',
-  discord: 'Passer en mode sombre',
-};
-const rootEl = document.documentElement;
-let savedTheme = localStorage.getItem(THEME_KEY);
-if (!THEMES.includes(savedTheme)) savedTheme = 'dark';
-rootEl.dataset.theme = savedTheme;
+// Thème — appliqué au démarrage (défaut dark), puis au clic via le sélecteur
+// Bento flottant. Le registre et la persistance vivent dans utils/theme.js ;
+// le bouton ne fait plus de rotation cyclique, il ouvre le menu.
+// Son icône est fixe (pinceau) : c'est une action « personnaliser », pas la
+// représentation du thème courant. Le libellé est dans index.html.
 const themeToggleBtn = document.getElementById('themeToggleBtn');
-const setThemeTooltip = (theme) => {
-  if (!themeToggleBtn) return;
-  const label = THEME_NEXT_LABEL[THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length]];
-  themeToggleBtn.dataset.tooltip = label;
-  themeToggleBtn.title = label;
-};
-setThemeTooltip(savedTheme);
-themeToggleBtn?.addEventListener('click', () => {
-  const next = THEMES[(THEMES.indexOf(rootEl.dataset.theme) + 1) % THEMES.length];
-  rootEl.dataset.theme = next;
-  localStorage.setItem(THEME_KEY, next);
-  setThemeTooltip(next);
-  themeToggleBtn.classList.remove('rotating');
-  void themeToggleBtn.offsetWidth; // relance l'animation
-  themeToggleBtn.classList.add('rotating');
-});
+applyTheme(readStoredTheme());
+if (themeToggleBtn) themeToggleBtn.innerHTML = THEME_BUTTON_ICON;
+themeToggleBtn?.addEventListener('click', () => toggleThemeSelector(themeToggleBtn));
 
 // Clic sur l'avatar → modale de profil utilisateur (état de session).
 document.getElementById('userAvatarBtn').addEventListener('click', () => showUserProfileModal(window.currentUser));
@@ -65,6 +48,16 @@ window.serverManager = new ServerManager(document.getElementById('servers-page')
 window.friendsManager = new FriendsManager(document.getElementById('friends-page'));
 window.groupManager = new GroupManager(document.getElementById('groups-page'));
 window.packageManager = new PackageManager(document.getElementById('package-page'));
+
+// PagePreloader : cartographie page -> manager (utils/pagePreloader.js), servie au
+// warm-up du login et au préchargement au survol d'un nav-item.
+configurePreloads({
+  friends: { manager: window.friendsManager, refresh: () => window.friendsManager.refreshFriendsList() },
+  servers: { manager: window.serverManager, refresh: () => window.serverManager.refreshServersList() },
+  dms:     { manager: window.dmManager,     refresh: () => window.dmManager.refreshDMsList() },
+  groups:  { manager: window.groupManager,  refresh: () => window.groupManager.refreshGroupsList() },
+  package: { manager: window.packageManager, refresh: () => window.packageManager.render() },
+});
 
 // R03b : fallback des avatars cassés (événement error en capture, CSP-safe).
 installAvatarFallbacks();
@@ -245,6 +238,11 @@ switchPage('login');
 navItems.forEach(item => {
   if (!item.dataset.page) return;
   item.addEventListener('click', () => switchPage(item.dataset.page));
+  // Préchargement au survol : re-warm la page si son cache est absent ou froid.
+  item.addEventListener('mouseenter', () => {
+    if (!window.currentUser) return;
+    if (!isPageCachedFresh(item.dataset.page)) preloadPage(item.dataset.page);
+  });
 });
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -283,10 +281,12 @@ document.getElementById('saveTokenBtn').addEventListener('click', () => saveToke
 
 // Disconnect handler
 document.getElementById('disconnectBtn').addEventListener('click', () => {
+  window.electronAPI.disconnect();
   window._dlOpen = false;
   window._dlPanel?.remove();
   window._dlPanel = null;
   window.currentUser = null;
+  clearPageCaches();
   hideUserProfile();
   toggleNavItems(false);
   switchPage('login');
@@ -321,6 +321,14 @@ async function performConnect(connectPromise) {
       window.currentUser = result.user;
       showUserProfile(result.username, result.avatar);
       toggleNavItems(true);
+
+      // Warm-up : l'interface n'apparaît qu'une fois les 4 listes rendues (le
+      // spinner couvre cette période). On réarme d'abord les caches pour ne
+      // jamais montrer celles d'un compte précédent.
+      clearPageCaches();
+      await preloadPages(['friends', 'servers', 'dms', 'groups']);
+      // Le package part en fond, en dernier, sans bloquer le login.
+      preloadPage('package');
       switchPage('friends');
     } else {
       status.textContent = result.error;

@@ -34,6 +34,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   openExternal: wrap('openExternal', (url) => ipcRenderer.invoke('app:openExternal', url)),
   getAppVersion: wrap('getAppVersion', () => ipcRenderer.invoke('app:getVersion')),
+  disconnect: wrap('disconnect', () => ipcRenderer.invoke('discord:disconnect')),
 
   muteServer: wrap('muteServer', (serverId) => ipcRenderer.invoke('discord:muteServer', serverId)),
   unmuteServer: wrap('unmuteServer', (serverId) => ipcRenderer.invoke('discord:unmuteServer', serverId)),

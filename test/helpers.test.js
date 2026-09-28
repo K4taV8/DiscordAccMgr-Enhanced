@@ -5,7 +5,7 @@ import { snowflakeTs, snowflakeForDate, DISCORD_EPOCH } from '../src/utils/serve
 import { decodeQueue } from '../src/utils/serverReactionRemover.js';
 
 const require = createRequire(import.meta.url);
-const { routeKeyFor, isSnowflake, isOp } = require('../electron/helpers.cjs');
+const { routeKeyFor, isSnowflake, isOp, MESSAGE_BEARING_CHANNEL_TYPES, isMessageBearingChannel } = require('../electron/helpers.cjs');
 
 test('routeKeyFor masks snowflakes in path segments', () => {
   assert.equal(routeKeyFor('/users/@me/guilds'), '/users/@me/guilds');
@@ -30,6 +30,26 @@ test('isOp only accepts known checkpoint operations', () => {
   assert.equal(isOp('deleteFriend'), false);
   assert.equal(isOp(''), false);
   assert.equal(isOp(undefined), false);
+});
+
+// Le chat textuel integre d'un salon vocal (2) et d'une scene (13) s'adresse par
+// l'ID du salon lui-meme : il doit donc etre scannable comme un salon texte.
+test('MESSAGE_BEARING_CHANNEL_TYPES covers text, voice and stage channels', () => {
+  assert.deepEqual(MESSAGE_BEARING_CHANNEL_TYPES, [0, 2, 5, 10, 11, 12, 13, 15, 16]);
+});
+
+test('isMessageBearingChannel accepts every scannable guild channel type', () => {
+  for (const type of [0, 2, 5, 10, 11, 12, 13, 15, 16]) {
+    assert.equal(isMessageBearingChannel(type), true, `type ${type} doit etre scannable`);
+  }
+});
+
+// 1/3 : DMs et groupes ont leurs propres endpoints, jamais listes par
+// getServerChannels. 4 : categorie. 14 : repertoire. Aucun chat texte.
+test('isMessageBearingChannel rejects guild channels without a text chat', () => {
+  for (const type of [1, 3, 4, 14]) {
+    assert.equal(isMessageBearingChannel(type), false, `type ${type} ne doit pas etre scannable`);
+  }
 });
 
 test('snowflakeTs / snowflakeForDate round-trip', () => {

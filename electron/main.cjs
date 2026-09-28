@@ -1,4 +1,4 @@
-﻿const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require('electron');
 
 // Switches Chromium pour accélérer le cold boot et limiter la VRAM.
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
@@ -14,7 +14,7 @@ const fsp = require('fs/promises');
 axios.defaults.timeout = 15000;
 
 const { readJson, writeJson } = require('./persist.cjs');
-const { routeKeyFor, isSnowflake, isOp } = require('./helpers.cjs');
+const { routeKeyFor, isSnowflake, isOp, isMessageBearingChannel } = require('./helpers.cjs');
 const { createTokenStore } = require('./tokenStore.cjs');
 
 // 100% portable : TOUTES les données (userData, session, cache, crashDumps,
@@ -151,15 +151,11 @@ async function discordFetch(method, path, { data, params } = {}) {
       validateStatus: () => true,
     });
     scheduler.applyHeaders(key, resp.headers);
-    httpStats.requests++;
-    httpStats.byRoute.set(key, (httpStats.byRoute.get(key) || 0) + 1);
     if (resp.status === 429) {
-      httpStats.rateLimited++;
       return { success: false, status: 429, error: 'Rate limited', retryAfter: parseInt(resp.headers?.['retry-after']) || 5 };
     }
     return { success: resp.status >= 200 && resp.status < 300, status: resp.status, data: resp.data, headers: resp.headers };
   } catch (error) {
-    httpStats.requests++;
     return { success: false, status: 0, error: error.message };
   } finally {
     release();
@@ -289,9 +285,6 @@ const { makeRouteScheduler } = require('./rateLimiter.cjs');
 const readScheduler = makeRouteScheduler({ nominalRatePerSec: 25, burst: 16, maxConcurrent: 12 });
 const deleteScheduler = makeRouteScheduler({ nominalRatePerSec: 4, burst: 2, maxConcurrent: 4 });
 
-// Statistiques HTTP (phase E) — exposées via app:getHttpStats
-const httpStats = { requests: 0, rateLimited: 0, byRoute: new Map() };
-
 ipcMain.handle('discord:readAll', async () => {
   try {
     if (!discordClient?.token) {
@@ -403,7 +396,16 @@ ipcMain.handle('tokens:deleteAll', () => tokenStore.removeAll());
 ipcMain.handle('tokens:connectByName', async (_, name) => {
   const resolved = await tokenStore.resolveByName(name);
   if (resolved.error) return { success: false, error: resolved.error };
-  return connectDiscord(resolved.token);
+  // Perf : si le compte cible est DEJA connecte (meme userId en session), on
+  // reutilise la session au lieu de re-loggner - "Use" apres Ctrl+R/re-Use
+  // passe d'un handshake Discord (5-25 s) a ~0 ms de login.
+  const live = discordClient;
+  if (resolved.userId && live?.isReady?.() && String(live.user?.id) === String(resolved.userId)) {
+    return { success: true, reused: true, ...connectPayload(live.user) };
+  }
+  const result = await connectDiscord(resolved.token);
+  if (result.success && result.user?.id) tokenStore.setUserId(name, result.user.id).catch(() => {});
+  return result;
 });
 
 // Updates disabled
@@ -413,40 +415,40 @@ ipcMain.handle('app:downloadUpdate', async () => ({ success: true }));
 // Version — single source of truth: package.json (via Electron)
 ipcMain.handle('app:getVersion', async () => app.getVersion());
 
-// Phase E : instrumentation HTTP (débit réel, 429, budget par route)
-ipcMain.handle('app:getHttpStats', async () => ({
-  requests: httpStats.requests,
-  rateLimited: httpStats.rateLimited,
-  routes: Object.fromEntries(httpStats.byRoute),
-}));
-
 // Discord handlers
+function connectPayload(u) {
+  const cdn = (base, hash) => hash ? `https://cdn.discordapp.com/${base}/${u.id}/${hash}.${hash.startsWith('a_') ? 'gif' : 'png'}` : null;
+  return {
+    username: u.tag,
+    avatar: cdn('avatars', u.avatar) ? `${cdn('avatars', u.avatar)}?size=64` : 'https://cdn.discordapp.com/embed/avatars/0.png',
+    user: {
+      id: u.id,
+      username: u.username,
+      displayName: u.globalName || u.username,
+      avatar: cdn('avatars', u.avatar),
+    },
+  };
+}
+
 async function connectDiscord(token) {
   if (connecting) return { success: false, error: 'Already connecting' };
   connecting = true;
   try {
     // BUG-04 : ne détruit l'ancien client qu'après le succès du login —
     // un échec de connexion laisse l'utilisateur connecté au client précédent.
+    // Perf : fermer la session courante AVANT d'ouvrir la suivante. Deux
+    // websockets simultanes sur le meme token font plafonner/backoffer le
+    // nouveau login chez Discord (pics de latence). Comportement : switch de
+    // compte -- si le nouveau login echoue, on retombe sur l'ecran login.
+    if (discordClient) { try { const p = discordClient.destroy(); if (p?.catch) p.catch(() => {}); } catch {} discordClient = null; }
     const { Client } = require('discord.js-selfbot-v13');
     const next = new Client({ checkUpdate: false, fetchAllMembers: false });
     await next.login(token);
-    if (discordClient) { try { const p = discordClient.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
     discordClient = next;
     // R05#4 : l'objet user (id, global_name, avatar) part avec le résultat de
     // connexion → la modale profil l'a sans API call.
     const u = next.user;
-    const cdn = (base, hash) => hash ? `https://cdn.discordapp.com/${base}/${u.id}/${hash}.${hash.startsWith('a_') ? 'gif' : 'png'}` : null;
-    return {
-      success: true,
-      username: u.tag,
-      avatar: cdn('avatars', u.avatar) ? `${cdn('avatars', u.avatar)}?size=64` : 'https://cdn.discordapp.com/embed/avatars/0.png',
-      user: {
-        id: u.id,
-        username: u.username,
-        displayName: u.globalName || u.username,
-        avatar: cdn('avatars', u.avatar),
-      },
-    };
+    return { success: true, ...connectPayload(u) };
   } catch (error) {
     console.error('Connect error:', error.message);
     return { success: false, error: error.message || 'Connection failed' };
@@ -456,6 +458,17 @@ async function connectDiscord(token) {
 }
 
 ipcMain.handle('discord:connect', async (_, token) => connectDiscord(token));
+
+ipcMain.handle('discord:disconnect', async () => {
+  try {
+    if (discordClient) {
+      const p = discordClient.destroy();
+      if (p?.catch) p.catch(() => {});
+    }
+  } catch {}
+  discordClient = null;
+  return { success: true };
+});
 
 ipcMain.handle('discord:getFriends', async () => {
   const r = await discordFetch('GET', '/users/@me/relationships');
@@ -467,7 +480,7 @@ ipcMain.handle('discord:getFriends', async () => {
       id: friend.user.id,
       username: friend.user.username,
       displayName: friend.user.global_name || friend.user.username,
-      avatar: friend.user.avatar ? `https://cdn.discordapp.com/avatars/${friend.user.id}/${friend.user.avatar}.png` : 'https://cdn.discordapp.com/embed/avatars/0.png'
+      avatar: friend.user.avatar ? `https://cdn.discordapp.com/avatars/${friend.user.id}/${friend.user.avatar}.png?size=64` : 'https://cdn.discordapp.com/embed/avatars/0.png'
     }));
 
   return { success: true, friends };
@@ -483,7 +496,7 @@ ipcMain.handle('discord:getDMs', async () => {
       username: dm.recipients?.[0]?.username || 'Unknown User',
       displayName: dm.recipients?.[0]?.global_name || dm.recipients?.[0]?.username || 'Unknown User',
       avatar: dm.recipients?.[0]?.avatar
-        ? `https://cdn.discordapp.com/avatars/${dm.recipients[0].id}/${dm.recipients[0].avatar}.png`
+        ? `https://cdn.discordapp.com/avatars/${dm.recipients[0].id}/${dm.recipients[0].avatar}.png?size=64`
         : 'https://cdn.discordapp.com/embed/avatars/0.png'
     }));
   return { success: true, dms };
@@ -537,25 +550,27 @@ ipcMain.handle('discord:deleteFriend', async (_, friendId) => {
 // Phase C : cache persistant de la liste des serveurs (lancement instantané).
 // La correction (force=true) contourne le cache — aucune donnée périmée après mutation.
 const SERVERS_CACHE_TTL = 30000;
-const serversCachePath = () => path.join(app.getPath('userData'), 'servers_cache.json');
+// Cache indexe par compte : un compte B ne voit pas les serveurs du compte A (fuite 30 s).
+const serversCachePath = (userId) => path.join(app.getPath('userData'), `servers_cache.${String(userId || 'unknown')}.json`);
 
 // ARCH-04 : cache serveurs en écriture atomique (tmp+rename, async) via persist.cjs —
 // plus de fs synchrone dans le main process, cohérent avec P1.
-async function readServersCache() {
+async function readServersCache(userId) {
   try {
-    const { at, servers } = (await readJson(serversCachePath())) || {};
+    const { at, servers } = (await readJson(serversCachePath(userId))) || {};
     if (Date.now() - at < SERVERS_CACHE_TTL && Array.isArray(servers)) return servers;
   } catch {}
   return null;
 }
 
-function writeServersCache(servers) {
-  return writeJson(serversCachePath(), { at: Date.now(), servers }).catch(() => {});
+function writeServersCache(userId, servers) {
+  return writeJson(serversCachePath(userId), { at: Date.now(), servers }).catch(() => {});
 }
 
 ipcMain.handle('discord:getServers', async (_, force = false) => {
+  const userId = discordClient?.user?.id;
   if (!force) {
-    const cached = await readServersCache();
+    const cached = await readServersCache(userId);
     if (cached) return { success: true, servers: cached };
   }
   const r = await discordFetch('GET', '/users/@me/guilds');
@@ -566,10 +581,10 @@ ipcMain.handle('discord:getServers', async (_, force = false) => {
     name: server.name,
     owner: !!server.owner,
     icon: server.icon
-      ? `https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png`
+      ? `https://cdn.discordapp.com/icons/${server.id}/${server.icon}.png?size=64`
       : 'https://cdn.discordapp.com/embed/avatars/0.png'
   }));
-  await writeServersCache(servers);
+  await writeServersCache(userId, servers);
   return { success: true, servers };
 });
 
@@ -586,9 +601,11 @@ ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
   const r = await discordFetch('GET', `/guilds/${serverId}/channels`);
   if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
 
-  // types: 0=text, 2=voice, 5=announcement, 10=announcement-thread, 11=public-thread, 12=private-thread, 15=forum, 16=media
+  // Le chat intégré des salons vocaux (2) et des scènes (13) est inclus : leurs
+  // messages se suppriment via /channels/{voiceId}/messages comme un salon texte.
+  // Voir MESSAGE_BEARING_CHANNEL_TYPES dans helpers.cjs.
   const channels = r.data
-    .filter(ch => [0, 5, 10, 11, 12, 15, 16].includes(ch.type))
+    .filter(ch => isMessageBearingChannel(ch.type))
     .map(ch => ({ id: ch.id, name: ch.name, type: ch.type }));
   channelsCache.set(serverId, { at: Date.now(), channels });
   return { success: true, channels, currentUserId: discordClient.user?.id };

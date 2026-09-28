@@ -222,6 +222,93 @@
   --shadow-brand:    0 4px 22px rgba(88, 101, 242, 0.3);
 }
 
+/* Monochrome : nuances de gris, aucun accent colore, aucun noir pur.
+   Les tons "danger" / "crimson" / "amber" sont differencies par NIVEAU DE
+   GRIS et non par teinte : sans hue, c est la seule hierarchie qui reste
+   lisible entre "quitter le serveur" et "supprimer des messages". */
+:root[data-theme="mono"] {
+  --bg-body:          #0b0b0b;
+  --bg-sidebar:       #101010;
+  --bg-surface:       #131313;
+  --bg-card:          #1a1a1a;
+  --bg-card-hover:    #242424;
+  --bg-bento:         #161616;
+  --bg-input:         #202020;
+  --bg-modal:         #1a1a1a;
+  --bg-spotlight:     #161616;
+
+  --text-primary:     #f0f0f0;
+  --text-secondary:   #a6a6a6;
+  --text-muted:       #7a7a7a;
+
+  --border-color:     rgba(255, 255, 255, 0.10);
+  --border-card:      rgba(255, 255, 255, 0.07);
+  --border-subtle:    rgba(255, 255, 255, 0.05);
+  --border-strong:    rgba(255, 255, 255, 0.22);
+  --hover-overlay:    rgba(255, 255, 255, 0.04);
+
+  --brand:            #d4d4d4;
+  --brand-text:       #0b0b0b;
+  --brand-glow:       rgba(212, 212, 212, 0.18);
+  --brand-dim:        rgba(212, 212, 212, 0.10);
+  --brand-border:     rgba(212, 212, 212, 0.30);
+  --btn-primary-bg:   #9e9e9e;
+  --accent:           #d4d4d4;
+  --accent-hover:     #bfbfbf;
+  --accent-light:     #1f1f1f;
+
+  --success:          #8f8f8f;
+  --success-glow:     rgba(143, 143, 143, 0.20);
+  --on-success:       #0b0b0b;
+  --danger:           #e8e8e8;
+  --danger-glow:      rgba(232, 232, 232, 0.24);
+  --danger-bg:        rgba(255, 255, 255, 0.08);
+  --danger-text:      #ededed;
+  --danger-border:    rgba(255, 255, 255, 0.28);
+
+  --btn-neutre-bg:        #262626;
+  --btn-neutre-text:      #e0e0e0;
+  --btn-neutre-border:    rgba(255, 255, 255, 0.10);
+
+  --btn-danger-bg:        rgba(255, 255, 255, 0.08);
+  --btn-danger-text:      #e6e6e6;
+  --btn-danger-border:    rgba(255, 255, 255, 0.26);
+  --btn-danger-hover-bg:  #ededed;
+  --btn-danger-hover-text:#0b0b0b;
+  --btn-danger-hover-border:#ededed;
+
+  --btn-amber-bg:        rgba(255, 255, 255, 0.06);
+  --btn-amber-text:      #b0b0b0;
+  --btn-amber-border:    rgba(255, 255, 255, 0.16);
+  --btn-amber-hover-bg:  #b0b0b0;
+  --btn-amber-hover-text:#0b0b0b;
+  --btn-amber-hover-border:#b0b0b0;
+
+  --btn-crimson-bg:        rgba(255, 255, 255, 0.12);
+  --btn-crimson-text:      #ededed;
+  --btn-crimson-border:    rgba(255, 255, 255, 0.32);
+  --btn-crimson-hover-bg:  #ededed;
+  --btn-crimson-hover-text:#0b0b0b;
+  --btn-crimson-hover-border:#ededed;
+
+  --owner-badge-bg:       rgba(255, 255, 255, 0.08);
+  --owner-badge-text:     #d0d0d0;
+  --owner-badge-border:   rgba(255, 255, 255, 0.24);
+
+  --action-grid-bg:       rgba(255, 255, 255, 0.02);
+  --action-grid-border:   rgba(255, 255, 255, 0.06);
+
+  --checkbox-border:      rgba(255, 255, 255, 0.36);
+  --dock-bg:              rgba(16, 16, 16, 0.82);
+
+  --card-shadow:          0 2px 10px rgba(6, 6, 6, 0.55);
+  --modal-shadow:         0 12px 32px rgba(6, 6, 6, 0.65);
+  --shadow-1:             var(--card-shadow);
+  --shadow-2:             var(--modal-shadow);
+  --shadow-convex:        3px 3px 8px rgba(6, 6, 6, 0.50), -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-concave:       inset 2px 2px 6px rgba(6, 6, 6, 0.50), inset -2px -2px 6px rgba(255, 255, 255, 0.02);
+  --shadow-brand:         0 4px 22px rgba(6, 6, 6, 0.60);
+}
 :root {
   --radius-sm: 8px;
   --radius-md: 12px;
@@ -310,6 +397,14 @@ p, span, label, input {
 }
 
 .btn-primary:active { transform: translateY(0); }
+
+[data-theme="mono"] .btn-primary,
+[data-theme="mono"] .btn-primary:hover,
+[data-theme="mono"] .btn-primary:active {
+  background: var(--btn-primary-bg);
+  color: var(--brand-text);
+  border: 1px solid #888888;
+}
 
 .btn-secondary {
   background: var(--bg-card);

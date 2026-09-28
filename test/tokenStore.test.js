@@ -135,3 +135,33 @@ test('concurrent saves are serialized — no lost update (BUG-03)', async () => 
   assert.equal(tokens.length, 10);
   assert.deepEqual(tokens.map(t => t.name).sort(), Array.from({ length: 10 }, (_, i) => 't' + i).sort());
 });
+test('resolveByName returns the stored userId for re-login reuse', async () => {
+  const { store } = freshStore();
+  await store.save('main', 'SECRET_TOKEN');
+  await store.setUserId('main', '432112345');
+  const resolved = await store.resolveByName('main');
+  assert.equal(resolved.token, 'SECRET_TOKEN');
+  assert.equal(resolved.userId, '432112345');
+});
+
+test('resolveByName without stored userId keeps legacy shape', async () => {
+  const { store } = freshStore();
+  await store.save('main', 'SECRET_TOKEN');
+  const resolved = await store.resolveByName('main');
+  assert.deepEqual(resolved, { token: 'SECRET_TOKEN' });
+});
+
+test('setUserId ignores unknown names and leaves other entries intact', async () => {
+  const { store } = freshStore();
+  await store.save('a', '1');
+  await store.save('b', '2');
+  const r = await store.setUserId('nope', '99');
+  assert.equal(r.success, false);
+  assert.equal((await store.setUserId('a', '123')).success, true);
+  const ra = await store.resolveByName('a');
+  assert.equal(ra.userId, '123');
+  assert.equal(ra.token, '1');
+  const rb = await store.resolveByName('b');
+  assert.equal(rb.userId, undefined);
+  assert.equal(rb.token, '2');
+});
