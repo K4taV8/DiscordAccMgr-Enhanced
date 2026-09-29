@@ -5,6 +5,7 @@ import { removeServerReactions } from '../utils/serverReactionRemover.js';
 import { escHtml } from '../utils/emojiUtils.js';
 import { cachedListRefresh, delegate } from '../utils/domManager.js';
 import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
+import { openCleaningModeSelector } from './CleaningModeSelector.js';
 
 export class ServerManager {
   constructor(contentArea) {
@@ -27,13 +28,13 @@ export class ServerManager {
 
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.toggleSelectAllServers(),
+      onDeselectAll: () => this.deselectAllServers(),
       actions: [
-        { label: '👁️ Marquer comme lu', className: 'btn-primary', onClick: () => this.readSelectedServers() },
-        { label: '🔕 Muter', onClick: () => this.muteSelectedServers() },
-        { label: '🗑️ Supprimer les messages', className: 'btn-danger', onClick: () => this.deleteSelectedServersMessages() },
-        { label: '💥 Supprimer les réactions', className: 'btn-danger', onClick: () => this.removeSelectedServersReactions() },
-        { label: '⚡ Nettoyer & Quitter', className: 'dock-combo', onClick: () => this.cleanAndLeaveSelected() },
-        { label: '🚪 Quitter', className: 'btn-danger', onClick: () => this.leaveSelectedServers() },
+        { label: '👁️ Marquer comme lu', tip: 'Marque tous les serveurs sélectionnés comme lus (aucune suppression).', className: 'btn-primary', onClick: () => this.readSelectedServers() },
+        { label: '🔕 Muter', tip: 'Coupe les notifications des serveurs sélectionnés.', onClick: () => this.muteSelectedServers() },
+        // Les 3 doublons (messages / réactions / quitter) sont couverts par les
+        // 4 modes de « Nettoyer » : on ne les garde pas deux fois dans la barre.
+        { label: '🧹 Nettoyer', tip: 'Ouvrir les 4 modes : messages, réactions, les deux, ou tout + quitter le serveur.', className: 'dock-combo', onClick: (btn) => this.openCleaningMode(btn) },
       ],
     });
   }
@@ -183,26 +184,17 @@ export class ServerManager {
     this.updateSelectedServersCount();
   }
 
+  // Vide la sélection quoi qu'il reste de coché — le toggle « Tout sélectionner »
+  // ne décoche que si TOUT était coché, sinon il rebranche tout.
+  deselectAllServers() {
+    document.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = false; });
+    this.updateSelectedServersCount();
+  }
+
   updateSelectedServersCount() {
     const total = document.querySelectorAll('.server-checkbox').length;
     const selected = document.querySelectorAll('.server-checkbox:checked').length;
     this.selectionDock.sync(selected, total);
-  }
-
-  async leaveSelectedServers() {
-    const selectedServers = document.querySelectorAll('.server-checkbox:checked');
-    if (selectedServers.length === 0) return;
-    if (!(await confirmAction('Leave Servers', `Leave ${selectedServers.length} selected server(s)? This cannot be undone.`))) return;
-    for (const checkbox of selectedServers) {
-      const serverItem = checkbox.closest('.bento-card');
-      try {
-        await window.electronAPI.leaveServer(serverItem.dataset.id);
-        serverItem.remove();
-      } catch (error) {
-        console.error('Failed to leave server:', error);
-      }
-    }
-    this.refreshServersList(true);
   }
 
   async deleteServerMessages(serverId) {
@@ -218,29 +210,6 @@ export class ServerManager {
         electronAPI: window.electronAPI,
         onComplete: () => {}
       });
-    } finally {
-      this.isDeleting = false;
-    }
-  }
-
-  async deleteSelectedServersMessages() {
-    if (this.isDeleting) return;
-    const selectedCount = document.querySelectorAll('.server-checkbox:checked').length;
-    if (selectedCount === 0) return;
-    if (!(await confirmAction('Delete Messages', `Delete your messages in ${selectedCount} selected server(s)? This cannot be undone.`))) return;
-    this.isDeleting = true;
-    try {
-      const selectedServers = document.querySelectorAll('.server-checkbox:checked');
-      for (const checkbox of selectedServers) {
-        const serverItem = checkbox.closest('.bento-card');
-        await deleteServerMessages({
-          serverId: serverItem.dataset.id,
-          serverName: serverItem.querySelector('.bento-name')?.textContent || 'server',
-          electronAPI: window.electronAPI,
-          onComplete: () => {}
-        });
-      }
-      this.refreshServersList(true);
     } finally {
       this.isDeleting = false;
     }
@@ -264,29 +233,6 @@ export class ServerManager {
     }
   }
 
-  async removeSelectedServersReactions() {
-    if (this.isDeleting) return;
-    const selectedCount = document.querySelectorAll('.server-checkbox:checked').length;
-    if (selectedCount === 0) return;
-    if (!(await confirmAction('Remove Reactions', `Remove your reactions in ${selectedCount} selected server(s)?`))) return;
-    this.isDeleting = true;
-    try {
-      const selectedServers = document.querySelectorAll('.server-checkbox:checked');
-      for (const checkbox of selectedServers) {
-        const serverItem = checkbox.closest('.bento-card');
-        await removeServerReactions({
-          serverId: serverItem.dataset.id,
-          serverName: serverItem.querySelector('.bento-name')?.textContent || 'server',
-          electronAPI: window.electronAPI,
-          onComplete: () => {}
-        });
-      }
-      this.refreshServersList(true);
-    } finally {
-      this.isDeleting = false;
-    }
-  }
-
   copyToClipboard = copyToClipboard;
 
   async leaveServer(btn, serverId) {
@@ -301,27 +247,47 @@ export class ServerManager {
     }
   }
 
-  // Combo 3-en-1 : Delete messages → Remove reactions → Leave, dans l'ordre.
-  // Chaque étape tolère l'échec ; la sortie (Leave) est toujours tentée.
-  async cleanAndLeaveSelected() {
+  openCleaningMode(anchor) {
+    openCleaningModeSelector(anchor, {
+      onSelect: (mode) => this.executeCleaningMode(mode),
+    });
+  }
+
+  // Un seul point d'entrée pour les 4 modes de nettoyage. Ordre fixe
+  // (messages → réactions → sortie) ; chaque étape tolère l'échec.
+  async executeCleaningMode(mode) {
     if (this.isDeleting) return;
     const items = [...document.querySelectorAll('.server-checkbox:checked')]
       .map(cb => cb.closest('.bento-card'))
       .filter(Boolean);
     if (items.length === 0) return;
-    if (!(await confirmAction('Nettoyer & Quitter', `Delete messages, remove reactions and leave ${items.length} selected server(s)? This cannot be undone.`))) return;
+
+    const modeLabels = {
+      messages: 'supprimer vos messages',
+      reactions: 'supprimer vos réactions',
+      both: 'supprimer vos messages ET vos réactions',
+      full: 'supprimer vos messages, vos réactions et quitter',
+    };
+    if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${items.length} serveur(s) sélectionné(s) ?`))) return;
+
     this.isDeleting = true;
     try {
       for (const item of items) {
         const serverId = item.dataset.id;
         const serverName = item.querySelector('.bento-name')?.textContent || 'server';
-        try {
-          await deleteServerMessages({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
-        } catch (e) { console.error('Combo delete failed:', e); }
-        try {
-          await removeServerReactions({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
-        } catch (e) { console.error('Combo reactions failed:', e); }
-        try { await window.electronAPI.leaveServer(serverId); } catch (e) { console.error('Combo leave failed:', e); }
+        if (mode === 'messages' || mode === 'both' || mode === 'full') {
+          try {
+            await deleteServerMessages({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
+          } catch (e) { console.error('Cleaning delete failed:', e); }
+        }
+        if (mode === 'reactions' || mode === 'both' || mode === 'full') {
+          try {
+            await removeServerReactions({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
+          } catch (e) { console.error('Cleaning reactions failed:', e); }
+        }
+        if (mode === 'full') {
+          try { await window.electronAPI.leaveServer(serverId); } catch (e) { console.error('Cleaning leave failed:', e); }
+        }
       }
       this.refreshServersList(true);
     } finally {

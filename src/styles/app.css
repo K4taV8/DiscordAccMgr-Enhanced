@@ -149,6 +149,29 @@
   box-shadow: 0 4px 14px var(--brand-glow);
 }
 
+/* Indicateur « tu es ici » : petite barre verticale au bord gauche du rail.
+   Le pseudo est présent en permanence (scaleY 0) et non créé à la volée :
+   une transition ne se déclenche pas sur un élément qui vient d'apparaître,
+   donc on garde la même barre et on la fait grandir. */
+.nav-item::before {
+  content: '';
+  position: absolute;
+  left: -14px;              /* rail 76px - item 48px = 14px de marge */
+  top: 50%;
+  width: 3px;
+  height: 26px;
+  border-radius: 0 3px 3px 0;
+  background: var(--brand);   /* suit le thème : violet, blurple, gris (mono) */
+  box-shadow: 0 0 6px var(--brand-glow);
+  transform: translateY(-50%) scaleY(0);
+  transition: transform var(--transition-fast);
+  pointer-events: none;
+}
+
+.nav-item.active::before {
+  transform: translateY(-50%) scaleY(1);
+}
+
 .nav-item.hidden { display: none; }
 
 .nav-item svg {
@@ -237,70 +260,86 @@
   height: 20px;
 }
 
-/* --- Toggle Thème (Orb) --- */
-.theme-toggle {
-  width: 38px;
-  height: 38px;
-  min-width: 38px;
-  min-height: 38px;
-  padding: 0;
-  margin: 0 auto 12px auto;
-  border-radius: 50%;
-  background: linear-gradient(145deg, var(--bg-card), var(--bg-surface));
-  border: 1px solid var(--border-color);
-  box-shadow: var(--shadow-convex), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  color: var(--text-secondary);
-  overflow: hidden;
-  cursor: pointer;
-  transition: transform var(--transition-fast), background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
-}
+/* --- Bouton Thème (uniformisé : même gabarit que les autres nav-items) --- */
+/* L'icône pinceau est injectée par main.js depuis utils/theme.js (une icône
+   d'action, distincte des icônes de thème de la grille). */
+.theme-toggle { color: var(--text-secondary); }
 
 .theme-toggle:hover {
   color: var(--text-primary);
   border-color: var(--brand-border);
-  transform: scale(1.08);
 }
 
 .theme-toggle svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
 }
 
-/* L'icône est rendue par main.js depuis le registre (utils/theme.js) et
-   montre le thème COURANT — plus le suivant du cycle, qui n'existe plus.
-   Les règles .icon-sun / .icon-moon / .icon-discord sont mortes : supprimées. */
-.theme-toggle {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* --- Sélecteur de thème (popover Bento) --- */
-/* Positionné en fixed + left/top calculés par ThemeSelector.js : aucune
-   propriété ne doit fausser getBoundingClientRect, mesuré à l'ouverture.
-   D'où une animation sans scale (translateY ne change pas width/height). */
+/* --- Sélecteur de thème (îlot flottant, vitré, centré en bas) --- */
+/* Position fixed + left/top calculés par ThemeSelector.js : aucune propriété
+   ne doit fausser getBoundingClientRect, mesuré à l'ouverture. D'où une
+   micro-animation sans scale (translateY ne change pas width/height). Le fond
+   vitré (color-mix + blur) laisse transparaître la page derrière l'îlot. */
 .theme-popover {
   position: fixed;
   left: 0;
   top: 0;
   z-index: 900; /* sous .modal-overlay (9999) : la modale d'aide reste au-dessus */
-  padding: 10px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border-strong);
+  padding: 12px 14px 14px;
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid color-mix(in srgb, var(--border-strong) 60%, transparent);
   border-radius: var(--radius-bento);
   box-shadow: var(--shadow-2);
-  animation: themePopIn var(--transition-fast) ease-out;
+  animation: popIn 0.2s cubic-bezier(0.22, 1, 0.36, 1); /* fluide, 1 passage */
+  transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.2s cubic-bezier(0.22, 1, 0.36, 1); /* réservé à la sortie */
 }
 
-@keyframes themePopIn {
-  from { opacity: 0; transform: translateY(4px); }
+.theme-popover-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+.theme-popover-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.theme-popover-now {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+/* Micro animation d'apparition : le moins cher possible — une seule passe de
+   fade + légère remontée. Aucun scale. Partagée par l'îlot de thème ET la
+   modale d'aide (mêmes keyframes, donc le même geste).
+   Volontairement pas de garde prefers-reduced-motion : l'OS de l'utilisateur
+   le signale alors que le choix de montrer la micro-animation est explicite. */
+@keyframes popIn {
+  from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: none; }
 }
 
-/* 2 colonnes : la grille accepte 3 comme 4 tuiles sans retouche. */
+/* Sortie : fade + léger repli avant retrait du noeud (classe posée par
+   close() dans ThemeSelector.js). Une seule passe, sans garde non plus. */
+.theme-popover.is-closing {
+  animation: none;
+  opacity: 0;
+  transform: translateY(8px);
+}
+
+/* 1 rangée de 4 : Light · Dark · Discord · Mono, alignée de gauche à droite
+   (ordre affiché piloté par ThemeSelector.js). */
 .theme-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
 }
 
@@ -310,7 +349,7 @@
   align-items: center;
   gap: 6px;
   width: 100%;
-  padding: 12px 8px;
+  padding: 12px 10px;
   background: var(--bg-card);
   border: 1px solid var(--border-color);
   border-radius: var(--radius-sm);
@@ -334,8 +373,17 @@
 }
 
 .theme-tile-icon { display: inline-flex; }
-.theme-tile-icon svg { width: 20px; height: 20px; }
-.theme-tile-label { font-size: 11px; font-weight: 600; }
+.theme-tile-icon svg { width: 24px; height: 24px; }
+.theme-tile-label { font-size: 12px; font-weight: 600; text-align: center; }
+
+/* --- Sélecteur de mode de nettoyage --- */
+/* Mêmes tuiles que le thème, mais le header ne porte qu'un titre : sans ça il
+   restait collé à gauche (le space-between du thème existe pour le libellé
+   courant à droite). Ici tout est centré. */
+.clean-mode-popover .theme-popover-header {
+  justify-content: center;
+  text-align: center;
+}
 
 /* --- Bouton Aide (?) --- */
 /* Le halo pulsant (helpPulse) a ete retire : il clignotait en permanence et
@@ -347,37 +395,78 @@
   border-color: var(--brand-border);
 }
 
-/* --- Modale d'aide --- */
-.help-modal { max-width: 460px; gap: 14px; }
+/* --- Modale d'aide : large, 4 actions en une seule rangée --- */
+/* Même ouverture/fermeture que l'îlot de thème : popIn à l'entrée (on écrase
+   le scaleUp générique de .modal-content, plus précis), et la classe
+   is-closing posée par close() pour la sortie. */
+.modal-content.help-modal {
+  max-width: 760px;
+  gap: 16px;
+  animation: popIn 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 0.2s cubic-bezier(0.22, 1, 0.36, 1),
+              transform 0.2s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.modal-content.help-modal.is-closing {
+  animation: none;
+  opacity: 0;
+  transform: translateY(8px);
+}
 
 .help-modal h2 { text-align: center; }
 
+.help-modal-intro {
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+  margin: 0;
+}
+
+/* 1 rangée stricte de 4 : chaque carte reste une colonne interne. */
+.help-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+
 .help-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: 100%;
   background: var(--bg-card-hover);
   border: 1px solid var(--border-color);
   border-radius: 10px;
   padding: 12px 14px;
 }
 
-.help-card h3 {
+.help-modal .help-card h3 {
   font-size: 13px;
   font-weight: 700;
-  margin-bottom: 4px;
+  margin: 0;
   color: var(--text-primary);
+  text-align: left;
 }
 
-.help-card p {
+.help-modal .help-card p {
   font-size: 12px;
   color: var(--text-secondary);
   margin: 0;
   line-height: 1.5;
+  text-align: left;
 }
 
-.help-card .use-case {
-  font-size: 0.85rem;
+.help-modal .help-card .use-case {
+  margin-top: auto; /* colle la ligne d'usage en bas de la carte, toutes égalisées */
+  font-size: 11px;
   font-style: italic;
   color: #a78bfa;
-  margin-top: 6px;
+}
+
+.modal-content.help-modal #helpCloseBtn {
+  align-self: center;
+  padding: 8px 28px;
 }
 
 /* --- Modal Profil Utilisateur (carte style Discord natif) --- */
@@ -1244,6 +1333,19 @@ body.login-active .main-content {
   border-color: var(--btn-crimson-hover-border);
 }
 
+/* Violet brand — nettoyage combiné (messages + réactions, sans sortie). */
+.foot-btn.combo {
+  background: var(--brand-dim);
+  color: var(--text-primary);
+  border-color: var(--brand);
+}
+
+.foot-btn.combo:hover {
+  background: var(--brand);
+  color: var(--brand-text);
+  border-color: var(--brand);
+}
+
 .btn-xs {
   height: 28px;
   padding: 0 10px;
@@ -1301,33 +1403,40 @@ body.login-active .main-content {
 
 .bento-grid.list-view .bento-foot .foot-btn { width: auto; }
 
-/* --- Barre d'action Batch (fixée en haut, sous l'en-tête) --- */
+/* --- Barre d'action Batch (îlot flottant, centré en bas) --- */
 .selection-dock {
   position: fixed;
-  top: 40px;               /* sous la title bar (32px) */
-  left: 92px;              /* après la sidebar (76px) + marge */
-  right: 16px;
+  left: 50%;
+  bottom: 18px;
+  right: auto;
+  /* max-content, PAS auto : avec left: 50%, une largeur auto se calcule sur la
+     place disponible à droite de 50% (50vw) et la rangée deborderait. */
+  width: max-content;
+  max-width: calc(100vw - 32px);
   min-height: 56px;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 16px;
-  background: var(--dock-bg);
-  background: rgba(15, 17, 23, 0.85);
+  justify-content: center;
+  flex-wrap: nowrap;        /* une seule rangée, jamais de retour à la ligne */
+  gap: 8px;
+  padding: 10px 12px;
+  background: color-mix(in srgb, var(--bg-surface) 78%, transparent);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   border: 1px solid var(--border-color);
   border-radius: 14px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   z-index: 100;
   opacity: 0;
   pointer-events: none;
-  transform: translateY(-8px);
+  /* -50% = centrage horizontal ; 8px = caché plus bas que sa place finale. */
+  transform: translate(-50%, 8px);
   transition: opacity var(--transition-smooth), transform var(--transition-smooth);
 }
 
 .selection-dock.show {
   opacity: 1;
-  transform: translateY(0);
+  transform: translate(-50%, 0);
   pointer-events: auto;
 }
 
@@ -1335,15 +1444,15 @@ body.login-active .main-content {
 .dock-right {
   display: flex;
   align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
 /* Boutons du dock : zones de clic confortables, pas de largeur étroite. */
 .selection-dock .btn {
   height: auto;
   min-height: 36px;
-  padding: 8px 16px;
+  padding: 8px 11px;         /* compact : la rangée doit tenir en largeur */
   white-space: nowrap;
 }
 
@@ -1374,6 +1483,46 @@ body.login-active .main-content {
   border-color: var(--brand);
   color: var(--brand-text);
   opacity: 0.9;
+}
+
+/* --- Bulles d'explication au survol --- */
+/* Un libellé seul (« Supprimer les réactions ») ne dit pas ce que ça vise ni ce
+   qui est conservé. La bulle est faite en ::after : aucun nœud DOM en plus, et
+   elle disparaît avec le bouton. */
+.selection-dock .btn[data-tip] { position: relative; }
+
+/* La bulle est dimensionnée par son texte (max-content) : en `left: 50%`
+   sans largeur explicite, le shrink-to-fit se calait sur la place disponible
+   à droite de 50% — d'où des lignes de 3-4 mots. */
+.selection-dock .btn[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  transform: translateX(-50%) translateY(4px);
+  width: max-content;
+  min-width: 200px;
+  max-width: 320px;
+  padding: 9px 12px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  color: var(--text-primary);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  white-space: normal;
+  opacity: 0;
+  pointer-events: none;
+  box-shadow: var(--shadow-2);
+  z-index: 10;
+  transition: opacity 0.15s ease, transform 0.15s ease;
+}
+
+.selection-dock .btn[data-tip]:hover::after {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
 /* --- Checkboxes --- */

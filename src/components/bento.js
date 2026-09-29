@@ -58,7 +58,7 @@ export function bentoCard(cfg) {
 }
 
 // FloatingSelectionDock — barre d'action batch, fixée en haut (sous l'en-tête).
-// cfg: { onSelectAll: fn, actions: [{label, className, onClick}] }
+// cfg: { onSelectAll: fn, onDeselectAll: fn, actions: [{label, tip, className, onClick}] }
 export class FloatingSelectionDock {
   constructor(cfg) {
     this.cfg = cfg;
@@ -74,17 +74,20 @@ export class FloatingSelectionDock {
     el.innerHTML = `
       <div class="dock-left">
         <span class="dock-count"><strong class="dock-count-num">0</strong> <span class="dock-count-label">sélectionné(s)</span></span>
-        <button class="btn btn-secondary btn-xs dock-btn dock-select-all">Tout sélectionner</button>
+        <button class="btn btn-secondary btn-xs dock-btn dock-select-all" data-tip="Cocher ou décocher tous les éléments affichés">Tout sélectionner</button>
+        <button class="btn btn-secondary btn-xs dock-btn dock-deselect-all" data-tip="Décocher tout, y compris une sélection partielle">Tout décocher</button>
       </div>
       <div class="dock-right">
-        ${this.cfg.actions.map(a => `<button class="btn ${a.className || 'btn-secondary'} btn-xs dock-btn" data-i="${a.label}">${escHtml(a.label)}</button>`).join('')}
+        ${this.cfg.actions.map(a => `<button class="btn ${a.className || 'btn-secondary'} btn-xs dock-btn" data-i="${a.label}"${a.tip ? ` data-tip="${escHtml(a.tip)}"` : ''}>${escHtml(a.label)}</button>`).join('')}
       </div>
     `;
     el.querySelectorAll('.dock-btn[data-i]').forEach((btn, i) => {
-      btn.addEventListener('click', () => this.cfg.actions[i].onClick());
+      btn.addEventListener('click', () => this.cfg.actions[i].onClick(btn));
     });
     this.selectAllBtn = el.querySelector('.dock-select-all');
     this.selectAllBtn.addEventListener('click', () => this.cfg.onSelectAll());
+    this.deselectAllBtn = el.querySelector('.dock-deselect-all');
+    this.deselectAllBtn.addEventListener('click', () => this.cfg.onDeselectAll());
     this.countEl = el.querySelector('.dock-count-num');
     document.body.appendChild(el);
     this.el = el;
