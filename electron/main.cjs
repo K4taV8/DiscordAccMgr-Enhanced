@@ -178,6 +178,14 @@ async function discordMutate(method, path, { data, params } = {}) {
   return { success: false, error: 'Rate limited' };
 }
 
+// Ouvre / ferme les DevTools (F12 et Ctrl+Shift+L cote renderer).
+// Indispensable pour lire la console quand un import reste bloque.
+ipcMain.handle('app:toggleDevTools', () => {
+  const win = BrowserWindow.getAllWindows()[0];
+  if (!win) return false;
+  win.webContents.toggleDevTools();
+  return true;
+});
 ipcMain.handle('discord:getGroups', async () => {
   const r = await discordFetch('GET', '/users/@me/channels');
   if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
@@ -197,6 +205,15 @@ ipcMain.handle('discord:getGroups', async () => {
   return { success: true, groups };
 });
 
+// Rouvre un message direct a partir d un id d utilisateur (celui contenu
+// dans le package). POST /users/@me/channels le recree cote compte : il
+// reapparait alors dans la liste des DM du client Discord. Ne fonctionne que
+// si le compte a encore acces a ce contact.
+ipcMain.handle('discord:openDM', async (_, userId) => {
+  const id = String(userId || '').trim();
+  if (!/^\d{15,25}$/.test(id)) return { success: false, error: 'Identifiant invalide' };
+  return discordMutate('POST', '/users/@me/channels', { data: { recipient_id: id } });
+});
 ipcMain.handle('discord:leaveGroup', async (_, groupId) => {
   return discordMutate('DELETE', `/channels/${groupId}`);
 });
@@ -268,6 +285,17 @@ ipcMain.handle('discord:deleteGroupMessage', async (_, channelId, messageId) => 
     return { success: false, error: r.error || `HTTP ${r.status}` };
   }
   return { success: true };
+});
+
+// Un salon d'un serveur quitte repond 403 « Missing Access » a la suppression :
+// sans cette lecture prealable, l outil epuisait une requete par message pour
+// apprendre a chaque fois la meme mauvaise nouvelle, a 4 r/s.
+ipcMain.handle('discord:getChannel', async (_, channelId) => {
+  const id = String(channelId || '').trim();
+  if (!id) return { success: false, status: 400, error: 'invalid channel' };
+  const r = await discordFetch('GET', `/channels/${id}`);
+  if (!r.success) return { success: false, status: r.status, error: r.error || `HTTP ${r.status}` };
+  return { success: true, channel: { id: String(r.data?.id || id), name: r.data?.name || null, type: r.data?.type ?? null } };
 });
 
 ipcMain.handle('discord:muteServer', async (_, serverId) => {

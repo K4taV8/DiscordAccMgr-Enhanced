@@ -43,6 +43,7 @@ export interface ElectronAPI {
   // application
   openExternal(url: string): Promise<{ success: boolean; error?: string }>;
   getAppVersion(): Promise<string>;
+  toggleDevTools(): Promise<boolean>;
 
   // serveurs
   muteServer(serverId: string): Promise<{ success: boolean; error?: string }>;
@@ -64,6 +65,7 @@ export interface ElectronAPI {
   getDMMessages(channelId: string, beforeId: string | null): Promise<ChannelMessagesResult>;
   deleteDMMessage(channelId: string, messageId: string): Promise<{ success: boolean; error?: string }>;
   closeDM(channelId: string): Promise<{ success: boolean; error?: string }>;
+  openDM(userId: string): Promise<{ success: boolean; error?: string }>;
 
   // groupes
   getGroups(): Promise<{ success: boolean; groups?: GroupSummary[]; error?: string }>;
@@ -76,6 +78,7 @@ export interface ElectronAPI {
   getMessage(channelId: string, messageId: string): Promise<ReactionSummaryPayload | { success: false; error: string }>;
   deleteGroupMessage(channelId: string, messageId: string): Promise<{ success: boolean; error?: string }>;
   deletePackageMessage(channelId: string, messageId: string): Promise<{ success: boolean; error?: string }>;
+  getChannel(channelId: string): Promise<{ success: boolean; status?: number; channel?: { id: string; name: string | null; type: number | null }; error?: string }>;
 
   removeOwnReaction(
     channelId: string,

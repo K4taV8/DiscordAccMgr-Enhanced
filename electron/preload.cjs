@@ -21,7 +21,9 @@ function wrap(name, fn) {
   };
 }
 
+    // DevTools a la demande (F12 / Ctrl+Shift+L).
 contextBridge.exposeInMainWorld('electronAPI', {
+  toggleDevTools: () => ipcRenderer.invoke('app:toggleDevTools'),
   minimize: () => ipcRenderer.send('window:minimize'),
   maximize: () => ipcRenderer.send('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
@@ -58,11 +60,13 @@ contextBridge.exposeInMainWorld('electronAPI', {
   closeDM: wrap('closeDM', (channelId) => ipcRenderer.invoke('discord:closeDM', channelId)),
 
   getGroups: wrap('getGroups', () => ipcRenderer.invoke('discord:getGroups')),
+  openDM: (userId) => ipcRenderer.invoke('discord:openDM', userId),
   leaveGroup: wrap('leaveGroup', (groupId) => ipcRenderer.invoke('discord:leaveGroup', groupId)),
   getChannelMessages: wrap('getChannelMessages', (channelId, beforeId, afterId) => ipcRenderer.invoke('discord:getChannelMessages', channelId, beforeId, afterId)),
   getMessage: wrap('getMessage', (channelId, messageId) => ipcRenderer.invoke('discord:getMessage', channelId, messageId)),
   deleteGroupMessage: wrap('deleteGroupMessage', (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId)),
   deletePackageMessage: wrap('deletePackageMessage', (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId)),
+  getChannel: wrap('getChannel', (channelId) => ipcRenderer.invoke('discord:getChannel', channelId)),
 
   removeOwnReaction: wrap('removeOwnReaction', (channelId, messageId, emoji) => ipcRenderer.invoke('discord:removeOwnReaction', channelId, messageId, emoji)),
 });

@@ -245,6 +245,16 @@ navItems.forEach(item => {
   });
 });
 
+// F12 et Ctrl+Shift+L ouvrent les DevTools.
+document.addEventListener('keydown', event => {
+  const isF12 = event.key === 'F12';
+  const letter = typeof event.code === 'string' ? event.code : event.key;
+  const isCombo = (event.ctrlKey || event.metaKey) && event.shiftKey && ['l', 'keyl'].includes(String(letter).toLowerCase());
+  if (!isF12 && !isCombo) return;
+  event.preventDefault();
+  window.electronAPI?.toggleDevTools?.();
+});
+
 document.addEventListener('DOMContentLoaded', async () => {
   try {
     await loadSavedTokens();

@@ -7,8 +7,8 @@
   "main": "electron/main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test",
-    "test:coverage": "node --experimental-test-coverage --test",
+    "test": "node --test \"test/*.test.js\"",
+    "test:coverage": "node --experimental-test-coverage --test \"test/*.test.js\"",
     "audit:sca": "npm audit --omit=dev",
     "package": "electron-builder",
     "package:portable": "node -e \"require('fs').writeFileSync('.portable','')\" && electron-builder --win dir && node -e \"require('fs').unlinkSync('.portable')\"",

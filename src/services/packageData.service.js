@@ -27,6 +27,24 @@ export function hydrateChannel(raw = {}, name = '') {
   };
 }
 
+// Notification systeme : message sans texte ET sans piece jointe. Discord
+// ecrase "Contents" pour ces lignes (notifications d'appel, appel manque,
+// arrivee dans un serveur...) : l'export ne contient ni le texte ni l'appelant,
+// que l'identifiant et l'horodatage. Le client Discord, lui, sait les rendre
+// parce qu'il garde ces metadonnees ailleurs.
+export function isSystemNotification(message) {
+  if (!message) return false;
+  const text = String(message.content ?? '').trim();
+  const attachments = Array.isArray(message.attachments) ? message.attachments.length : 0;
+  return text === '' && attachments === 0;
+}
+
+export function countSystemNotifications(messages) {
+  let count = 0;
+  for (const message of messages || []) if (isSystemNotification(message)) count += 1;
+  return count;
+}
+
 export function buildMessageSearchIndex(messages) {
   return messages.map((message, index) => ({ index, id: String(message.id), text: `${message.content || ''} ${message.author?.username || ''}`.toLocaleLowerCase() }));
 }
