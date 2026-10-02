@@ -6,6 +6,7 @@ import { escHtml } from '../utils/emojiUtils.js';
 import { cachedListRefresh, delegate } from '../utils/domManager.js';
 import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
+import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
 
 export class ServerManager {
   constructor(contentArea) {
@@ -271,6 +272,11 @@ export class ServerManager {
     if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${items.length} serveur(s) sélectionné(s) ?`))) return;
 
     this.isDeleting = true;
+    // Le meme panneau que pour les DM et les groupes : la suppression d un
+    // serveur parcourt tous ses salons et peut durer tres longtemps.
+    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);
+    let done = 0;
+    showProgressPanel({ title: 'Nettoyage des serveurs', total: items.length * Math.max(1, steps), detail: 'démarrage' });
     try {
       for (const item of items) {
         const serverId = item.dataset.id;
@@ -279,17 +285,22 @@ export class ServerManager {
           try {
             await deleteServerMessages({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
           } catch (e) { console.error('Cleaning delete failed:', e); }
+          done += 1;
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeServerReactions({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
           } catch (e) { console.error('Cleaning reactions failed:', e); }
+          done += 1;
         }
         if (mode === 'full') {
           try { await window.electronAPI.leaveServer(serverId); } catch (e) { console.error('Cleaning leave failed:', e); }
+          done += 1;
         }
+        updateProgressPanel({ done, detail: serverName });
       }
       this.refreshServersList(true);
+      finishProgressPanel({ detail: `${items.length} serveur(s) traité(s)` });
     } finally {
       this.isDeleting = false;
     }

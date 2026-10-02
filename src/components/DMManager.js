@@ -6,6 +6,7 @@ import { escHtml } from '../utils/emojiUtils.js';
 import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
 import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
+import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
 
 export class DMManager {
   constructor(contentArea) {
@@ -218,23 +219,33 @@ export class DMManager {
     if (!(await confirmAction('Nettoyer', `Confirmer : ${modeLabels[mode]} dans ${selected.length} DM(s) sélectionné(s) ?`))) return;
 
     this.isDeleting = true;
+    // Le nettoyage respecte le debit de Discord : sans panneau, plusieurs DM
+    // donnaient l impression que rien ne se passait.
+    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);
+    let done = 0;
+    showProgressPanel({ title: 'Nettoyage des DM', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
     try {
       for (const dm of selected) {
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
           try {
             await deleteDMMessages({ channelId: dm.channelId, username: dm.username, electronAPI: window.electronAPI, onComplete: () => {}, skipRefresh: true, quiet: true });
           } catch (e) { console.error('Cleaning delete failed:', e); }
+          done += 1;
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, onComplete: () => {} });
           } catch (e) { console.error('Cleaning reactions failed:', e); }
+          done += 1;
         }
         if (mode === 'full') {
           try { await window.electronAPI.closeDM(dm.channelId); } catch (e) { console.error('Cleaning close failed:', e); }
+          done += 1;
         }
+        updateProgressPanel({ done, detail: dm.username });
       }
       this.refreshDMsList(true);
+      finishProgressPanel({ detail: `${selected.length} DM traité(s)` });
     } finally {
       this.isDeleting = false;
     }

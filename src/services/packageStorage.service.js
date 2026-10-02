@@ -67,4 +67,17 @@ export async function getPackageMessagePage(archiveId, channelId, { offset = 0, 
 }
 
 export function createPackageArchiveId(file) { return `${file.name}:${file.size}:${file.lastModified}`; }
+
+// Version du schema de package en base. Une correction de l import ne change
+// pas le fichier importe, donc l identifiant d archive reste identique : une
+// archive deja sauvegardee continue d etre servie et masque la correction.
+// Concretement, des identifiants de messages restent arrondis en base alors
+// que l import les relit correctement. Une archive d une version differente
+// est donc ecartee plutot que reappliquee.
+export const PACKAGE_SCHEMA_VERSION = 2;
+
+// Une archive sans version vient d'un build anterieur : elle est ecartee.
+export function isCurrentPackageArchive(archive) {
+  return Number(archive?.packageData?.schemaVersion) === PACKAGE_SCHEMA_VERSION;
+}
 export const PACKAGE_STORAGE_LIMITS = { maxArchives: DEFAULT_MAX_ARCHIVES, maxBytes: DEFAULT_MAX_BYTES };

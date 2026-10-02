@@ -164,6 +164,21 @@ async function discordFetch(method, path, { data, params } = {}) {
 
 // BUG-07 : mutations simples avec retry borné sur 429 (cohérent avec les
 // suppressions de messages). 3 tentatives + Retry-After, puis échec explicite.
+// discordFetch ne met jamais d 'error' sur un echec HTTP : seul le corps de la
+// reponse porte la raison (« Invalid Form Body », « Missing Access », ...).
+// La reconstruire ici evite les onze sites qui renvoyaient « HTTP 400 » et
+// perdaient la seule information exploitable.
+function apiFailure(r) {
+  const status = Number(r?.status) || 0;
+  const detail = String(r?.data?.message || r?.error || '').trim();
+  return {
+    success: false,
+    status,
+    error: detail || (status ? `HTTP ${status}` : 'Requête échouée'),
+    code: r?.data?.code ?? null,
+  };
+}
+
 async function discordMutate(method, path, { data, params } = {}) {
   for (let attempt = 0; attempt < 3; attempt++) {
     const r = await discordFetch(method, path, { data, params });
@@ -173,7 +188,7 @@ async function discordMutate(method, path, { data, params } = {}) {
       await new Promise(res => setTimeout(res, (wait * 1000) + 500));
       continue;
     }
-    return { success: false, error: r.error || `HTTP ${r.status}` };
+    return apiFailure(r);
   }
   return { success: false, error: 'Rate limited' };
 }
@@ -188,7 +203,7 @@ ipcMain.handle('app:toggleDevTools', () => {
 });
 ipcMain.handle('discord:getGroups', async () => {
   const r = await discordFetch('GET', '/users/@me/channels');
-  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  if (!r.success) return apiFailure(r);
   const groups = r.data
     .filter(ch => ch.type === 3)
     .map(group => ({
@@ -262,7 +277,7 @@ ipcMain.handle('discord:getDMMessages', async (_, channelId, beforeId = null) =>
 
 ipcMain.handle('discord:getMessage', async (_, channelId, messageId) => {
   const r = await discordFetch('GET', `/channels/${channelId}/messages/${messageId}`);
-  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  if (!r.success) return apiFailure(r);
   const msg = r.data;
   return {
     success: true,
@@ -280,9 +295,13 @@ ipcMain.handle('discord:getMessage', async (_, channelId, messageId) => {
 ipcMain.handle('discord:deleteGroupMessage', async (_, channelId, messageId) => {
   const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}`);
   if (!r.success) {
-    if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    if (r.status === 404) return { success: false, error: 'not found' };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
+    if (r.status === 429) return { success: false, status: 429, error: 'Rate limited', retryAfter: r.retryAfter };
+    // Le message de Discord est conserve : il distingue « Unknown Message »
+    // (le message a disparu) de « Unknown Channel » (c est l identifiant du
+    // salon qui est mauvais). Ecraser par « not found » rendait les deux
+    // identiques, et l appelant ne pouvait plus rien diagnostiquer.
+    if (r.status === 404) return { ...apiFailure(r), error: r.data?.message || 'not found' };
+    return apiFailure(r);
   }
   return { success: true };
 });
@@ -294,8 +313,19 @@ ipcMain.handle('discord:getChannel', async (_, channelId) => {
   const id = String(channelId || '').trim();
   if (!id) return { success: false, status: 400, error: 'invalid channel' };
   const r = await discordFetch('GET', `/channels/${id}`);
-  if (!r.success) return { success: false, status: r.status, error: r.error || `HTTP ${r.status}` };
+  if (!r.success) return apiFailure(r);
   return { success: true, channel: { id: String(r.data?.id || id), name: r.data?.name || null, type: r.data?.type ?? null } };
+});
+
+// Un fil archive refuse toute suppression (erreur 50083). Le reactiver puis le
+// reassigner une fois le nettoyage fini est la seule voie par l API, et cela
+// laisse le fil dans l etat ou l utilisateur l avait laisse.
+ipcMain.handle('discord:setThreadArchived', async (_, threadId, archived) => {
+  const id = String(threadId || '').trim();
+  if (!id) return apiFailure({ status: 400, error: 'thread id manquant' });
+  const r = await discordFetch('PATCH', `/channels/${id}`, { data: { archived: Boolean(archived) } });
+  if (!r.success) return apiFailure(r);
+  return { success: true };
 });
 
 ipcMain.handle('discord:muteServer', async (_, serverId) => {
@@ -500,7 +530,7 @@ ipcMain.handle('discord:disconnect', async () => {
 
 ipcMain.handle('discord:getFriends', async () => {
   const r = await discordFetch('GET', '/users/@me/relationships');
-  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  if (!r.success) return apiFailure(r);
 
   const friends = r.data
     .filter(relationship => relationship.type === 1)
@@ -516,7 +546,7 @@ ipcMain.handle('discord:getFriends', async () => {
 
 ipcMain.handle('discord:getDMs', async () => {
   const r = await discordFetch('GET', '/users/@me/channels');
-  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  if (!r.success) return apiFailure(r);
   const dms = r.data
     .filter(ch => ch.type === 1)
     .map(dm => ({
@@ -535,7 +565,7 @@ ipcMain.handle('discord:deleteDMMessage', async (_, channelId, messageId) => {
   if (!r.success) {
     if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
     if (r.status === 404) return { success: false, error: 'not found' };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
+    return apiFailure(r);
   }
   return { success: true };
 });
@@ -557,7 +587,7 @@ ipcMain.handle('discord:removeOwnReaction', async (_, channelId, messageId, rawE
     if (r.status === 404) return { success: false, error: 'noReaction' };
     if (r.status === 400) return { success: false, error: 'invalidEmoji' };
     if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
-    return { success: false, error: r.error || `HTTP ${r.status}` };
+    return apiFailure(r);
   }
   return { success: true };
 });
@@ -602,7 +632,7 @@ ipcMain.handle('discord:getServers', async (_, force = false) => {
     if (cached) return { success: true, servers: cached };
   }
   const r = await discordFetch('GET', '/users/@me/guilds');
-  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  if (!r.success) return apiFailure(r);
 
   const servers = r.data.map(server => ({
     id: server.id,
@@ -627,7 +657,7 @@ ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
     return { success: true, channels: hit.channels, currentUserId: discordClient.user?.id };
   }
   const r = await discordFetch('GET', `/guilds/${serverId}/channels`);
-  if (!r.success) return { success: false, error: r.error || `HTTP ${r.status}` };
+  if (!r.success) return apiFailure(r);
 
   // Le chat intégré des salons vocaux (2) et des scènes (13) est inclus : leurs
   // messages se suppriment via /channels/{voiceId}/messages comme un salon texte.

@@ -14,7 +14,7 @@ const GUILD_FILE = 'guild.json';
 const INDEX_FILE = 'messages/index.json';
 
 // Types de l'import vers les types numeriques Discord.
-const TYPE_BY_KIND = { DM: 1, GROUP: 3, SERVER_TEXT: 0 };
+const TYPE_BY_KIND = { DM: 1, GROUP: 3, SERVER_TEXT: 0, THREAD: 11 };
 
 function encode(value) {
   return strToU8(JSON.stringify(value));

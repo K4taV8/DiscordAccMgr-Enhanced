@@ -67,6 +67,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   deleteGroupMessage: wrap('deleteGroupMessage', (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId)),
   deletePackageMessage: wrap('deletePackageMessage', (channelId, messageId) => ipcRenderer.invoke('discord:deleteGroupMessage', channelId, messageId)),
   getChannel: wrap('getChannel', (channelId) => ipcRenderer.invoke('discord:getChannel', channelId)),
+  setThreadArchived: wrap('setThreadArchived', (threadId, archived) => ipcRenderer.invoke('discord:setThreadArchived', threadId, archived)),
 
   removeOwnReaction: wrap('removeOwnReaction', (channelId, messageId, emoji) => ipcRenderer.invoke('discord:removeOwnReaction', channelId, messageId, emoji)),
 });

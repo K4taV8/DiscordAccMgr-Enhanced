@@ -1820,6 +1820,7 @@ input[type="checkbox"]:focus-visible {
 .package-layout { display: grid; grid-template-columns: minmax(300px, 0.42fr) minmax(0, 1fr); gap: 16px; min-height: 0; height: calc(100% - 76px); }
 .package-channels, .package-messages { min-height: 0; overflow: hidden; }
 .package-filter { width: 100%; padding: 10px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input, var(--bg-body)); color: var(--text-primary); margin-bottom: 10px; }
+.package-archive-note { margin: 8px 2px 0; color: var(--text-secondary); font-size: 11px; line-height: 1.5; }
 .package-filter-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-bottom: 10px; }
 .package-filter-group { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-body); }
 .package-filter-chip { padding: 5px 9px; border: 0; border-radius: calc(var(--radius-sm) - 2px); background: transparent; color: var(--text-secondary); font-size: 11px; font-weight: 600; cursor: pointer; transition: background-color var(--transition-fast), color var(--transition-fast); }
@@ -1829,6 +1830,47 @@ input[type="checkbox"]:focus-visible {
 .package-system-badge { display: inline-block; padding: 2px 7px; border-radius: 999px; background: var(--brand-dim); color: var(--brand-text); font-size: 11px; font-weight: 600; }
 .package-system-note { display: grid; gap: 8px; justify-items: start; padding: 18px 14px; }
 .package-system-note p { margin: 0; }
+/* Pieces jointes : une capture d ecran ne doit jamais deplacer la mise en page,
+   et une video ne doit pas se telecharger avant qu on la lance. */
+.package-attachments { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.package-attachment-image { display: block; max-width: min(100%, 420px); border: 1px solid var(--border-color); border-radius: 10px; overflow: hidden; background: var(--bg-card); cursor: zoom-in; }
+.package-attachment-image img { display: block; width: 100%; height: auto; max-height: 320px; object-fit: contain; object-position: top left; }
+.package-attachment-image.is-broken img { display: none; }
+.package-attachment-broken { display: none; padding: 10px 12px; color: var(--text-secondary); font-size: 12px; }
+.package-attachment-image.is-broken .package-attachment-broken { display: block; cursor: pointer; }
+.package-attachment-media { display: flex; flex-direction: column; gap: 4px; max-width: min(100%, 420px); }
+.package-attachment-media video { width: 100%; max-height: 320px; border-radius: 10px; background: #000; }
+.package-attachment-media audio { width: 100%; }
+.package-attachment-link { color: var(--brand-text); font-size: 12px; word-break: break-all; }
+/* Panneau de progression : les nettoyages longues respectent le debit de
+   Discord, sans retour a l ecran l utilisateur croit que rien ne se passe. */
+.progress-panel { position: fixed; right: 20px; bottom: 20px; z-index: 880; width: 290px; padding: 12px 14px; border: 1px solid var(--border-color); border-radius: 14px; background: var(--bg-card); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.32); }
+.progress-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.progress-panel-title { font-size: 12px; font-weight: 700; color: var(--text-primary); }
+.progress-panel-close { display: grid; place-items: center; width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.progress-panel-close:hover { background: var(--bg-card-hover); color: var(--text-primary); }
+.progress-panel-body { display: flex; flex-direction: column; gap: 7px; margin-top: 9px; }
+.progress-panel-count { font-size: 18px; font-weight: 700; color: var(--brand-text); }
+.progress-panel-track { height: 6px; border-radius: 999px; background: var(--bg-card-hover); overflow: hidden; }
+.progress-panel-fill { display: block; height: 100%; border-radius: 999px; background: var(--brand); transition: width 160ms linear; }
+.progress-panel-detail { font-size: 11px; color: var(--text-secondary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.progress-panel-body.is-done .progress-panel-count { color: var(--text-primary); }
+.progress-panel-body.is-failed .progress-panel-count { color: var(--danger, #e5534b); }
+/* Visionneuse : l image occupe l ecran sans depasser, onClique le fond pour
+   fermer et les fleches navigatees entre les pieces d un meme message. */
+.package-lightbox { position: fixed; inset: 0; z-index: 900; display: grid; place-items: center; padding: 24px; }
+.package-lightbox-backdrop { position: absolute; inset: 0; border: 0; padding: 0; background: rgba(0, 0, 0, 0.86); cursor: zoom-out; }
+.package-lightbox-figure { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; max-width: 100%; max-height: 100%; margin: 0; }
+.package-lightbox-figure img { max-width: 100%; max-height: calc(100vh - 110px); object-fit: contain; border-radius: 10px; background: var(--bg-card); }
+.package-lightbox-caption { display: flex; align-items: center; gap: 10px; max-width: 80vw; color: #fff; font-size: 12px; opacity: 0.85; }
+.package-lightbox-caption span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.package-lightbox-counter { flex: 0 0 auto; opacity: 0.7; }
+.package-lightbox-nav { position: absolute; top: 50%; transform: translateY(-50%); display: grid; place-items: center; width: 40px; height: 56px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 26px; line-height: 1; cursor: pointer; }
+.package-lightbox-nav:hover { background: rgba(255, 255, 255, 0.24); }
+.package-lightbox-nav.prev { left: -52px; }
+.package-lightbox-nav.next { right: -52px; }
+.package-lightbox-close { position: absolute; top: 18px; right: 20px; display: grid; place-items: center; width: 36px; height: 36px; border: 0; border-radius: 10px; background: rgba(255, 255, 255, 0.12); color: #fff; font-size: 16px; cursor: pointer; }
+.package-lightbox-close:hover { background: rgba(255, 255, 255, 0.24); }
 .package-channel-list, .package-message-list { overflow-y: auto; height: calc(100% - 48px); scrollbar-gutter: stable; }
 .package-channel-section { display: block; }
 .package-channel-section + .package-channel-section { margin-top: 4px; }
@@ -1845,11 +1887,15 @@ input[type="checkbox"]:focus-visible {
 .package-channel { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; padding: 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: var(--text-primary); text-align: left; cursor: pointer; transition: background-color var(--transition-fast), transform var(--transition-fast); }
 .package-channel:hover { transform: translateX(2px); }
 .package-channel-avatar, .package-message-avatar { width: 34px; height: 34px; flex: 0 0 34px; object-fit: cover; border-radius: 50%; background: var(--bg-card-hover); }
-.package-selection-state { width: 16px; height: 16px; flex: 0 0 16px; border: 1px solid var(--border-strong); border-radius: 5px; position: relative; }
-.package-selection-state.all { background: var(--brand); border-color: var(--brand); }
+/* La case est un <input> : on lui garde l aspect d une case mais sans
+   pseudo-elements, qui ne s appliquent pas a un controle natif. */
+.package-selection-state { appearance: none; -webkit-appearance: none; display: grid; place-items: center; width: 16px; height: 16px; flex: 0 0 16px; margin: 0; border: 1px solid var(--border-strong); border-radius: 5px; background: transparent; cursor: pointer; position: relative; transition: background-color var(--transition-fast), border-color var(--transition-fast); }
+.package-selection-state:hover { border-color: var(--brand); }
+.package-selection-state:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; }
+.package-selection-state.all, .package-selection-state.partial { background: var(--brand-dim); border-color: var(--brand); }
 .package-selection-state.all::after { content: '✓'; position: absolute; inset: 0; display: grid; place-items: center; color: var(--brand-text); font-size: 11px; font-weight: 700; }
-.package-selection-state.partial { background: var(--brand-dim); border-color: var(--brand); }
 .package-selection-state.partial::after { content: ''; position: absolute; left: 3px; right: 3px; top: 6px; height: 2px; background: var(--brand); border-radius: 2px; }
+.package-filter-bulk { display: inline-flex; gap: 6px; margin-left: auto; }
 .package-channel-copy { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 3px; }
 .package-channel-copy strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
 .package-channel-copy small { color: var(--text-secondary); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

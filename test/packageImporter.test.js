@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { zipSync, strToU8 } from '../node_modules/fflate/esm/browser.js';
-import { importDiscordPackage } from '../src/services/packageImporter.service.js';
+import { importDiscordPackage, normalizeChannelType } from '../src/services/packageImporter.service.js';
 
 // Un export Discord de 394 Mo echouait avec « Array buffer allocation failed » :
 // l'archive etait lue d'un bloc (file.arrayBuffer) puis decompressee entierement
@@ -352,6 +352,37 @@ test('un nom de salon prefixe d un libelle de remplacement est ecarte', async ()
 
   assert.equal(parsed.channels[0].name, null, '« Salon inconnu, … » n est pas un nom de salon');
 });
+// Les fils (10 annonce de fil, 11 public, 12 prive) etaient classes comme des
+// salons de serveur : l outil les affichait comme des canaux ordinaires et
+// ignorait qu un fil archive refuse toute suppression.
+test('les fils sont distingues des salons de serveur', () => {
+  assert.equal(normalizeChannelType(11), 'THREAD', 'fil public');
+  assert.equal(normalizeChannelType(12), 'THREAD', 'fil prive');
+  assert.equal(normalizeChannelType(10), 'THREAD', "fil d'annonce");
+  assert.equal(normalizeChannelType('GUILD_PUBLIC_THREAD'), 'THREAD');
+  assert.equal(normalizeChannelType(0), 'SERVER_TEXT', 'un vrai salon reste un salon');
+  assert.equal(normalizeChannelType(1), 'DM');
+  assert.equal(normalizeChannelType(3), 'GROUP');
+});
+
+test('un fil exporte est relu comme un fil, rattache a son serveur', async () => {
+  // Ecrit en texte brut : un litteral numerique de 18 chiffres serait deja
+  // arrondi par le moteur avant d'arriver dans l'archive.
+  const zip = zipSync({
+    'Compte/user.json': strToU8('{\n  "id": 123456789012345678,\n  "username": "tester"\n}'),
+    'Messages/index.json': strToU8('{\n  "222222222222222222": "FreeTheAI"\n}'),
+    'Messages/c222222222222222222/channel.json': strToU8('{\n  "id": 222222222222222222,\n  "name": "FreeTheAI",\n  "type": 11,\n  "guild": {\n    "id": 999999999999999999,\n    "name": "Serveur"\n  }\n}'),
+    'Messages/c222222222222222222/messages.json': strToU8('[\n  {\n    "ID": 1009136231751360593,\n    "ChannelID": 222222222222222222,\n    "Timestamp": "2026-04-24 11:13:52",\n    "Contents": "salut",\n    "Attachments": ""\n  }\n]'),
+    'Serveurs/999999999999999999/guild.json': strToU8('{\n  "id": 999999999999999999,\n  "name": "Serveur"\n}'),
+  });
+  const parsed = await importDiscordPackage(new Blob([zip], { type: 'application/zip' }));
+  const thread = parsed.channels.find(channel => channel.id === '222222222222222222');
+  assert.ok(thread, 'le fil est present dans la liste');
+  assert.equal(thread.type, 'THREAD');
+  assert.equal(thread.guildName, 'Serveur', 'le fil reste rattache a son serveur');
+  assert.equal(parsed.messages.get('222222222222222222').length, 1, 'ses messages lui sont rattaches');
+});
+
 test('les deux index.json de l archive sont fusionnes', async () => {
   // Ton export contient Serveurs/index.json (petit, lu en premier) ET
   // Messages/index.json. Prendre le premier faisait perdre tous les noms de MP.

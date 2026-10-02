@@ -1,10 +1,11 @@
 import { importDiscordPackage, getSelectedPackageMessageKeys, isPlaceholderName } from '../services/packageImporter.service.js';
 import { exportDiscordPackage } from '../services/packageExporter.service.js';
-import { classifyDeleteResult, shouldRetryDelete, summarizeDelete } from '../services/packageDelete.service.js';
+import { classifyDeleteResult, describeDeleteFailure, shouldRetryDelete, summarizeDelete } from '../services/packageDelete.service.js';
 import { confirmAction, showNotification } from '../utils/ui.js';
 import { escHtml } from '../utils/emojiUtils.js';
-import { buildMessageSearchIndex, hydratePackageIdentity, isSystemNotification } from '../services/packageData.service.js';
-import { createPackageArchiveId, deletePackageArchive, listPackageArchives, savePackageArchive } from '../services/packageStorage.service.js';
+import { buildMessageSearchIndex, isSystemNotification, attachmentKind } from '../services/packageData.service.js';
+import { closeProgressPanel, finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
+import { createPackageArchiveId, deletePackageArchive, isCurrentPackageArchive, listPackageArchives, savePackageArchive, PACKAGE_SCHEMA_VERSION } from '../services/packageStorage.service.js';
 import { groupChannels } from '../services/packageSections.service.js';
 import { channelWindow, CHANNEL_ROW_HEIGHT, CHANNEL_OVERSCAN } from '../services/packageWindow.service.js';
 
@@ -54,6 +55,7 @@ export class PackageManager {
     this.deleteProgress = null;
     this.isDragging = false;
     this.savedArchives = [];
+    this.droppedArchives = 0;
     this.storageReady = false;
     this.messagePageSize = 100;
     this.messagePageOffset = 0;
@@ -75,6 +77,9 @@ export class PackageManager {
     this.visibleChannels = [];
     this.channelRowHeight = CHANNEL_ROW_HEIGHT;
     this.channelHeaderHeight = CHANNEL_HEADER_HEIGHT;
+    this.lightboxOverlay = null;
+    this.lightboxState = null;
+    this.lightboxKeyHandler = null;
     this.messageQuery = '';
     this.focusMode = false;
     this.messageSearchIndex = new Map();
@@ -85,6 +90,13 @@ export class PackageManager {
     contentArea.addEventListener('change', event => this.handleChange(event));
     contentArea.addEventListener('input', event => { this.handleMessageSearch(event); this.handleFilter(event); });
     contentArea.addEventListener('keydown', event => this.handleKeydown(event));
+    // « error » ne remonte pas : il faut une capture, sinon une image cassee
+    // ne declenche rien et laisse un trou dans la conversation.
+    contentArea.addEventListener('error', event => {
+      const img = event.target.closest?.('[data-attachment-img]');
+      if (!img) return;
+      img.closest('[data-attachment-fallback]')?.classList.add('is-broken');
+    }, true);
     contentArea.addEventListener('dragenter', event => this.handleDragEnter(event));
     contentArea.addEventListener('dragover', event => this.handleDragOver(event));
     contentArea.addEventListener('dragleave', event => this.handleDragLeave(event));
@@ -94,7 +106,12 @@ export class PackageManager {
 
   async restoreArchives() {
     try {
-      this.savedArchives = await listPackageArchives();
+      const all = await listPackageArchives();
+      // Une archive analysee par une version anterieure de l import peut
+      // contenir des identifiants arrondis : la servir ferait echouer la
+      // suppression en silence. Elle est ecartee, pas servie.
+      this.savedArchives = all.filter(isCurrentPackageArchive);
+      this.droppedArchives = all.length - this.savedArchives.length;
       this.storageReady = true;
       if (!this.package) this.render();
     } catch (error) {
@@ -145,6 +162,10 @@ filteredChannels() {
           <div class="package-filter-group" role="group" aria-label="Type de conversation">${['all', 'dm', 'group', 'server'].map(kindButton).join('')}</div>
           <label class="package-filter-toggle"><input type="checkbox" data-hide-empty${this.hideEmptyDms ? ' checked' : ''}> MP vides</label>
           <label class="package-filter-toggle"><input type="checkbox" data-hide-system${this.hideSystemNotes ? ' checked' : ''}> Notifs système</label>
+          <div class="package-filter-bulk">
+            <button type="button" class="btn btn-secondary btn-xs" data-select-all>Tout cocher</button>
+            <button type="button" class="btn btn-secondary btn-xs" data-select-none>Tout décocher</button>
+          </div>
         </div>`;
   }
 
@@ -161,6 +182,7 @@ filteredChannels() {
           </div>
           <div class="package-queue" data-queue>${this.renderQueue()}</div>
           ${this.renderSavedArchives()}
+          ${this.droppedArchives ? `<p class="package-archive-note">${this.droppedArchives} archive${this.droppedArchives > 1 ? 's' : ''} locale${this.droppedArchives > 1 ? 's' : ''} écartée${this.droppedArchives > 1 ? 's' : ''} : elle${this.droppedArchives > 1 ? 's' : ''} ont été analysée${this.droppedArchives > 1 ? 's' : ''} par une version antérieure de l'import. Réimporte${this.droppedArchives > 1 ? 'z' : ''} le ZIP pour les utiliser.</p>` : ''}
         </section>`;
       return;
     }
@@ -170,7 +192,7 @@ filteredChannels() {
     const visibleChannels = this.filteredChannels();
     const selectedChannel = channels.find(channel => channel.id === this.selectedChannelId);
     const channelListHtml = this.renderChannelListHtml(visibleChannels);
-    const channelContext = this.currentSectionLabel();
+    const channelContext = this.currentSectionContext();
     this.contentArea.innerHTML = `
       <div class="list-toolbar package-toolbar">
         <div><h2 class="page-title"><span class="package-title-icon">📦</span> Data Package <span class="list-count">${channels.length}</span></h2><p class="text-muted">${escHtml(this.package.user.username)} · ${this.package.totalMessages} messages</p></div>
@@ -203,7 +225,7 @@ filteredChannels() {
   }
 
   channelSubtitle(channel) {
-    const kind = channel.type === 'DM' ? 'Message direct' : channel.type === 'GROUP' ? 'Groupe' : channel.guildName || 'Serveur';
+    const kind = channel.type === 'DM' ? 'Message direct' : channel.type === 'GROUP' ? 'Groupe' : channel.type === 'THREAD' ? 'Fil de discussion' : channel.guildName || 'Serveur';
     return channel.isLeft ? `${kind} · quitté` : kind;
   }
 
@@ -218,7 +240,34 @@ channelRowHtml(channel) {
     const openButton = canOpen
       ? `<button type="button" class="package-channel-open" data-open-dm="${escHtml(channel.recipient.id)}" data-open-dm-name="${escHtml(name)}" title="Ouvrir la conversation" aria-label="Ouvrir la conversation avec ${escHtml(name)}">↗</button>`
       : '';
-    return `<div class="package-channel${active}" role="button" tabindex="0" data-channel-id="${escHtml(channel.id)}"><span class="package-selection-state ${state}" title="${label}" aria-label="${label}"></span><img class="package-channel-avatar" src="${escHtml(avatarFor(channel))}" alt="" data-hide-on-error><span class="package-channel-copy"><strong>${escHtml(name)}</strong><small>${escHtml(this.channelSubtitle(channel))}</small></span>${openButton}<b>${channel.messagesCount}</b></div>`;
+    // La case est un vrai controle : sans elle, on ne pouvait selectionner un
+    // salon entier, donc ni supprimer ses messages en un geste.
+    const selectBox = `<input type="checkbox" class="package-selection-state ${state}" data-select-channel="${escHtml(channel.id)}"${state === 'all' ? ' checked' : ''} title="${label}" aria-label="${label}">`;
+    return `<div class="package-channel${active}" role="button" tabindex="0" data-channel-id="${escHtml(channel.id)}">${selectBox}<img class="package-channel-avatar" src="${escHtml(avatarFor(channel))}" alt="" data-hide-on-error><span class="package-channel-copy"><strong>${escHtml(name)}</strong><small>${escHtml(this.channelSubtitle(channel))}</small></span>${openButton}<b>${channel.messagesCount}</b></div>`;
+  }
+
+  // Selection en lot : on coche ou decoche tous les messages des salons
+  // actuellement visibles, filtres compris. Cocher 667 salons d un coup reste
+  // possible, mais resteAnnule par le filtre actif.
+  toggleAllFiltered(checked) {
+    for (const channel of this.filteredChannels()) {
+      const messages = this.package.messages.get(String(channel.id)) || [];
+      for (const message of messages) {
+        const key = `${channel.id}:${message.id}`;
+        if (checked) this.selectedMessages.add(key);
+        else this.selectedMessages.delete(key);
+      }
+    }
+    this.render();
+  }
+
+  toggleChannelSelection(channelId, checked) {
+    const messages = this.package.messages.get(String(channelId)) || [];
+    for (const message of messages) {
+      const key = `${channelId}:${message.id}`;
+      if (checked) this.selectedMessages.add(key);
+      else this.selectedMessages.delete(key);
+    }
   }
 
   // Aplatit les sections en une liste de lignes (en-tetes + salons) et cumule la
@@ -294,6 +343,22 @@ currentSectionLabel() {
     return '';
   }
 
+  // Le bandeau ne sert que lorsque l en-tete de section a quitte la fenetre :
+  // sinon le meme nom s affichait deux fois de suite.
+  currentSectionHeaderVisible() {
+    const model = this.channelModel;
+    if (!model || !model.total) return false;
+    const { start, end } = this.channelWindowSlice();
+    for (let index = start; index < end; index += 1) {
+      if (model.rows[index].type === 'header') return true;
+    }
+    return false;
+  }
+
+  currentSectionContext() {
+    return this.currentSectionHeaderVisible() ? '' : this.currentSectionLabel();
+  }
+
   // Les hauteurs ne sont pas celles des constantes CSS : on mesure une fois
   // pour toutes sur les noeuds reels. Sans cela, chaque repeint decale la
   // ligne sous le doigt de 2 px et le defilement parait glissant.
@@ -345,7 +410,7 @@ currentSectionLabel() {
       this.channelSafeBottom = slice.padTop + (this.channelModel.offsets[slice.end] - this.channelModel.offsets[slice.start]);
     }
     if (context) {
-      const label = this.currentSectionLabel();
+      const label = this.currentSectionContext();
       if (context.textContent !== label) context.textContent = label;
     }
   }
@@ -401,6 +466,102 @@ currentSectionLabel() {
     return this.queue.map((item, index) => `<div class="package-queue-item ${item.status}" data-queue-index="${index}"><div class="package-queue-main"><span class="package-queue-number">${index + 1}.</span><span class="package-file-icon">📄</span><strong title="${escHtml(item.file.name)}">${escHtml(item.file.name)}</strong><span class="package-file-size">${formatBytes(item.file.size)}</span></div><div class="package-queue-progress"><div class="package-progress-track"><span style="width:${item.percent || 0}%"></span></div><strong>${Math.round(item.percent || 0)} %</strong><span class="package-queue-status">${escHtml(item.statusText || 'En attente')}</span>${item.status === 'error' ? `<button class="btn btn-secondary btn-xs" data-retry-index="${index}">🔄 Réessayer</button>` : ''}</div></div>`).join('');
   }
 
+  // Une page peut contenir plus de cent images : tout est charge en paresseux et
+// les videos ne telechargent rien avant lecture. Si l URL signee a expire,
+// l image bascule sur son lien plutot que de laisser un trou.
+attachmentHtml(attachment, index = 0, messageKey = '') {
+    const url = escHtml(attachment.url);
+    const name = escHtml(attachment.fileName || 'fichier');
+    const kind = attachmentKind(attachment.url, attachment.fileName);
+
+    if (kind === 'image') {
+      const locate = messageKey ? ` data-attachment-message="${escHtml(messageKey)}" data-attachment-index="${index}"` : '';
+      return `<a class="package-attachment package-attachment-image" data-attachment-fallback data-attachment-open${locate} href="${url}" target="_blank" rel="noreferrer" title="${name}"><img data-attachment-img src="${url}" alt="${name}" loading="lazy" decoding="async"><span class="package-attachment-broken">Voir le fichier</span></a>`;
+    }
+    if (kind === 'video') {
+      return `<span class="package-attachment package-attachment-media"><video src="${url}" controls preload="metadata" playsinline></video><a class="package-attachment-link" href="${url}" target="_blank" rel="noreferrer">${name}</a></span>`;
+    }
+    if (kind === 'audio') {
+      return `<span class="package-attachment package-attachment-media"><audio src="${url}" controls preload="metadata"></audio><a class="package-attachment-link" href="${url}" target="_blank" rel="noreferrer">${name}</a></span>`;
+    }
+    return `<a class="package-attachment-link" href="${url}" target="_blank" rel="noreferrer">📎 ${name}</a>`;
+  }
+
+  clampLightboxIndex(index, length) {
+    if (!length) return 0;
+    const value = Number(index);
+    if (!Number.isFinite(value)) return 0;
+    return Math.max(0, Math.min(Math.floor(value), length - 1));
+  }
+
+  lightboxHtml(attachments, index) {
+    const safe = this.clampLightboxIndex(index, attachments.length);
+    const current = attachments[safe];
+    const url = escHtml(current.url);
+    const name = escHtml(current.fileName || 'image');
+    const several = attachments.length > 1;
+    const prev = several ? `<button type="button" class="package-lightbox-nav prev" data-lightbox-prev aria-label="Image précédente">‹</button>` : '';
+    const next = several ? `<button type="button" class="package-lightbox-nav next" data-lightbox-next aria-label="Image suivante">›</button>` : '';
+    const counter = several ? `<span class="package-lightbox-counter">${safe + 1} / ${attachments.length}</span>` : '';
+    return `<button type="button" class="package-lightbox-backdrop" data-lightbox-close aria-label="Fermer"></button>
+      <figure class="package-lightbox-figure">
+        ${prev}
+        <img src="${url}" alt="${name}" data-lightbox-img>
+        ${next}
+        <figcaption class="package-lightbox-caption"><span>${name}</span>${counter}</figcaption>
+      </figure>
+      <button type="button" class="package-lightbox-close" data-lightbox-close aria-label="Fermer">✕</button>`;
+  }
+
+  openLightbox(attachments, index) {
+    const list = Array.isArray(attachments) ? attachments : [];
+    // La visionneuse ne parcourt que les images : un message peut melanger une
+    // capture et un zip, et afficher le zip dans un <img> ne donnerait rien.
+    const images = list.filter(item => attachmentKind(item.url, item.fileName) === 'image');
+    if (!images.length) return;
+    const target = list[this.clampLightboxIndex(index, list.length)];
+    const start = images.indexOf(target);
+    this.lightboxState = { attachments: images, index: start >= 0 ? start : 0 };
+
+    const overlay = this.lightboxOverlay || document.createElement('div');
+    overlay.className = 'package-lightbox';
+    overlay.innerHTML = this.lightboxHtml(this.lightboxState.attachments, this.lightboxState.index);
+    if (!this.lightboxOverlay) {
+      overlay.addEventListener('click', event => {
+        if (event.target.closest('[data-lightbox-close]')) { this.closeLightbox(); return; }
+        if (event.target.closest('[data-lightbox-prev]')) { this.stepLightbox(-1); return; }
+        if (event.target.closest('[data-lightbox-next]')) { this.stepLightbox(1); }
+      });
+      document.body.appendChild(overlay);
+      this.lightboxOverlay = overlay;
+      this.lightboxKeyHandler = event => this.handleLightboxKey(event);
+      document.addEventListener('keydown', this.lightboxKeyHandler);
+    }
+  }
+
+  stepLightbox(delta) {
+    if (!this.lightboxState) return;
+    this.lightboxState.index = this.clampLightboxIndex(this.lightboxState.index + delta, this.lightboxState.attachments.length);
+    this.lightboxOverlay.innerHTML = this.lightboxHtml(this.lightboxState.attachments, this.lightboxState.index);
+  }
+
+  closeLightbox() {
+    if (this.lightboxKeyHandler) {
+      document.removeEventListener('keydown', this.lightboxKeyHandler);
+      this.lightboxKeyHandler = null;
+    }
+    this.lightboxOverlay?.remove();
+    this.lightboxOverlay = null;
+    this.lightboxState = null;
+  }
+
+  handleLightboxKey(event) {
+    if (!this.lightboxOverlay) return;
+    if (event.key === 'Escape') { this.closeLightbox(); return; }
+    if (event.key === 'ArrowLeft') { this.stepLightbox(-1); return; }
+    if (event.key === 'ArrowRight') { this.stepLightbox(1); }
+  }
+
   renderMessages(channel) {
     const allMessages = this.package.messages.get(channel.id) || [];
     const hiddenNotes = this.systemNotesHiddenCount(channel);
@@ -414,7 +575,7 @@ currentSectionLabel() {
     const sourceMessages = query ? shownMessages.filter(message => `${message.content || ''} ${message.id}`.toLowerCase().includes(query)) : shownMessages;
     const messages = sourceMessages.slice(start, start + this.messagePageSize);
     const end = Math.min(sourceMessages.length, start + this.messagePageSize);
-    return `<div class="package-message-header"><div><div class="package-conversation-title"><img class="package-message-avatar" src="${escHtml(avatarFor(channel))}" alt="" data-hide-on-error><h3>${escHtml(displayChannelName(channel))}</h3></div><span class="text-muted">${start + 1}-${end} / ${allMessages.length} messages${channel.isLeft ? ' · serveur quitté' : ''}</span></div><div class="package-message-actions"><input class="package-message-search" data-message-search value="${escHtml(this.messageQuery)}" placeholder="Rechercher dans le salon..." aria-label="Rechercher dans les messages"><label><input type="checkbox" data-select-page ${selectedCount === messages.length && messages.length ? 'checked' : ''}> Tout sélectionner</label></div></div><div class="package-message-list">${messages.map(message => { const key = `${channel.id}:${message.id}`; return `<article class="package-message${this.selectedMessages.has(key) ? ' selected' : ''}"><label class="package-message-select"><input type="checkbox" data-message-key="${escHtml(key)}" data-message-index="${start + messages.indexOf(message)}" ${this.selectedMessages.has(key) ? 'checked' : ''}><span></span></label><div><div class="package-message-meta"><img class="package-message-avatar small" src="${escHtml(this.package.user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="" data-hide-on-error><strong>${escHtml(this.package.user.username)}</strong><time>${escHtml(message.timestamp)}</time></div><p>${isSystemNotification(message) ? '<span class="package-system-badge">Notification système</span> <span class="text-muted">(texte absent de l’export Discord)</span>' : escHtml(message.content) || '<span class="text-muted">(message sans contenu)</span>'}</p>${message.attachments.length ? `<div class="package-attachments">${message.attachments.map(attachment => `<a href="${escHtml(attachment.url)}" target="_blank" rel="noreferrer">📎 ${escHtml(attachment.fileName)}</a>`).join('')}</div>` : ''}</div></article>`; }).join('')}</div><div class="package-pagination">${start > 0 ? '<button class="btn btn-secondary btn-xs" data-package-page="prev">← Précédent</button>' : ''}${end < sourceMessages.length ? '<button class="btn btn-secondary btn-xs" data-package-page="next">Suivant →</button>' : ''}</div>`;
+    return `<div class="package-message-header"><div><div class="package-conversation-title"><img class="package-message-avatar" src="${escHtml(avatarFor(channel))}" alt="" data-hide-on-error><h3>${escHtml(displayChannelName(channel))}</h3></div><span class="text-muted">${start + 1}-${end} / ${allMessages.length} messages${channel.isLeft ? ' · serveur quitté' : ''}</span></div><div class="package-message-actions"><input class="package-message-search" data-message-search value="${escHtml(this.messageQuery)}" placeholder="Rechercher dans le salon..." aria-label="Rechercher dans les messages"><label><input type="checkbox" data-select-page ${selectedCount === messages.length && messages.length ? 'checked' : ''}> Tout sélectionner</label></div></div><div class="package-message-list">${messages.map(message => { const key = `${channel.id}:${message.id}`; return `<article class="package-message${this.selectedMessages.has(key) ? ' selected' : ''}"><label class="package-message-select"><input type="checkbox" data-message-key="${escHtml(key)}" data-message-index="${start + messages.indexOf(message)}" ${this.selectedMessages.has(key) ? 'checked' : ''}><span></span></label><div><div class="package-message-meta"><img class="package-message-avatar small" src="${escHtml(this.package.user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="" data-hide-on-error><strong>${escHtml(this.package.user.username)}</strong><time>${escHtml(message.timestamp)}</time></div><p>${isSystemNotification(message) ? '<span class="package-system-badge">Notification système</span> <span class="text-muted">(texte absent de l’export Discord)</span>' : escHtml(message.content) || '<span class="text-muted">(message sans contenu)</span>'}</p>${message.attachments.length ? `<div class="package-attachments">${message.attachments.map((attachment, index) => this.attachmentHtml(attachment, index, key)).join('')}</div>` : ''}</div></article>`; }).join('')}</div><div class="package-pagination">${start > 0 ? '<button class="btn btn-secondary btn-xs" data-package-page="prev">← Précédent</button>' : ''}${end < sourceMessages.length ? '<button class="btn btn-secondary btn-xs" data-package-page="next">Suivant →</button>' : ''}</div>`;
   }
 
   addFiles(files) {
@@ -457,6 +618,7 @@ currentSectionLabel() {
         onProgress: info => this.applyImportProgress(item, info),
       });
       item.status = 'success'; item.percent = 100; item.statusText = 'OK';
+      parsed.schemaVersion = PACKAGE_SCHEMA_VERSION;
       const archiveId = createPackageArchiveId(item.file);
       try {
         await savePackageArchive(archiveId, parsed, { name: item.file.name, size: item.file.size, type: item.file.type, lastModified: item.file.lastModified });
@@ -500,8 +662,24 @@ currentSectionLabel() {
       return;
     }
     // Avant la selection : le bouton Ouvrir est imbrique dans la ligne.
+    // La case est traitee par handleChange : ici on evite juste d'ouvrir la
+// conversation quand on clique dessus.
+// Le clic sur une vignette ouvre la visionneuse, pas un nouvel onglet.
+const open = event.target.closest('[data-attachment-open]');
+    if (open && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault();
+      const key = open.dataset.attachmentMessage;
+      const [channelId, messageId] = String(key || '').split(':');
+      const message = channelId && messageId ? (this.package.messages.get(channelId) || []).find(item => String(item.id) === messageId) : null;
+      if (message) this.openLightbox(message.attachments, Number(open.dataset.attachmentIndex) || 0);
+      return;
+    }
+    const selectBox = event.target.closest('[data-select-channel]');
+    if (selectBox) return;
     const kindFilter = event.target.closest('[data-channel-filter]');
     if (kindFilter) { this.channelKindFilter = kindFilter.dataset.channelFilter; this.render(); return; }
+    if (event.target.closest('[data-select-all]')) { this.toggleAllFiltered(true); return; }
+    if (event.target.closest('[data-select-none]')) { this.toggleAllFiltered(false); return; }
     const showNotes = event.target.closest('[data-show-system-notes]');
     if (showNotes) { this.hideSystemNotes = false; this.render(); return; }
     const openDm = event.target.closest('[data-open-dm]');
@@ -525,7 +703,7 @@ currentSectionLabel() {
     const action = actionButton?.dataset.packageAction;
     if (action === 'focus') { this.focusMode = !this.focusMode; this.contentArea.classList.toggle('package-focus-mode', this.focusMode); this.render(); return; }
     if (action === 'export') { this.exportPackage(actionButton.dataset.exportFormat || 'json'); return; }
-    if (action === 'close') { this.package = null; this.selectedChannelId = null; this.selectedMessages.clear(); this.render(); }
+    if (action === 'close') { this.closeLightbox(); this.package = null; this.selectedChannelId = null; this.selectedMessages.clear(); this.render(); }
     if (action === 'delete') this.deleteSelectedMessages();
   }
 
@@ -601,6 +779,12 @@ handleKeydown(event) {
     if (event.target.id === 'packageFileInput') this.addFiles(event.target.files);
     if (event.target.matches('[data-hide-empty]')) { this.hideEmptyDms = event.target.checked; this.render(); return; }
     if (event.target.matches('[data-hide-system]')) { this.hideSystemNotes = event.target.checked; this.render(); return; }
+    const channelBox = event.target.closest('[data-select-channel]');
+    if (channelBox) {
+      this.toggleChannelSelection(channelBox.dataset.selectChannel, channelBox.checked);
+      this.render();
+      return;
+    }
     if (event.target.matches('[data-select-page]') && this.selectedChannelId) {
       const messages = this.package.messages.get(this.selectedChannelId) || [];
       const page = messages.slice(this.messagePageOffset, this.messagePageOffset + this.messagePageSize);
@@ -679,15 +863,61 @@ buildExportBlob(format) {
 
   // Un salon quitte (403) ou un message deja efface (404) ne sont pas des
 // succes : l'ancien code les comptait comme supprimes. Seul le 429 se reessaye.
-async deleteOnePackageMessage(target, counts) {
+// Un 404 ne prouve pas que le message a disparu : il peut venir d un mauvais
+// identifiant de salon, d'un message systeme non supprimable, ou d'une race.
+// On demande une fois au serveur si le message existe encore, plutot que de
+// classer en « deja absent » sur la seule foi du statut.
+async confirmMessageStillExists(channelId, messageId) {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.getMessage) return null;
+    try {
+      const result = await api.getMessage(channelId, messageId);
+      return Boolean(result?.success);
+    } catch (error) {
+      console.warn('Package message existence check failed:', error);
+      return null;
+    }
+  }
+
+  async deleteOnePackageMessage(target, counts) {
     let result = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {
       result = await window.electronAPI.deletePackageMessage(target.channelId, target.messageId);
       if (!shouldRetryDelete(result)) break;
       await new Promise(resolve => setTimeout(resolve, ((Number(result.retryAfter) || 5) * 1000) + 500));
     }
-    const outcome = classifyDeleteResult(result);
+    let outcome = classifyDeleteResult(result);
+    // Ni 404 ni 400 ne prouvent que le message a disparu : un 400 peut venir
+    // d un message systeme non supprimable, d un corps de requete refuse. On
+    // demande au serveur, une fois, si le message existe encore.
+    const status = Number(result?.status);
+    if (outcome === 'missing' || status === 400) {
+      const exists = await this.confirmMessageStillExists(target.channelId, target.messageId);
+      if (exists === true && outcome === 'missing') {
+        outcome = 'failed';
+        counts.reasons = counts.reasons || {};
+        const reason = 'suppression refusée, message toujours présent';
+        counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
+        console.warn('Package message deletion refused but message exists:', `${target.channelId}:${target.messageId}`, result);
+        return outcome;
+      }
+      if (exists === true && outcome === 'failed') {
+        counts.reasons = counts.reasons || {};
+        const reason = `message présent, suppression refusée (${describeDeleteFailure(result)})`;
+        counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
+        console.warn('Package message present but undeletable:', `${target.channelId}:${target.messageId}`, result);
+        return outcome;
+      }
+    }
     counts[outcome] = (counts[outcome] || 0) + 1;
+    if (outcome === 'failed') {
+      // Sans la raison, « echec » ne dit rien. Elle est comptee par motif pour
+      // apparaitre dans le resume, et tracee pour la console.
+      const reason = describeDeleteFailure(result);
+      counts.reasons = counts.reasons || {};
+      counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
+      console.warn('Package message deletion failed:', reason);
+    }
     if (outcome === 'deleted') this.selectedMessages.delete(`${target.channelId}:${target.messageId}`);
     return outcome;
   }
@@ -708,6 +938,55 @@ async channelIsAccessible(channelId) {
     }
   }
 
+  // Un fil archive refuse toute suppression (Discord, erreur 50083). On le
+// reactive, on supprime, puis on le reassigne : le fil est laisse dans l etat
+// ou l utilisateur l avait. Impossible de le reactiver, c est soit le compte,
+// soit les permissions qui bloquent, et l outil ne pretend pas le contraire.
+async unarchiveThread(threadId) {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.setThreadArchived) return false;
+    try {
+      const result = await api.setThreadArchived(threadId, false);
+      return Boolean(result?.success);
+    } catch (error) {
+      console.warn('Package thread unarchive failed:', error);
+      return false;
+    }
+  }
+
+  async rearchiveThread(threadId) {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.setThreadArchived) return;
+    try {
+      await api.setThreadArchived(threadId, true);
+    } catch (error) {
+      console.warn('Package thread re-archive failed:', error);
+    }
+  }
+
+  // Le cycle de vie d un fil est tightlye autour de son propre groupe : si une
+// exception survient, le fil est quand meme reassigne. Un reassignage groupe a
+// la fin laissait les fils ouverts si la boucle etait interrompue, ce qui
+// modifiait l etat du serveur sans que l utilisateur l ait demande.
+async deleteChannelGroup(channel, group, counts, onProgress) {
+    const channelId = String(channel.id);
+    const reactivated = channel.type === 'THREAD' ? await this.unarchiveThread(channelId) : false;
+    try {
+      for (const target of group) {
+        try {
+          await this.deleteOnePackageMessage(target, counts);
+        } catch (error) {
+          counts.failed += 1;
+          console.warn('Package message deletion failed:', error);
+        }
+        if (onProgress) await onProgress();
+      }
+    } finally {
+      if (reactivated) await this.rearchiveThread(channelId);
+    }
+    return { reactivated };
+  }
+
   async deleteSelectedMessages() {
     if (this.isDeleting || !this.selectedMessages.size) return;
     const targets = getSelectedPackageMessageKeys(this.selectedMessages);
@@ -715,6 +994,7 @@ async channelIsAccessible(channelId) {
     this.isDeleting = true; this.deleteProgress = { done: 0, total: targets.length };
     const counts = { deleted: 0, missing: 0, forbidden: 0, failed: 0 };
     const skippedChannels = [];
+    showProgressPanel({ title: 'Suppression des messages', total: targets.length, detail: 'préparation' });
     // Regroupement par salon : l acces se verifie une fois, pas par message.
     const byChannel = new Map();
     for (const target of targets) {
@@ -723,6 +1003,7 @@ async channelIsAccessible(channelId) {
     }
     try {
       let sincePause = 0;
+      let reactived = 0;
       for (const [channelId, group] of byChannel) {
         if (!(await this.channelIsAccessible(channelId))) {
           counts.forbidden += group.length;
@@ -731,22 +1012,38 @@ async channelIsAccessible(channelId) {
           this.render();
           continue;
         }
-        for (const target of group) {
-          try {
-            await this.deleteOnePackageMessage(target, counts);
-          } catch (error) {
-            counts.failed += 1;
-            console.warn('Package message deletion failed:', error);
-          }
+        const channel = this.package.channels.find(candidate => String(candidate.id) === String(channelId));
+        if (!channel) {
+          counts.failed += group.length;
+          this.deleteProgress.done += group.length;
+          continue;
+        }
+        const onProgress = async () => {
           this.deleteProgress.done += 1;
           sincePause += 1;
+          // Le panneau donne le sentiment d avance et nomme le salon traite :
+          // sans lui, une longue suppression parait bloquee.
+          updateProgressPanel({
+            done: this.deleteProgress.done,
+            total: this.deleteProgress.total,
+            detail: `${displayChannelName(channel)} — suppression ${this.deleteProgress.done}/${this.deleteProgress.total}`,
+          });
           if (sincePause >= 10) { sincePause = 0; this.render(); await new Promise(resolve => setTimeout(resolve, 150)); }
+        };
+        const outcome = await this.deleteChannelGroup(channel, group, counts, onProgress);
+        if (outcome.reactivated) reactived += 1;
+        else if (channel.type === 'THREAD') {
+          counts.reasons = counts.reasons || {};
+          const reason = 'fil de discussion non réactivable';
+          counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
         }
       }
       const skipped = skippedChannels.length
         ? ` · ${skippedChannels.length} salon${skippedChannels.length > 1 ? 's' : ''} inaccessible${skippedChannels.length > 1 ? 's' : ''} ignoré${skippedChannels.length > 1 ? 's' : ''}`
         : '';
-      showNotification(summarizeDelete(counts).text + skipped);
+      const resume = summarizeDelete(counts, counts.reasons).text + skipped + (reactived ? ` · ${reactived} fil${reactived > 1 ? 's' : ''} réarchivé${reactived > 1 ? 's' : ''}` : '');
+      showNotification(resume);
+      finishProgressPanel({ detail: resume });
     } finally { this.isDeleting = false; this.deleteProgress = null; this.render(); }
   }
 }

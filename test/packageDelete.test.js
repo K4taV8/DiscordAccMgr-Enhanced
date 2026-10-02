@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { classifyDeleteResult, shouldRetryDelete, summarizeDelete } from '../src/services/packageDelete.service.js';
+import { classifyDeleteResult, describeDeleteFailure, shouldRetryDelete, summarizeDelete } from '../src/services/packageDelete.service.js';
 
 // Le compteur annoncait « supprime » meme quand Discord refusait (403 sur un
 // salon quitte, 404 sur un message deja absent). Le resultat est donc classe
@@ -38,6 +38,53 @@ test('le retry ne concerne que le rate limit', () => {
 
 test('le delai de reessai suit Retry-After', () => {
   assert.equal(classifyDeleteResult({ success: false, error: 'Rate limited', retryAfter: 7 }) !== 'retry', false);
+});
+
+// Discord renvoie des messages du type « Missing Access » ou « Missing
+// Permissions », sans aucun code dedans. La regex ne voyait donc « HTTP 403 »
+// que par hasard, et un vrai refus pouvait finir en « echec » : ce qui est
+// exactement ce que l utilisateur a observe sur un salon ou il avait acces.
+test('le statut HTTP tranche quand le message ne contient aucun code', () => {
+  assert.equal(classifyDeleteResult({ success: false, status: 403, error: 'Missing Access' }), 'forbidden');
+  assert.equal(classifyDeleteResult({ success: false, status: 403, error: 'Missing Permissions' }), 'forbidden');
+  assert.equal(classifyDeleteResult({ success: false, status: 404, error: 'Unknown Message' }), 'missing');
+  assert.equal(classifyDeleteResult({ success: false, status: 400, error: 'Invalid Form Body' }), 'failed');
+  assert.equal(classifyDeleteResult({ success: false, status: 429, error: 'Rate limited' }), 'retry');
+});
+
+test('un 403 reste un refus meme quand le statut est absent', () => {
+  assert.equal(classifyDeleteResult({ success: false, error: 'HTTP 403' }), 'forbidden', 'repli sur le texte');
+});
+
+test('la raison d un echec est decrite a partir du statut et du message', () => {
+  assert.equal(describeDeleteFailure({ status: 400, error: 'Invalid Form Body' }), '400 Invalid Form Body');
+  assert.equal(describeDeleteFailure({ status: 403, error: 'Missing Access' }), '403 Missing Access');
+  assert.equal(describeDeleteFailure({ error: 'boom' }), 'boom');
+  assert.equal(describeDeleteFailure({ status: 0 }), 'HTTP 0');
+});
+
+test('le resume annonce la raison des echecs', () => {
+  const counts = { deleted: 2, missing: 0, forbidden: 1, failed: 3 };
+  assert.match(summarizeDelete(counts).text, /^2 supprimé\(s\)/);
+  assert.doesNotMatch(summarizeDelete(counts).text, /400/, 'sans raison, rien n est invente');
+
+  const withReasons = summarizeDelete(counts, { '400 Invalid Form Body': 2, '401 Unauthorized': 1 });
+  assert.match(withReasons.text, /3 échec\(s\)/);
+  assert.match(withReasons.text, /400 Invalid Form Body/, 'la cause est affichee');
+  assert.match(withReasons.text, /401 Unauthorized/);
+});
+
+test('beaucoup de causes distinctes restent lisibles', () => {
+  const reasons = { a: 1, b: 1, c: 1, d: 1 };
+  const text = summarizeDelete({ deleted: 0, missing: 0, forbidden: 0, failed: 4 }, reasons).text;
+  assert.match(text, /\+2/, 'les suivantes sont resumees');
+});
+
+test('un salon inconnu n est pas un message absent', () => {
+  // Compter « Unknown Channel » comme « deja absent » dissimulait le vrai
+  // probleme, qui est dans l identifiant de salon de la selection.
+  assert.equal(classifyDeleteResult({ success: false, status: 404, error: 'Unknown Channel' }), 'failed');
+  assert.equal(classifyDeleteResult({ success: false, status: 404, error: 'Unknown Message' }), 'missing');
 });
 
 test('le resume compte chaque etat', () => {

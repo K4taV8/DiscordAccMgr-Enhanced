@@ -79,6 +79,7 @@ export interface ElectronAPI {
   deleteGroupMessage(channelId: string, messageId: string): Promise<{ success: boolean; error?: string }>;
   deletePackageMessage(channelId: string, messageId: string): Promise<{ success: boolean; error?: string }>;
   getChannel(channelId: string): Promise<{ success: boolean; status?: number; channel?: { id: string; name: string | null; type: number | null }; error?: string }>;
+  setThreadArchived(threadId: string, archived: boolean): Promise<{ success: boolean; status?: number; error?: string }>;
 
   removeOwnReaction(
     channelId: string,

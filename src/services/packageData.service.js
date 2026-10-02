@@ -45,6 +45,31 @@ export function countSystemNotifications(messages) {
   return count;
 }
 
+// Mesure sur l export de 394 Mo : 2208 pieces jointes, dont 1778 images, 225
+// videos, 161 audios et 44 fichiers ordinaires. L extension se lit sur le
+// chemin, jamais sur la requete : les URL de Discord sont signees
+// (?ex=&is=&hm=) et la signature contient des caracteres qui trompent une
+// simple recherche du dernier point.
+const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'apng', 'jfif']);
+const VIDEO_EXT = new Set(['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'ogv']);
+const AUDIO_EXT = new Set(['ogg', 'oga', 'mp3', 'opus', 'wav', 'm4a', 'flac', 'aac']);
+
+export function attachmentExtension(url = '', fileName = '') {
+  const source = String(fileName || url).split(/[?#]/)[0];
+  let name = source.split('/').pop() || '';
+  try { name = decodeURIComponent(name); } catch { /* nom mal echappe : on garde brut */ }
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+}
+
+export function attachmentKind(url, fileName = '') {
+  const ext = attachmentExtension(url, fileName);
+  if (IMAGE_EXT.has(ext)) return 'image';
+  if (VIDEO_EXT.has(ext)) return 'video';
+  if (AUDIO_EXT.has(ext)) return 'audio';
+  return 'file';
+}
+
 export function buildMessageSearchIndex(messages) {
   return messages.map((message, index) => ({ index, id: String(message.id), text: `${message.content || ''} ${message.author?.username || ''}`.toLocaleLowerCase() }));
 }

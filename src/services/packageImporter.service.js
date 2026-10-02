@@ -94,11 +94,16 @@ export function normalizeChannelType(rawType) {
     const key = rawType.trim().toUpperCase();
     if (key === 'DM') return 'DM';
     if (key === 'GROUP_DM' || key === 'GROUP') return 'GROUP';
+    if (key.startsWith('GUILD_') && key.endsWith('THREAD')) return 'THREAD';
     return 'SERVER_TEXT';
   }
   const numeric = Number(rawType);
   if (numeric === 1) return 'DM';
   if (numeric === 3) return 'GROUP';
+  // 10 annonce de fil, 11 fil public, 12 fil prive. Ces trois etaient.classes
+  // comme des salons de serveur : l outil affichait des fils comme des canaux
+  // ordinaires, et ignorait qu un fil archive refuse toute suppression.
+  if (numeric === 10 || numeric === 11 || numeric === 12) return 'THREAD';
   return 'SERVER_TEXT';
 }
 

@@ -6,6 +6,7 @@ import { escHtml } from '../utils/emojiUtils.js';
 import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
 import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
+import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
 
 export class GroupManager {
   constructor(contentArea) {
@@ -208,6 +209,11 @@ export class GroupManager {
     if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${selected.length} groupe(s) sélectionné(s) ?`))) return;
 
     this.isDeleting = true;
+    // Comme pour les DM : le debit de Discord impose des attentes, le panneau
+    // donne le sentiment d avance et nomme le groupe traite.
+    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);
+    let done = 0;
+    showProgressPanel({ title: 'Nettoyage des groupes', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
     try {
       for (const g of selected) {
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
@@ -222,17 +228,22 @@ export class GroupManager {
               onComplete: () => {},
             });
           } catch (e) { console.error('Cleaning delete failed:', e); }
+          done += 1;
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, onComplete: () => {} });
           } catch (e) { console.error('Cleaning reactions failed:', e); }
+          done += 1;
         }
         if (mode === 'full') {
           try { await window.electronAPI.leaveGroup(g.groupId); } catch (e) { console.error('Cleaning leave failed:', e); }
+          done += 1;
         }
+        updateProgressPanel({ done, detail: g.name });
       }
       this.refreshGroupsList(true);
+      finishProgressPanel({ detail: `${selected.length} groupe(s) traité(s)` });
     } finally {
       this.isDeleting = false;
     }
