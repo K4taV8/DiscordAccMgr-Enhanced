@@ -95,10 +95,24 @@ test('une seule balise CSP dans index.html, avec un contenu exploitable', () => 
 // la valeur exacte de media-src, pas « le CDN est-il mentionné quelque part ».
 test('media-src accorde exactement le CDN Discord et le média local', () => {
   const { table } = directivesCsp();
-  assertDirective(table, 'media-src', ["'self'", 'https://cdn.discordapp.com'],
-    "sans le CDN les .mp4 du data package restent des rectangles noirs à contrôles inertes ; sans 'self' plus aucun média local ne se lit");
-  assertDirective(table, 'img-src', ["'self'", 'data:', 'https://cdn.discordapp.com'],
-    "img-src et media-src sont les deux seules directives autorisées à toucher le CDN, et img-src doit le rester exactement, 'self' et data: compris");
+  assertDirective(table, 'media-src', ["'self'", 'https://cdn.discordapp.com', 'media:'],
+    "sans le CDN les .mp4 du data package restent des rectangles noirs à contrôles inertes ; sans 'self' plus aucun média local ne se lit ; sans media: la copie du miroir est refusée au chargement");
+  assertDirective(table, 'img-src', ["'self'", 'data:', 'https://cdn.discordapp.com', 'media:'],
+    "img-src et media-src sont les deux seules directives autorisées à toucher le CDN, et img-src doit le rester exactement, 'self', data: et media: compris");
+});
+
+// Tâche 4 : `media:` sert les copies locales téléchargées par le miroir. Sans
+// ce jeton, la CSP refuse le schéma et la copie est rejetée au chargement,
+// exactement comme le CDN l'était avant le plan 1. On repin les invariants
+// S3/S4 dans le même souffle pour qu'aucun ajout ne les ouvre en douce.
+test('img-src et media-src autorisent le schéma media: du miroir', () => {
+  const { table } = directivesCsp();
+  assert.ok(table.get('img-src').has('media:'),
+    'la copie locale se charge dans les <img>');
+  assert.ok(table.get('media-src').has('media:'),
+    'la copie locale se lit dans <video>/<audio>');
+  assert.deepEqual([...table.get('connect-src')], ["'self'"], 'connect-src reste verrouillé');
+  assert.deepEqual([...table.get('script-src')], ["'self'"], 'script-src reste verrouillé');
 });
 
 // README l. 269 (S3) : connect-src 'self'. Une XSS du renderer ne doit pas

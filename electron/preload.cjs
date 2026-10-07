@@ -75,6 +75,14 @@ function onImportPackageProgress(callback) {
   return () => ipcRenderer.removeListener('discord:importPackage:progress', listener);
 }
 
+// Miroir local des medias : meme motif que onImportPackageProgress. La
+// progression arrive par events, car `invoke` ne repond qu'a la fin.
+function onMediaMirrorProgress(callback) {
+  const listener = (_event, data) => callback(data);
+  ipcRenderer.on('media:mirror:progress', listener);
+  return () => ipcRenderer.removeListener('media:mirror:progress', listener);
+}
+
     // DevTools a la demande (F12 / Ctrl+Shift+L).
 contextBridge.exposeInMainWorld('electronAPI', {
   toggleDevTools: () => ipcRenderer.invoke('app:toggleDevTools'),
@@ -94,6 +102,14 @@ contextBridge.exposeInMainWorld('electronAPI', {
 
   importPackage,
   onImportPackageProgress,
+
+  mediaMirror: {
+    start: wrap('mediaMirrorStart', (items) => ipcRenderer.invoke('media:mirrorStart', { items })),
+    cancel: wrap('mediaMirrorCancel', () => ipcRenderer.invoke('media:mirrorCancel')),
+    status: wrap('mediaMirrorStatus', (items) => ipcRenderer.invoke('media:mirrorStatus', { items })),
+    purge: wrap('mediaMirrorPurge', (key) => ipcRenderer.invoke('media:mirrorPurge', { key })),
+    onProgress: onMediaMirrorProgress,
+  },
 
   saveAttachment: wrap('saveAttachment', attachment => ipcRenderer.invoke('discord:saveAttachment', attachment)),
 

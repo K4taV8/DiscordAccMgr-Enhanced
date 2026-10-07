@@ -94,6 +94,40 @@ export interface PackageImportProgress {
   channelId?: string;
 }
 
+/** Une piece jointe a mettre en miroir local, telle que le renderer l'envoie. */
+export interface MirrorItem {
+  url: string;
+  fileName: string;
+  kind: string;
+  channelId: string;
+}
+
+/** Progression publiee sur `media:mirror:progress` pendant le telechargement. */
+export interface MirrorProgress {
+  done: number;
+  failed: number;
+  cancelled: boolean;
+  bytesDownloaded: number;
+  bytesTotal: number;
+  current?: string;
+}
+
+/** Etat d'une piece jointe dans un lot. `localUrl` est construit cote main. */
+export interface MirrorEntry {
+  url: string;
+  state: string;
+  localUrl: string | null;
+}
+
+/** Reponse de `media:mirrorStatus`. */
+export interface MirrorStatus {
+  key: string;
+  bytesDownloaded: number;
+  bytesTotal: number;
+  failures: string[];
+  entries: MirrorEntry[];
+}
+
 export interface ElectronAPI {
   // fenetre
   minimize(): void;
@@ -116,6 +150,16 @@ export interface ElectronAPI {
   // octets ne traversent pas l'IPC
   importPackage(file: File): Promise<PackageImportResponse>;
   onImportPackageProgress(callback: (info: PackageImportProgress) => void): () => void;
+
+  // miroir local des medias : le main process telecharge, ecrit et purge ; le
+  // renderer ne fetch jamais le CDN (connect-src 'self').
+  mediaMirror: {
+    start(items: MirrorItem[]): Promise<{ ok: boolean; key?: string; error?: string }>;
+    cancel(): Promise<{ ok: boolean }>;
+    status(items: MirrorItem[]): Promise<MirrorStatus>;
+    purge(key: string): Promise<{ ok: boolean; error?: string }>;
+    onProgress(callback: (info: MirrorProgress) => void): () => void;
+  };
 
   // sortie de secours d'une piece jointe : le renderer ne peut pas fetch le CDN
   // (connect-src 'self'), le main process telecharge et ecrit le fichier.

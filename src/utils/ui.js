@@ -38,7 +38,11 @@ export const confirmAction = (title, message, confirmLabel = 'Confirm') => new P
   okBtn.focus();
 });
 
-export const showProgressModal = (title, total) => {
+// Modale de progression. `options.onCancel` est OPTIONNEL : fourni, il rend un
+// bouton « Annuler » qui appelle le rappel puis se desactive (pour qu'un second
+// clic ne le rappelle pas). Sans lui, la modale reste celle d'avant — les
+// appelants existants passent deux arguments.
+export const showProgressModal = (title, total, options = {}) => {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
 
@@ -68,6 +72,24 @@ export const showProgressModal = (title, total) => {
 
   content.appendChild(titleEl);
   content.appendChild(progressContainer);
+
+  if (typeof options.onCancel === 'function') {
+    const buttonGroup = document.createElement('div');
+    buttonGroup.className = 'button-group';
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.className = 'btn btn-secondary';
+    cancelBtn.textContent = 'Annuler';
+    cancelBtn.addEventListener('click', () => {
+      if (cancelBtn.disabled) return;
+      cancelBtn.disabled = true;
+      options.onCancel();
+    });
+
+    buttonGroup.appendChild(cancelBtn);
+    content.appendChild(buttonGroup);
+  }
+
   modal.appendChild(content);
 
   document.body.appendChild(modal);

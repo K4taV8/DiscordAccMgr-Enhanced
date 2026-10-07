@@ -1,7 +1,7 @@
 import { importDiscordPackage, getSelectedPackageMessageKeys, isPlaceholderName } from '../services/packageImporter.service.js';
 import { exportDiscordPackage } from '../services/packageExporter.service.js';
 import { classifyDeleteResult, describeDeleteFailure, shouldRetryDelete, summarizeDelete } from '../services/packageDelete.service.js';
-import { confirmAction, showNotification } from '../utils/ui.js';
+import { confirmAction, showNotification, showProgressModal } from '../utils/ui.js';
 import { escHtml } from '../utils/emojiUtils.js';
 import { buildMessageSearchIndex, isSystemNotification, attachmentKind, attachmentExtension } from '../services/packageData.service.js';
 import { closeProgressPanel, finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
@@ -107,6 +107,14 @@ export class PackageManager {
     this.contentArea = contentArea;
     this.view = 'messages';
     this.galleryIndex = [];
+    // `url -> localUrl` des copies locales declarees finies par le main. La
+    // source d'une tuile passe par mediaSourceFor, jamais par item.url en clair.
+    this.mediaManifest = new Map();
+    this.mediaMirrorKey = '';
+    // Abonnement vivant a `media:mirror:progress`. Un second clic sur
+    // « Telecharger les medias » doit d'abord desabonner le precedent, sinon
+    // deux abonnements empiles updateraient la meme modale.
+    this.mediaProgressUnsubscribe = null;
     this.galleryFilter = { kind: 'all', channelId: '', tri: this.readGallerySort() };
     this.galleryScrollTop = 0;
     this.galleryViewport = 800;
@@ -286,7 +294,7 @@ filteredChannels() {
     this.contentArea.innerHTML = `
       <div class="list-toolbar package-toolbar">
         <div><h2 class="page-title"><span class="package-title-icon">📦</span> Data Package <span class="list-count">${channels.length}</span></h2><p class="text-muted">${escHtml(this.package.user.username)} · ${this.package.totalMessages} messages</p></div>
-        <div class="toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><button class="btn btn-secondary" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button class="btn btn-secondary" data-package-action="export" data-export-format="json">Exporter JSON</button><button class="btn btn-secondary" data-package-action="close">Fermer</button></div>
+        <div class="toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><button class="btn btn-secondary" data-package-action="download-all">Télécharger les médias</button><button class="btn btn-secondary" data-package-action="purge-media">Purger les médias</button><button class="btn btn-secondary" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button class="btn btn-secondary" data-package-action="export" data-export-format="json">Exporter JSON</button><button class="btn btn-secondary" data-package-action="close">Fermer</button></div>
       </div>
       <div class="package-layout">${this.view === 'gallery' ? this.renderGallery() : this.layoutMessages()}</div>`;
     this.attachChannelScroll();
@@ -321,7 +329,7 @@ filteredChannels() {
   // qui branchera ici ses copies locales telechargees (et ne touchera que cette
   // ligne). item.url vient de buildMediaIndex : il est toujours present.
   mediaSourceFor(item) {
-    return item.url;
+    return this.mediaManifest.get(item.url) || item.url;
   }
 
   // Filtre + tri courants. filterMedia rend un tableau neuf, donc inverser ne
@@ -439,6 +447,12 @@ filteredChannels() {
   renderGallery() {
     if (!this.package) return '';
     if (!this.galleryIndex.length) this.galleryIndex = buildMediaIndex(this.package);
+    // Rafraichissement NON bloquant : le rendu initial part avec le manifeste
+    // courant, le main repond ensuite et un second rendu adopte la source locale.
+    if (!this.mediaSyncPending && globalThis.window?.electronAPI?.mediaMirror?.status) {
+      this.mediaSyncPending = true;
+      this.syncMediaManifest(this.mediaItems()).finally(() => { this.mediaSyncPending = false; });
+    }
     const items = this.galleryVisibleItems();
     const toolbar = this.renderGalleryToolbar(items);
     if (!items.length) {
@@ -466,6 +480,97 @@ filteredChannels() {
     this.gallerySafeBottom = slice.full ? Number.POSITIVE_INFINITY : slice.padTop + (slice.endRow - slice.startRow) * slice.rowHeight;
     this.galleryHtml = html;
     return html;
+  }
+
+  // ---- Miroir local des medias (tache 5) ---------------------------------
+
+  // Les champs dont le service du main a besoin, et rien d'autre. L'index est
+  // celui de TOUTE la galerie (pas seulement le filtre courant) : la cle du lot
+  // doit rester la meme quels que soient les filtres.
+  mediaItems() {
+    if (!this.galleryIndex.length && this.package) this.galleryIndex = buildMediaIndex(this.package);
+    return this.galleryIndex.map(item => ({ url: item.url, fileName: item.fileName, kind: item.kind, channelId: item.channelId }));
+  }
+
+  // Rafraichit `mediaManifest` depuis le main (ruling R5 : le renderer ne
+  // construit jamais l'URL media://). On ne relance un rendu que si la carte a
+  // change, sans quoi renderGallery bouclerait sur cet appel.
+  async syncMediaManifest(items) {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.mediaMirror?.status) return;
+    try {
+      const status = await api.mediaMirror.status(items);
+      if (status?.key) this.mediaMirrorKey = status.key;
+      const prochain = new Map();
+      for (const entree of Array.isArray(status?.entries) ? status.entries : []) {
+        if (entree.state === 'done' && entree.localUrl) prochain.set(entree.url, entree.localUrl);
+      }
+      let change = prochain.size !== this.mediaManifest.size;
+      if (!change) {
+        for (const [url, localUrl] of prochain) {
+          if (this.mediaManifest.get(url) !== localUrl) { change = true; break; }
+        }
+      }
+      if (change) { this.mediaManifest = prochain; this.render(); }
+    } catch (error) {
+      console.warn('Media mirror status unavailable:', error);
+    }
+  }
+
+  // « Telecharger les medias » : le main process telecharge, le renderer ouvre
+  // la progression, s'abonne, propose l'annulation et rapporte le resultat.
+  async downloadAllMedia() {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.mediaMirror?.start) { showNotification('Téléchargement impossible : IPC indisponible'); return; }
+    const items = this.mediaItems();
+    if (!items.length) { showNotification('Aucun média à télécharger'); return; }
+    // Un second clic ne doit pas empiler un second abonnement : le precedent est
+    // desabonne AVANT d'en poser un nouveau.
+    if (typeof this.mediaProgressUnsubscribe === 'function') {
+      this.mediaProgressUnsubscribe();
+      this.mediaProgressUnsubscribe = null;
+    }
+    const modal = showProgressModal('Téléchargement des médias', items.length, {
+      onCancel: () => { api.mediaMirror.cancel?.(); },
+    });
+    const desabonner = api.mediaMirror.onProgress?.(info => modal.updateProgress(Math.min(Number(info?.done) || 0, items.length))) || null;
+    this.mediaProgressUnsubscribe = desabonner;
+    try {
+      const resultat = await api.mediaMirror.start(items);
+      if (resultat?.ok === false) showNotification(`Téléchargement impossible : ${resultat.error || 'erreur inconnue'}`);
+      await this.syncMediaManifest(items);
+    } catch (error) {
+      showNotification(`Téléchargement impossible : ${error.message}`);
+    } finally {
+      if (typeof desabonner === 'function') desabonner();
+      // Seulement s'il est encore le notre : un second clic a pu le remplacer.
+      if (this.mediaProgressUnsubscribe === desabonner) this.mediaProgressUnsubscribe = null;
+      modal.closeModal();
+      this.render();
+    }
+  }
+
+  // « Purger les medias » : confirmation, purge cote main (cle validee), puis on
+  // vide le manifeste local pour que les tuiles reviennent au CDN.
+  async purgeMedia() {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.mediaMirror?.purge) { showNotification('Purge impossible : IPC indisponible'); return; }
+    const items = this.mediaItems();
+    let key = this.mediaMirrorKey;
+    if (!key && api.mediaMirror.status) {
+      try { key = (await api.mediaMirror.status(items))?.key || ''; } catch (error) { console.warn('Media mirror status unavailable:', error); }
+    }
+    if (!key) { showNotification('Purge impossible : aucune copie locale'); return; }
+    if (!(await confirmAction('Purger les médias', 'Supprimer les copies locales téléchargées ? Les tuiles reviendront au CDN.'))) return;
+    try {
+      const resultat = await api.mediaMirror.purge(key);
+      if (resultat?.ok === false) { showNotification(`Purge impossible : ${resultat.error || 'erreur inconnue'}`); return; }
+      this.mediaManifest = new Map();
+      this.mediaMirrorKey = '';
+      this.render();
+    } catch (error) {
+      showNotification(`Purge impossible : ${error.message}`);
+    }
   }
 
   // La largeur se lit sur la GRILLE elle meme : c est elle qui reclame la tuile,
@@ -556,7 +661,11 @@ filteredChannels() {
     // Un fichier ordinaire n a pas de lecteur : la seule sortie reelle est de
     // l enregistrer. Le lien target="_blank" d avant etait refuse par
     // setWindowOpenHandler (main.cjs) : il n a jamais rien ouvert.
-    this.saveAttachment({ url: this.mediaSourceFor(item), fileName: item.fileName });
+    //
+    // L URL DISTANTE (item.url), pas mediaSourceFor : enregistrer est un
+    // telechargement reseau, et discord:saveAttachment refuse tout ce qui n est
+    // pas http(s). La copie locale `media://` ne sert qu a l AFFICHAGE.
+    this.saveAttachment({ url: item.url, fileName: item.fileName });
   }
 
   // Les hauteurs mesurees doivent survivre a un changement de filtre ou de
@@ -863,14 +972,19 @@ currentSectionLabel() {
     return `<div class="package-lightbox-unreadable"><strong>${name}</strong><p>Format non lisible par le lecteur</p><button type="button" class="package-lightbox-save" data-save-attachment data-save-url="${url}" data-save-name="${name}">Enregistrer le fichier</button></div>`;
   }
 
-  lightboxMediaHtml(attachment, url, name) {
+  // `source` est la source d AFFICHAGE : la copie locale `media://` si le miroir
+  // la declare finie, le CDN sinon. La visionneuse suit donc les tuiles (F4).
+  // Pour un format non lisible, le bouton enregistrer vise l URL DISTANTE
+  // (`attachment.url`) : enregistrer est un telechargement reseau, jamais la
+  // lecture d une copie locale.
+  lightboxMediaHtml(attachment, source, name) {
     const kind = this.lightboxKind(attachment);
-    if (kind === 'image') return `<img src="${url}" alt="${name}" data-lightbox-img>`;
-    if (kind === 'audio') return `<audio src="${url}" controls preload="metadata" data-lightbox-audio></audio>`;
+    if (kind === 'image') return `<img src="${source}" alt="${name}" data-lightbox-img>`;
+    if (kind === 'audio') return `<audio src="${source}" controls preload="metadata" data-lightbox-audio></audio>`;
     if (kind === 'video' && !this.isUnreadableVideo(attachment)) {
-      return `<video src="${url}" controls playsinline preload="metadata" data-lightbox-video></video>`;
+      return `<video src="${source}" controls playsinline preload="metadata" data-lightbox-video></video>`;
     }
-    return this.lightboxUnreadableHtml(url, name);
+    return this.lightboxUnreadableHtml(escHtml(attachment.url), name);
   }
 
   lightboxHtml(attachments, index) {
@@ -884,7 +998,7 @@ currentSectionLabel() {
       <figure class="package-lightbox-figure"></figure>
       <button type="button" class="package-lightbox-close" data-lightbox-close aria-label="Fermer">✕</button>`;
     }
-    const url = escHtml(current.url);
+    const source = escHtml(this.mediaSourceFor(current));
     const name = escHtml(current.fileName || 'média');
     const several = readable.length > 1;
     const prev = several ? `<button type="button" class="package-lightbox-nav prev" data-lightbox-prev aria-label="Média précédent">‹</button>` : '';
@@ -893,7 +1007,7 @@ currentSectionLabel() {
     return `<button type="button" class="package-lightbox-backdrop" data-lightbox-close aria-label="Fermer"></button>
       <figure class="package-lightbox-figure">
         ${prev}
-        ${this.lightboxMediaHtml(current, url, name)}
+        ${this.lightboxMediaHtml(current, source, name)}
         ${next}
         <figcaption class="package-lightbox-caption"><span>${name}</span>${counter}</figcaption>
       </figure>
@@ -1234,6 +1348,8 @@ applyImportProgress(item, info) {
     const actionButton = event.target.closest('[data-package-action]');
     const action = actionButton?.dataset.packageAction;
     if (action === 'gallery') { this.view = this.view === 'gallery' ? 'messages' : 'gallery'; this.render(); return; }
+    if (action === 'download-all') { this.downloadAllMedia(); return; }
+    if (action === 'purge-media') { this.purgeMedia(); return; }
     if (action === 'export') { this.exportPackage(actionButton.dataset.exportFormat || 'json'); return; }
     if (action === 'close') { this.closeLightbox(); this.package = null; this.selectedChannelId = null; this.selectedMessages.clear(); this.render(); }
     if (action === 'delete') this.deleteSelectedMessages();

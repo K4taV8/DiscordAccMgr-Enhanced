@@ -2,7 +2,36 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { PackageManager } from '../src/components/PackageManager.js';
+import { showProgressModal } from '../src/utils/ui.js';
 import { GALLERY_COLUMNS, GALLERY_GAP } from '../src/services/galleryIndex.service.js';
+
+// Un DOM minimal : `showProgressModal` construit des noeuds et les ecoute. Le
+// depot n'a pas de jsdom, on fournit donc juste ce que la fonction touche.
+function makeDocument() {
+  const created = [];
+  const document = {
+    createElement(tag) {
+      const el = {
+        tag,
+        children: [],
+        listeners: {},
+        className: '',
+        textContent: '',
+        style: {},
+        disabled: false,
+        appendChild(child) { this.children.push(child); return child; },
+        addEventListener(type, fn) { (this.listeners[type] = this.listeners[type] || []).push(fn); },
+        remove() { this.removed = true; },
+        focus() {},
+        click() { (this.listeners.click || []).slice().forEach(fn => fn({})); },
+      };
+      created.push(el);
+      return el;
+    },
+    body: { children: [], appendChild(el) { this.children.push(el); } },
+  };
+  return { document, created };
+}
 
 // La mosaique des 2 208 pieces jointes n a pas de DOM dans ce depot : les
 // assertions portent sur la chaine HTML rendue, comme dans packageRender.
@@ -200,6 +229,22 @@ test('une tuile de fichier ordinaire propose l enregistrement, pas un onglet mor
   assert.equal(appels[0].fileName, 'archive.zip');
 });
 
+test('une tuile de fichier miree enregistre depuis l URL distante, pas la copie locale', () => {
+  const m = new PackageManager(makeArea());
+  m.package = paquetAvecMedias();
+  m.galleryIndex = [
+    { channelId: '111', channelName: 'general', messageId: 'm2', timestamp: '2024-02-01T10:00:00.000Z',
+      url: 'https://cdn.discordapp.com/attachments/1/2/archive.zip', fileName: 'archive.zip', kind: 'file', ext: 'zip' },
+  ];
+  m.mediaManifest = new Map([['https://cdn.discordapp.com/attachments/1/2/archive.zip', 'media://mirror/k/111/abc-archive.zip']]);
+  const appels = [];
+  m.saveAttachment = attachment => { appels.push(attachment); };
+  m.openGalleryTile({ dataset: { galleryTile: '0', attachmentIndex: '0' } });
+  assert.equal(appels.length, 1, 'le clic enregistre le fichier');
+  assert.doesNotMatch(appels[0].url, /^media:\/\//, 'saveAttachment est un telechargement : jamais la source locale');
+  assert.equal(appels[0].url, 'https://cdn.discordapp.com/attachments/1/2/archive.zip', 'l URL distante d origine');
+});
+
 test('le mode focus a disparu du composant', () => {
   const src = readFileSync(new URL('../src/components/PackageManager.js', import.meta.url), 'utf8');
   assert.doesNotMatch(src, /focusMode/, 'ni le champ');
@@ -218,4 +263,160 @@ test('la toolbar propose la galerie, la ou etait le focus', () => {
   m.view = 'messages';
   m.render();
   assert.match(m.contentArea.innerHTML, /data-package-action="gallery"/);
+});
+
+test('la source locale est preferee quand le manifeste la declare finie', () => {
+  const m = new PackageManager(makeArea());
+  m.mediaManifest = new Map([['https://cdn.discordapp.com/a/1.png', 'media://mirror/k/c/1.png']]);
+  assert.equal(m.mediaSourceFor({ url: 'https://cdn.discordapp.com/a/1.png' }), 'media://mirror/k/c/1.png');
+  assert.equal(m.mediaSourceFor({ url: 'https://cdn.discordapp.com/a/2.png' }), 'https://cdn.discordapp.com/a/2.png');
+});
+
+test('la toolbar propose le telechargement des medias', () => {
+  const m = new PackageManager(makeArea());
+  m.package = paquetAvecMedias();
+  m.render();
+  assert.match(m.contentArea.innerHTML, /data-package-action="download-all"/);
+});
+
+// ---------------------------------------------------------------------------
+// F4 : la visionneuse charge la COPIE LOCALE quand le manifeste la declare
+// finie, comme les tuiles. Sans cela, ouvrir une image locale repartait sur le
+// CDN (et cassait si l'URL signee avait expire).
+// ---------------------------------------------------------------------------
+
+test('la visionneuse charge la copie locale pour img, video et audio (F4)', () => {
+  const m = new PackageManager(makeArea());
+  m.mediaManifest = new Map([
+    ['https://cdn.discordapp.com/a/b/c.png', 'media://mirror/k/c/abc-c.png'],
+    ['https://cdn.discordapp.com/a/b/d.mp4', 'media://mirror/k/c/def-d.mp4'],
+    ['https://cdn.discordapp.com/a/b/e.ogg', 'media://mirror/k/c/ghi-e.ogg'],
+  ]);
+  const img = m.lightboxHtml([{ url: 'https://cdn.discordapp.com/a/b/c.png', fileName: 'c.png', kind: 'image' }], 0);
+  assert.match(img, /src="media:\/\/mirror\/k\/c\/abc-c\.png"/);
+  const video = m.lightboxHtml([{ url: 'https://cdn.discordapp.com/a/b/d.mp4', fileName: 'd.mp4', kind: 'video' }], 0);
+  assert.match(video, /src="media:\/\/mirror\/k\/c\/def-d\.mp4"/);
+  const audio = m.lightboxHtml([{ url: 'https://cdn.discordapp.com/a/b/e.ogg', fileName: 'e.ogg', kind: 'audio' }], 0);
+  assert.match(audio, /src="media:\/\/mirror\/k\/c\/ghi-e\.ogg"/);
+});
+
+test('un format non lisible enregistre depuis l URL distante, pas la copie locale (F4)', () => {
+  const m = new PackageManager(makeArea());
+  m.mediaManifest = new Map([['https://cdn.discordapp.com/a/b/c.mov', 'media://mirror/k/c/abc-c.mov']]);
+  const html = m.lightboxHtml([{ url: 'https://cdn.discordapp.com/a/b/c.mov', fileName: 'c.mov', kind: 'video' }], 0);
+  assert.match(html, /data-save-url="https:\/\/cdn\.discordapp\.com\/a\/b\/c\.mov"/, 'enregistrer est un telechargement reseau');
+  assert.doesNotMatch(html, /data-save-url="media:\/\//);
+});
+
+// ---------------------------------------------------------------------------
+// F2 : l'annulation est cablee. `showProgressModal` accepte `onCancel` et rend
+// un bouton « Annuler » ; un second clic ne peut pas empiler d'abonnement.
+// ---------------------------------------------------------------------------
+
+test('showProgressModal : sans onCancel, aucun bouton Annuler (retro-compatible)', () => {
+  const { document, created } = makeDocument();
+  const avant = globalThis.document;
+  globalThis.document = document;
+  try {
+    const modal = showProgressModal('Téléchargement', 5);
+    assert.equal(typeof modal.updateProgress, 'function');
+    assert.equal(typeof modal.closeModal, 'function');
+    assert.equal(created.some(el => el.textContent === 'Annuler'), false, 'aucun bouton quand onCancel est absent');
+    assert.equal(created.some(el => el.textContent === '0/5'), true, 'la progression commence a 0/total');
+  } finally {
+    globalThis.document = avant;
+  }
+});
+
+test('showProgressModal : onCancel rend un bouton Annuler qui se desactive', () => {
+  const { document, created } = makeDocument();
+  const avant = globalThis.document;
+  globalThis.document = document;
+  const appels = [];
+  try {
+    showProgressModal('Téléchargement', 5, { onCancel: () => appels.push('annule') });
+    const bouton = created.find(el => el.textContent === 'Annuler');
+    assert.ok(bouton, 'un bouton Annuler est rendu');
+    bouton.click();
+    assert.deepEqual(appels, ['annule'], 'le clic appelle onCancel une fois');
+    assert.equal(bouton.disabled, true, 'et le bouton se desactive');
+    bouton.click();
+    assert.deepEqual(appels, ['annule'], 'un second clic ne rappelle pas onCancel');
+  } finally {
+    globalThis.document = avant;
+  }
+});
+
+test('downloadAllMedia : un second clic desabonne la progression du premier (F2)', async () => {
+  const m = new PackageManager(makeArea());
+  m.package = paquetAvecMedias();
+  m.mediaItems = () => [{ url: 'https://x/p.png', fileName: 'p.png', kind: 'image', channelId: 'c' }];
+  m.syncMediaManifest = async () => {};
+
+  let abonnes = 0;
+  const desabonnements = [];
+  const morts = new Set();
+  const demarrages = [];
+  const api = {
+    mediaMirror: {
+      start: () => new Promise(resolve => { demarrages.push(resolve); }),
+      status: async () => ({ key: 'k', entries: [] }),
+      cancel: async () => ({ ok: true }),
+      onProgress: () => {
+        abonnes += 1;
+        const numero = abonnes;
+        return () => { if (!morts.has(numero)) { morts.add(numero); desabonnements.push(numero); } };
+      },
+    },
+  };
+  const windowAvant = globalThis.window;
+  const docAvant = globalThis.document;
+  const { document } = makeDocument();
+  globalThis.window = { electronAPI: api };
+  globalThis.document = document;
+  try {
+    const premier = m.downloadAllMedia();
+    const second = m.downloadAllMedia();
+    assert.deepEqual(desabonnements, [1], 'le second abonnement desabonne d abord le premier');
+    demarrages.forEach(resolve => resolve({ ok: true }));
+    await Promise.all([premier, second]);
+  } finally {
+    globalThis.window = windowAvant;
+    globalThis.document = docAvant;
+  }
+});
+
+test('downloadAllMedia : le clic annuler appelle mediaMirror.cancel (F2)', async () => {
+  const m = new PackageManager(makeArea());
+  m.package = paquetAvecMedias();
+  m.mediaItems = () => [{ url: 'https://x/p.png', fileName: 'p.png', kind: 'image', channelId: 'c' }];
+  m.syncMediaManifest = async () => {};
+
+  const annulations = [];
+  let resolveStart;
+  const api = {
+    mediaMirror: {
+      start: () => new Promise(resolve => { resolveStart = resolve; }),
+      status: async () => ({ key: 'k', entries: [] }),
+      cancel: async () => { annulations.push('cancel'); return { ok: true }; },
+      onProgress: () => () => {},
+    },
+  };
+  const windowAvant = globalThis.window;
+  const docAvant = globalThis.document;
+  const { document, created } = makeDocument();
+  globalThis.window = { electronAPI: api };
+  globalThis.document = document;
+  try {
+    const promesse = m.downloadAllMedia();
+    const bouton = created.find(el => el.textContent === 'Annuler');
+    assert.ok(bouton, 'la modale de progression propose Annuler');
+    bouton.click();
+    assert.deepEqual(annulations, ['cancel'], 'le clic annule le telechargement cote main');
+    resolveStart?.({ ok: true });
+    await promesse;
+  } finally {
+    globalThis.window = windowAvant;
+    globalThis.document = docAvant;
+  }
 });

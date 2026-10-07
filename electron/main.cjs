@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, protocol } = require('electron');
 
 // Switches Chromium pour accélérer le cold boot et limiter la VRAM.
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
@@ -17,6 +17,17 @@ const { readJson, writeJson } = require('./persist.cjs');
 const { routeKeyFor, isSnowflake, isOp, isMessageBearingChannel } = require('./helpers.cjs');
 const { createTokenStore } = require('./tokenStore.cjs');
 const { importArchiveDepuisChemin } = require('./packageImporter.service.cjs');
+const { mediaRequestPath, mediaUrlFor, mediaRelPath, mediaMirrorKey, readManifest, downloadMirror, MIRROR_DIR_NAME, isMediaPathInside } = require('./mediaMirror.service.cjs');
+
+// Le miroir media est servi par un protocole maison : la CSP interdit `file://`,
+// une copie locale serait donc refusee au chargement sous `img-src`/`media-src`.
+// Le schema doit etre declare PRIVILEGIE au niveau module, AVANT `app.whenReady()`
+// (l'appel se trouve au bas de ce fichier) : declare trop tard, il ne serait pas
+// standard/secure et `media:` retomberait sous `default-src`.
+protocol.registerSchemesAsPrivileged([{
+  scheme: 'media',
+  privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true },
+}]);
 
 // 100% portable : TOUTES les données (userData, session, cache, crashDumps,
 // logs) vivent dans un dossier data/ à côté de l'app — jamais dans %APPDATA%.
@@ -492,6 +503,93 @@ ipcMain.handle('discord:saveAttachment', async (event, attachment) => {
   }
 });
 
+// ---------------------------------------------------------------------------
+// Miroir local des medias (tache 5) : IPC autour du service mediaMirror.
+//
+// Aucune logique du service n'est reimplementee ici : ces handlers calculent la
+// cle, branchent le transport axios de production, publient la progression et
+// routent l'annulation et la purge. Tout le reseau et tout le disque vivent
+// dans le main process ; le renderer, lui, ne fetch jamais le CDN (CSP).
+// ---------------------------------------------------------------------------
+
+// Drapeau d'annulation, reinitialise a chaque demarrage de miroir. La boucle le
+// consulte AVANT chaque fichier : une annulation ne laisse donc aucun partiel.
+let mirrorStop = false;
+
+// Transport de production (ruling R3) : `head` lit l'octet annonce, `get`
+// rapporte les octets. Timeout 15000, comme le reste du fichier.
+const mirrorTransport = {
+  head: url => axios.head(url, { timeout: 15000 }).then(r => Number(r.headers['content-length']) || 0),
+  get: url => axios.get(url, { responseType: 'arraybuffer', timeout: 15000 }).then(r => Buffer.from(r.data)),
+};
+
+const mirrorRootDir = () => path.join(dataDir, MIRROR_DIR_NAME);
+
+ipcMain.handle('media:mirrorStart', async (event, demande) => {
+  // Tout est enveloppe : un echec d'ecriture du manifeste (mineur T2) ne doit
+  // pas rejeter l'IPC, il se dit `{ ok: false, error }`.
+  try {
+    const items = Array.isArray(demande?.items) ? demande.items : [];
+    const key = mediaMirrorKey(items.map(item => item?.url));
+    mirrorStop = false;
+    const publier = info => { if (!event.sender.isDestroyed()) event.sender.send('media:mirror:progress', info); };
+    const resultat = await downloadMirror({
+      rootDir: mirrorRootDir(),
+      key,
+      items,
+      transport: mirrorTransport,
+      shouldStop: () => mirrorStop,
+      onProgress: publier,
+    });
+    return { ok: true, key, ...resultat };
+  } catch (error) {
+    return { ok: false, error: error.message || 'Échec du téléchargement des médias' };
+  }
+});
+
+ipcMain.handle('media:mirrorCancel', () => {
+  mirrorStop = true;
+  return { ok: true };
+});
+
+// Etat d'un lot. `localUrl` est construit ICI (ruling R5) : le renderer ne
+// construit jamais l'URL `media://` lui-meme.
+ipcMain.handle('media:mirrorStatus', (event, demande) => {
+  const items = Array.isArray(demande?.items) ? demande.items : [];
+  const key = mediaMirrorKey(items.map(item => item?.url));
+  const manifest = key ? readManifest(path.join(mirrorRootDir(), key)) : {};
+  const entries = [];
+  const failures = [];
+  let bytesDownloaded = 0;
+  for (const item of items) {
+    if (!item || typeof item.url !== 'string') continue;
+    const entree = manifest[item.url];
+    const state = entree?.state || 'absent';
+    if (state === 'error') failures.push(item.url);
+    const octets = Number(entree?.bytes) || 0;
+    if (state === 'done') bytesDownloaded += octets;
+    entries.push({
+      url: item.url,
+      state,
+      localUrl: state === 'done' ? mediaUrlFor(mediaRelPath(key, item.channelId, item.url, item.fileName)) : null,
+    });
+  }
+  return { key, bytesDownloaded, bytesTotal: bytesDownloaded, failures, entries };
+});
+
+// Purge d'un lot : la cle vient du renderer, donc on la VALIDE avant tout `rm`
+// (defense en profondeur) : douze caracteres hexadecimaux, rien d'autre.
+ipcMain.handle('media:mirrorPurge', async (event, demande) => {
+  const key = typeof demande?.key === 'string' ? demande.key : '';
+  if (!/^[0-9a-f]{12}$/.test(key)) return { ok: false, error: 'Clé invalide' };
+  try {
+    await fsp.rm(path.join(mirrorRootDir(), key), { recursive: true, force: true });
+    return { ok: true };
+  } catch (error) {
+    return { ok: false, error: error.message || 'Échec de la purge' };
+  }
+});
+
 // Token management — encrypted at rest via safeStorage.
 // R05#2 : la logique (chiffrement, schéma, mutex) vit dans tokenStore.cjs —
 // testable avec un safeStorage mocké. main.cjs n'expose que les IPC handlers.
@@ -790,7 +888,64 @@ async function cleanupCheckpoints() {
 }
 ipcMain.handle('persist:cleanup', cleanupCheckpoints);
 
+// Le type MIME deduit de l'extension du fichier. Les types inconnus retombent
+// sur `application/octet-stream` : le navigateur telechargera alors la piece
+// jointe plutot que d'echouer a la decodier.
+const MEDIA_MIME_TYPES = {
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
+  '.gif': 'image/gif',
+  '.webp': 'image/webp',
+  '.avif': 'image/avif',
+  '.bmp': 'image/bmp',
+  '.svg': 'image/svg+xml',
+  '.ico': 'image/x-icon',
+  '.mp4': 'video/mp4',
+  '.webm': 'video/webm',
+  '.mov': 'video/quicktime',
+  '.m4v': 'video/x-m4v',
+  '.mp3': 'audio/mpeg',
+  '.ogg': 'audio/ogg',
+  '.oga': 'audio/ogg',
+  '.opus': 'audio/opus',
+  '.wav': 'audio/wav',
+  '.m4a': 'audio/mp4',
+  '.aac': 'audio/aac',
+  '.flac': 'audio/flac',
+};
+function mediaContentType(chemin) {
+  return MEDIA_MIME_TYPES[path.extname(chemin).toLowerCase()] || 'application/octet-stream';
+}
+
+// Sert un fichier du miroir sous `data/media`. Le refus de traversee est
+// DELEGUE a `mediaRequestPath`, qui retire le `/` de tete puis decode UNE fois
+// et appelle `resolveMediaPath` (tache 1) : une URL `media://mirror/../secret`
+// se resout hors racine, le garde rend `null`, et le handler repond 404 — la
+// garde n'est PAS reimplementee ici. Le handler ne decode PAS le pathname
+// lui-meme : le decodage, unique, appartient a `mediaRequestPath`.
+//
+// F3 : `resolveMediaPath` est purement LEXICALE et ne voit donc pas un LIEN
+// SYMBOLIQUE. Ce handler, lui, touche deja au disque : apres la resolution, il
+// suit le lien avec `fs.promises.realpath` puis confirme, via `isMediaPathInside`,
+// que la cible REELLE est bien sous `data/media`. Un fichier absent fait jeter
+// `realpath`, capte plus bas -> 404. Toute lecture impossible repond 404 aussi.
+async function servirMedia(request) {
+  try {
+    const racine = path.join(dataDir, MIRROR_DIR_NAME);
+    const cible = mediaRequestPath(racine, new URL(request.url).pathname);
+    if (!cible) return new Response('Introuvable', { status: 404 });
+    const reelle = await fsp.realpath(cible);
+    if (!isMediaPathInside(racine, reelle)) return new Response('Introuvable', { status: 404 });
+    const corps = await fsp.readFile(reelle);
+    return new Response(corps, { headers: { 'Content-Type': mediaContentType(reelle) } });
+  } catch {
+    return new Response('Introuvable', { status: 404 });
+  }
+}
+
 app.whenReady().then(() => {
+  protocol.handle('media', servirMedia);
   createWindow();
   cleanupCheckpoints();
 });
