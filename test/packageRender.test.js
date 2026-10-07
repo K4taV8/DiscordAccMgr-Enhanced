@@ -420,7 +420,7 @@ test('une conversation masquee l explique au lieu de paraitre vide', () => {
   assert.match(html, /2/, 'le compte est affiche');
 });
 
-test('les boutons de filtre reflètent l etat actif', () => {
+test('les boutons de filtre affichent l etat actif', () => {
   const manager = new PackageManager(makeArea());
   manager.package = filteredPackage();
   manager.channelKindFilter = 'dm';
@@ -970,7 +970,9 @@ test('une image est rendue en image, pas en lien', () => {
   assert.match(html, /loading="lazy"/, 'chargement paresseux : une page peut contenir 150 images');
   assert.match(html, /decoding="async"/);
   assert.match(html, /href="https:\/\/cdn\.discordapp\.com[^"]*"/, 'cliquable en pleine taille');
-  assert.match(html, /target="_blank"/);
+  // Tache 4 : tout `target="_blank"` est refuse par setWindowOpenHandler
+  // (main.cjs), donc il a disparu de TOUTE la sortie de attachmentHtml.
+  assert.doesNotMatch(html, /target="_blank"/);
 });
 
 test('une video et un audio ont leurs controles', () => {
@@ -1118,13 +1120,57 @@ test('le panneau se ferme et libere son etat', () => {
   assert.equal(isProgressPanelOpen(), false);
 });
 
+test('la lecture puis l extraction remplissent une seule barre', () => {
+  const manager = new PackageManager(makeArea());
+  manager.renderThrottled = () => {};
+  const item = { status: 'processing', percent: 0, startedAt: Date.now() - 4000 };
+
+  // Lecture : 0 a 30 %, jamais jusqu a 100 %.
+  manager.applyImportProgress(item, { current: 500, total: 1000, stage: 'Lecture du ZIP', bytes: true });
+  assert.ok(item.percent <= 30, `la lecture reste dans son tiers (${item.percent})`);
+  const afterRead = item.percent;
+
+  // Extraction : le debut ne doit pas repartir de zero.
+  manager.applyImportProgress(item, { current: 1, total: 667, stage: 'Extraction des messages' });
+  assert.ok(item.percent > afterRead, `l extraction enchaîne sans remise à zéro (${afterRead} -> ${item.percent})`);
+  assert.ok(item.percent >= 30);
+
+  manager.applyImportProgress(item, { current: 667, total: 667, stage: 'Extraction des messages' });
+  assert.equal(Math.round(item.percent), 100);
+});
+
+test('la progression ne recule jamais', () => {
+  const manager = new PackageManager(makeArea());
+  manager.renderThrottled = () => {};
+  const item = { status: 'processing', percent: 0, startedAt: Date.now() - 1000 };
+  const samples = [];
+  manager.applyImportProgress(item, { current: 900, total: 1000, stage: 'Lecture du ZIP', bytes: true });
+  samples.push(item.percent);
+  for (let i = 0; i <= 20; i += 1) {
+    manager.applyImportProgress(item, { current: i * 30, total: 667, stage: 'Extraction des messages' });
+    samples.push(item.percent);
+  }
+  for (let i = 1; i < samples.length; i += 1) {
+    assert.ok(samples[i] >= samples[i - 1] - 0.001, `recul entre ${samples[i - 1]} et ${samples[i]}`);
+  }
+});
+
+test('l affichage annonce un pourcentage et un temps restant', () => {
+  const manager = new PackageManager(makeArea());
+  manager.renderThrottled = () => {};
+  const item = { status: 'processing', percent: 0, startedAt: Date.now() - 5000 };
+  manager.applyImportProgress(item, { current: 50, total: 100, stage: 'Lecture du ZIP', bytes: true });
+  assert.match(item.statusText, /15 %/, 'la lecture ne depasse pas son tiers');
+  assert.match(item.statusText, /restantes/, 'un temps restant est estime sur l avancement global');
+});
+
 test('la progression d import met a jour le pourcentage de la file', () => {
   const manager = new PackageManager(makeArea());
   const item = { file: { name: 'package.zip', size: 1 }, status: 'processing', percent: 0, startedAt: Date.now() - 4000 };
 
   manager.applyImportProgress(item, { current: 50, total: 200, stage: 'Extraction des messages' });
 
-  assert.equal(Math.round(item.percent), 25, 'le pourcentage suit current/total');
+  assert.equal(Math.round(item.percent), 48, 'l extraction occupe les 70 % restants : 30 + 17,5');
   assert.match(item.statusText, /Extraction des messages/, 'le libelle reprend le stage');
 });
 

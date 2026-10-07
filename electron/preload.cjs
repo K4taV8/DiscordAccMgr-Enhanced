@@ -1,4 +1,4 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 const SENSITIVE_CALLS = new Set(['connectDiscord', 'saveToken', 'getTokens']);
 
@@ -21,6 +21,60 @@ function wrap(name, fn) {
   };
 }
 
+// Import d'un export Discord. Le `File` du renderer n'est pas sérialisable, et
+// l'export réel fait 394 Mo : on ne transmet donc que le CHEMIN du fichier, et
+// le main process lit les tranches qu'il demande (cf. discord:importPackage).
+// `webUtils.getPathForFile` remplace `File.path`, retiré en Electron 32 — c'est
+// le seul endroit du preload qui a le droit de toucher au disque.
+//
+// On transmet AUSSI `taille`, et ce n'est pas décoratif : c'est la seule chose
+// qui permet au main process de vérifier qu'il ouvre bien le fichier que
+// l'utilisateur a choisi (il le compare à la taille réellement trouvée sur le
+// disque, et un écart déclenche le repli). Sans elle, un fichier remplacé entre
+// la sélection et l'ouverture serait importé sans que rien ne le signale.
+//
+// PAS DE `wrap` ICI, et c'est deliberé : `wrap` journalise la valeur de retour, or
+// cette reponse contient le PAQUET ENTIER — 667 salons et leurs messages sur un
+// export reel. Le journal ne porte donc que l'enveloppe.
+//
+// Rappel pour qui lira l'enveloppe : `messages` y est un OBJET indexé par
+// identifiant de salon, non une `Map`. L'IPC Electron sérialise par clonage
+// structuré, qui PRÉSERVE les `Map` — l'aplatissement est un choix de forme
+// (inspectable, comparable), pas une contrainte du transport.
+async function importPackage(file) {
+  let chemin = '';
+  try {
+    chemin = webUtils.getPathForFile(file) || '';
+  } catch (error) {
+    console.warn('[IPC !!] importPackage', `fichier sans chemin (${error.message})`);
+  }
+  if (!chemin) return { success: false, fallbackToRenderer: true, error: 'Fichier sans chemin sur le disque.' };
+
+  console.log('[IPC >>] importPackage', { chemin, nom: file.name, taille: file.size });
+  try {
+    const resultat = await ipcRenderer.invoke('discord:importPackage', { chemin, nom: file.name, taille: Number(file.size) || 0 });
+    console.log('[IPC <<] importPackage', {
+      success: resultat?.success,
+      mode: resultat?.mode,
+      reason: resultat?.reason,
+      error: resultat?.error,
+      cancelled: resultat?.cancelled,
+      salons: resultat?.package?.channels?.length,
+      messages: resultat?.package?.totalMessages,
+    });
+    return resultat;
+  } catch (e) {
+    console.error('[IPC !!] importPackage', e.message);
+    throw e;
+  }
+}
+
+function onImportPackageProgress(callback) {
+  const listener = (_event, data) => callback(data);
+  ipcRenderer.on('discord:importPackage:progress', listener);
+  return () => ipcRenderer.removeListener('discord:importPackage:progress', listener);
+}
+
     // DevTools a la demande (F12 / Ctrl+Shift+L).
 contextBridge.exposeInMainWorld('electronAPI', {
   toggleDevTools: () => ipcRenderer.invoke('app:toggleDevTools'),
@@ -37,6 +91,11 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openExternal: wrap('openExternal', (url) => ipcRenderer.invoke('app:openExternal', url)),
   getAppVersion: wrap('getAppVersion', () => ipcRenderer.invoke('app:getVersion')),
   disconnect: wrap('disconnect', () => ipcRenderer.invoke('discord:disconnect')),
+
+  importPackage,
+  onImportPackageProgress,
+
+  saveAttachment: wrap('saveAttachment', attachment => ipcRenderer.invoke('discord:saveAttachment', attachment)),
 
   muteServer: wrap('muteServer', (serverId) => ipcRenderer.invoke('discord:muteServer', serverId)),
   unmuteServer: wrap('unmuteServer', (serverId) => ipcRenderer.invoke('discord:unmuteServer', serverId)),

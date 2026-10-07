@@ -1,0 +1,10 @@
+node_modules/
+dist/
+data/
+discorch/
+*.log
+.portable
+.env
+
+PUSH-GITHUB/
+.superpowers/

@@ -23,7 +23,11 @@ import { Unzip, UnzipInflate, strFromU8 } from '../../node_modules/fflate/esm/br
 const CHUNK_BYTES = 4 * 1024 * 1024;
 // Plafond par entrée : les vrais messages.json font ~1 Mo. Au-delà, c'est du
 // bruit (« Activité », « Publicités ») et on refuse de le monter en mémoire.
-const MAX_ENTRY_BYTES = 128 * 1024 * 1024;
+// Exporté pour que le test d'égalité croisée puisse comparer CE NOMBRE dans les
+// deux copies : sans lui, relever le plafond du renderer seul ne rougissait
+// aucun test, et le chemin par index gardait alors des entrées que le flux
+// rejette — de la donnée perdue en silence.
+export const MAX_ENTRY_BYTES = 128 * 1024 * 1024;
 
 const USER_NAME = 'user.json';
 const INDEX_NAME = 'index.json';
@@ -37,20 +41,28 @@ const CHANNEL_NAME = 'channel.json';
 // La casse est ignoree et le separateur optionnel, sinon les champs reels de
 // Discord (ID, ChannelID) echappaient a la protection : elle ne s'appliquait
 // qu aux noms minuscules de nos propres fixtures.
-const SNOWFLAKE_FIELDS = 'id|channel_?id|guild_?id|user_?id|message_?id|owner_?id|recipient_?id';
+// Exporte, comme les motifs ci-dessous, pour le test de parite : la copie CJS du
+// main process (electron/packageImporter.parse.cjs) porte la MEME chaine, et
+// sans comparaison directe un champ retire d un seul cote cesserait d etre
+// protege sans rougir aucun test. Export pur, aucun changement de comportement.
+export const SNOWFLAKE_FIELDS = 'id|channel_?id|guild_?id|user_?id|message_?id|owner_?id|recipient_?id';
 const SNOWFLAKE_JSON_RE = new RegExp(`([{,]\\s*)"(${SNOWFLAKE_FIELDS})":\\s*(\\d+)`, 'gi');
 
 // Sections localisées par motif, quelle que soit la langue de l'archive.
-const CHANNEL_ENTRY = /(?:^|\/)(c?\d+)\/channel\.json$/i;
-const MESSAGES_ENTRY = /(?:^|\/)(c?\d+)\/messages\.(?:json|csv)$/i;
-const GUILD_ENTRY = /(?:^|\/)(\d+)\/guild\.json$/i;
+// Les trois motifs sont exportes pour le test de parite des parseurs : le chemin
+// par index en a une copie (electron/packageImporter.parse.cjs), et c'est le
+// seul moyen de comparer les deux sur des CAS sans monter une archive entiere.
+// Export pur, aucun changement de comportement.
+export const CHANNEL_ENTRY = /(?:^|\/)(c?\d+)\/channel\.json$/i;
+export const MESSAGES_ENTRY = /(?:^|\/)(c?\d+)\/messages\.(?:json|csv)$/i;
+export const GUILD_ENTRY = /(?:^|\/)(\d+)\/guild\.json$/i;
 
 // Repertoires sans rapport avec les messages. Comparaison sur le segment
 // normalise (minuscules, sans accents ni ponctuation) : « Activité », « Activités »,
 // « Activities », « activities_e », « Publicités », « programs » tombent tous ici.
 const NOISE_PREFIXES = [
-  'activit', 'publicit', 'demandesdesupport', 'demandedesoutien', 'demandesupport',
-  'program', 'advertisement', 'ads', 'ticket', 'supportticket',
+  'activit', 'publicit', 'demandesdesupport', 'demandesdesoutien', 'demandesupport',
+  'program', 'advertisement', 'ads', 'ticket', 'supportticket', 'supportrequests',
 ];
 
 export class PackageImportError extends Error {
@@ -68,7 +80,7 @@ function normalizeSegment(segment) {
     .replace(/[^a-z0-9]/g, '');
 }
 
-function isNoisePath(path) {
+export function isNoisePath(path) {
   const lower = path.toLowerCase();
   const name = lower.split('/').pop() || '';
   if (lower.startsWith('__macosx/') || name.startsWith('._') || name === '.ds_store') return true;
@@ -80,7 +92,7 @@ function isNoisePath(path) {
 }
 
 // « c123456 » et « 123456 » désignent le même salon.
-function channelKey(id) {
+export function channelKey(id) {
   return String(id).replace(/^c/i, '');
 }
 
@@ -186,14 +198,19 @@ function decodeEntities(text) {
     .replace(/&amp;/g, '&');
 }
 
-function parseSnowflakeJson(text) {
+// `parseSnowflakeJson`, `parseAttachments`, `parseCsv`, `parseMessagesJson` et
+// `parseEntry` sont exportes pour le meme test de parite que ci-dessus : la copie
+// CJS du main process (electron/packageImporter.parse.cjs) doit se comporter
+// identiquement sur des CAS choisis, pas seulement sur une archive entiere.
+// Export pur, aucun changement de comportement.
+export function parseSnowflakeJson(text) {
   const safeText = text.replace(SNOWFLAKE_JSON_RE, '$1"$2":"$3"');
   return JSON.parse(safeText);
 }
 
 // Discord stocke les URL de pièces jointes échappées : sans déséchappement, un
 // aller-retour export/import perd toutes les pièces jointes.
-function parseAttachments(value) {
+export function parseAttachments(value) {
   if (!value) return [];
   return decodeEntities(value)
     .split(/[\s,]+/)
@@ -209,7 +226,7 @@ function parseAttachments(value) {
     .filter(Boolean);
 }
 
-function parseCsv(text) {
+export function parseCsv(text) {
   const rows = [];
   let row = [];
   let field = '';
@@ -240,7 +257,7 @@ function parseCsv(text) {
     }));
 }
 
-function parseMessagesJson(text) {
+export function parseMessagesJson(text) {
   let rows;
   try { rows = parseSnowflakeJson(text); } catch { return []; }
   if (!Array.isArray(rows)) return [];
@@ -255,7 +272,7 @@ function parseMessagesJson(text) {
     }));
 }
 
-function parseEntry(path, bytes) {
+export function parseEntry(path, bytes) {
   const lower = path.toLowerCase();
   const name = lower.split('/').pop();
   const text = strFromU8(bytes);

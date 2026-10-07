@@ -3,17 +3,30 @@ import { exportDiscordPackage } from '../services/packageExporter.service.js';
 import { classifyDeleteResult, describeDeleteFailure, shouldRetryDelete, summarizeDelete } from '../services/packageDelete.service.js';
 import { confirmAction, showNotification } from '../utils/ui.js';
 import { escHtml } from '../utils/emojiUtils.js';
-import { buildMessageSearchIndex, isSystemNotification, attachmentKind } from '../services/packageData.service.js';
+import { buildMessageSearchIndex, isSystemNotification, attachmentKind, attachmentExtension } from '../services/packageData.service.js';
 import { closeProgressPanel, finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
 import { createPackageArchiveId, deletePackageArchive, isCurrentPackageArchive, listPackageArchives, savePackageArchive, PACKAGE_SCHEMA_VERSION } from '../services/packageStorage.service.js';
 import { groupChannels } from '../services/packageSections.service.js';
 import { channelWindow, CHANNEL_ROW_HEIGHT, CHANNEL_OVERSCAN } from '../services/packageWindow.service.js';
+import { GALLERY_COLUMNS, GALLERY_GAP, buildMediaIndex, filterMedia, tileSizeFor, galleryWindow } from '../services/galleryIndex.service.js';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024 * 1024;
+
+// Conteneurs video que Chromium ne sait pas demultiplexer : QuickTime (.mov),
+// Matroska (.mkv), AVI (.avi), l OGV (Theora) et le M4V non H.264. Le lecteur
+// les nomme et propose l enregistrement au lieu d une boite noire muette. Les
+// quatre extensions vraiment lues par Chromium sont .mp4 et .webm (225 videos
+// de l archive : 215 .mp4, 4 .webm, 5 .mov, 1 .mkv).
+const UNREADABLE_VIDEO_EXT = new Set(['mov', 'mkv', 'avi', 'm4v', 'ogv']);
 
 // Hauteur d'un en-tete de section : plus bas qu'une ligne de salon, d'ou la
 // necessite de cumuler les hauteurs reelles plutot que de supposer 56 px.
 const CHANNEL_HEADER_HEIGHT = 34;
+
+// Part de la barre d import reservee a la lecture du ZIP, le reste etant
+// l extraction. Les deux etapes ne comptent pas la meme chose — octets puis
+// salons — et sans cette ponderation la barre repart de zero a chaque fois.
+const IMPORT_READ_SHARE = 0.3;
 
 function formatBytes(bytes) {
   if (bytes < 1024) return `${bytes} B`;
@@ -44,9 +57,66 @@ function isZip(file) {
   return file?.name?.toLowerCase().endsWith('.zip');
 }
 
+// Reconstruit le paquet renvoye par le main process.
+//
+// `messages` y est un OBJET indexe par identifiant de salon, pas une `Map`, et
+// cette transformation est EXPLICITE des deux cotes : `aplatitPackagePourIpc`
+// (electron/packageImporter.service.cjs) aplatit, ici on rehydrate. Ce n'est pas
+// une contrainte du transport — l'IPC Electron sérialise par clonage structure,
+// qui preserve les `Map` et les `Set` — c'est une forme qu'on peut inspecter dans
+// un journal et comparer dans un test. La transformation reste donc, et elle est
+// verifiee dans les deux sens (les deux formes sont acceptees ici : voir plus
+// bas). Une troisieme forme existe pour la BASE, un TABLEAU DE PAIRES, dans
+// packageStorage.service.js : les trois sont nommees la ou chacune est ecrite.
+//
+// La copie par spread ne deplace pas les cles : l'ordre du paquet reste celui du
+// chemin par index, qui est l'ordre du repertoire central.
+export function hydrateImportedPackage(paquet) {
+  if (!paquet || typeof paquet !== 'object') throw new Error('Paquet d import vide.');
+  const reconstruit = { ...paquet };
+  // `Object.entries` sur une Map rend un tableau VIDE : un paquet qui arriverait
+  // avec une vraie Map doit donc etre accepte tel quel, pas converti en un objet
+  // sans aucun message. C'est aussi ce qui rend cette fonction tolérante a un
+  // transport qui, lui, PRESERVERAIT la Map.
+  reconstruit.messages = paquet.messages instanceof Map
+    ? new Map(paquet.messages)
+    : new Map(Object.entries(paquet.messages || {}));
+  return reconstruit;
+}
+
 export class PackageManager {
+  // LE PAQUET EST LE SEUL ETAT DONT L INDEX DES MEDIAS DERIVE : changer de
+  // paquet remet l index a vide, sinon les tuiles d une archive precedente
+  // resteraient affichees (l index n est reconstruit qu au premier affichage
+  // de la galerie). L accesseur existe pour que l invalidation soit inseparable
+  // de l assignation, quel que soit l endroit qui ecrit this.package.
+  get package() { return this._package; }
+  set package(value) {
+    if (value === this._package) return;
+    this._package = value;
+    this.galleryIndex = [];
+    this.galleryScrollTop = 0;
+    this.galleryPainted = -1;
+    this.gallerySafeTop = 0;
+    this.gallerySafeBottom = 0;
+    this.galleryHtml = '';
+    this.galleryRefs = null;
+  }
+
   constructor(contentArea) {
     this.contentArea = contentArea;
+    this.view = 'messages';
+    this.galleryIndex = [];
+    this.galleryFilter = { kind: 'all', channelId: '', tri: this.readGallerySort() };
+    this.galleryScrollTop = 0;
+    this.galleryViewport = 800;
+    this.galleryPainted = -1;
+    this.gallerySafeTop = 0;
+    this.gallerySafeBottom = 0;
+    this.galleryTileSize = 0;
+    this.galleryFrame = null;
+    this.galleryHtml = '';
+    this.galleryRefs = null;
     this.package = null;
     this.queue = [];
     this.selectedChannelId = null;
@@ -81,7 +151,6 @@ export class PackageManager {
     this.lightboxState = null;
     this.lightboxKeyHandler = null;
     this.messageQuery = '';
-    this.focusMode = false;
     this.messageSearchIndex = new Map();
     this.lastMessageKey = null;
     this.pausedImports = false;
@@ -101,7 +170,32 @@ export class PackageManager {
     contentArea.addEventListener('dragover', event => this.handleDragOver(event));
     contentArea.addEventListener('dragleave', event => this.handleDragLeave(event));
     contentArea.addEventListener('drop', event => this.handleDrop(event));
+    // Sans recalcul de la tuile, un redimensionnement laisserait la grille
+    // calee sur l ancienne largeur. Le handler ne fait que mesurer et invalider :
+    // le repaint passe par le rAF unique de scheduleGalleryWindow().
+    if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+      window.addEventListener('resize', () => this.handleGalleryResize());
+    }
     this.render();
+  }
+
+  // localStorage peut etre indisponible (navigation privee, environnement de
+  // test) : lecture et ecriture sont toutes deux encadrees, sur le motif de
+  // listView (src/components/bento.js:10-20), mais sans y jeter d exception.
+  readGallerySort() {
+    try {
+      return globalThis.localStorage?.getItem('gallery:tri') === 'ancien' ? 'ancien' : 'recent';
+    } catch {
+      return 'recent';
+    }
+  }
+
+  persistGallerySort() {
+    try {
+      globalThis.localStorage?.setItem('gallery:tri', this.galleryFilter.tri);
+    } catch {
+      // Stockage indisponible : le tri reste en memoire pour la session.
+    }
   }
 
   async restoreArchives() {
@@ -189,16 +283,27 @@ filteredChannels() {
 
     const channels = this.package.channels;
     if (this.selectedChannelId && !this.messageSearchIndex.has(this.selectedChannelId)) this.messageSearchIndex.set(this.selectedChannelId, buildMessageSearchIndex(this.package.messages.get(this.selectedChannelId) || []));
-    const visibleChannels = this.filteredChannels();
-    const selectedChannel = channels.find(channel => channel.id === this.selectedChannelId);
-    const channelListHtml = this.renderChannelListHtml(visibleChannels);
-    const channelContext = this.currentSectionContext();
     this.contentArea.innerHTML = `
       <div class="list-toolbar package-toolbar">
         <div><h2 class="page-title"><span class="package-title-icon">📦</span> Data Package <span class="list-count">${channels.length}</span></h2><p class="text-muted">${escHtml(this.package.user.username)} · ${this.package.totalMessages} messages</p></div>
-        <div class="toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="focus">${this.focusMode ? 'Quitter focus' : 'Mode focus'}</button><button class="btn btn-secondary" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button class="btn btn-secondary" data-package-action="export" data-export-format="json">Exporter JSON</button><button class="btn btn-secondary" data-package-action="close">Fermer</button></div>
+        <div class="toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><button class="btn btn-secondary" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button class="btn btn-secondary" data-package-action="export" data-export-format="json">Exporter JSON</button><button class="btn btn-secondary" data-package-action="close">Fermer</button></div>
       </div>
-      <div class="package-layout">
+      <div class="package-layout">${this.view === 'gallery' ? this.renderGallery() : this.layoutMessages()}</div>`;
+    this.attachChannelScroll();
+    if (this.view === 'gallery') this.attachGalleryScroll();
+  }
+
+  // Extrait de render() SANS AUCUN changement de contenu : c est un garde-fou,
+  // pas une refonte. Le HTML des messages doit rester bit pour bit identique
+  // (prouve par les tests de rendu existants, inchanges, et par la capture
+  // avant/apres du bloc .package-layout). Seule la DECISION d appeler cette
+  // methode depend de la vue.
+  layoutMessages() {
+    const visibleChannels = this.filteredChannels();
+    const selectedChannel = this.package.channels.find(channel => channel.id === this.selectedChannelId);
+    const channelListHtml = this.renderChannelListHtml(visibleChannels);
+    const channelContext = this.currentSectionContext();
+    return `
         <aside class="package-channels card">
           <input class="package-filter" data-package-filter value="${escHtml(this.channelQuery)}" placeholder="Filtrer salons, serveurs ou DMs..." aria-label="Filtrer les salons">
           ${this.renderChannelFilterBar()}
@@ -206,8 +311,252 @@ filteredChannels() {
           <div class="package-channel-list" data-channel-scroll>${channelListHtml}</div>
         </aside>
         <section class="package-messages card">${selectedChannel ? this.renderMessages(selectedChannel) : '<div class="package-placeholder text-muted">Sélectionnez un salon pour consulter ses messages.</div>'}</section>
-      </div>`;
-    this.attachChannelScroll();
+      `;
+  }
+
+  // ---- Galerie des medias -------------------------------------------------
+
+  // POINT DE COUTURE : toute source de tuile passe par cette methode. Ecrire
+  // item.url en clair dans le HTML d une tuile couperait le chantier suivant,
+  // qui branchera ici ses copies locales telechargees (et ne touchera que cette
+  // ligne). item.url vient de buildMediaIndex : il est toujours present.
+  mediaSourceFor(item) {
+    return item.url;
+  }
+
+  // Filtre + tri courants. filterMedia rend un tableau neuf, donc inverser ne
+  // peut pas reordonner l index, lui trie par horodatage decroissant (« recent »
+  // est donc deja son ordre naturel).
+  galleryVisibleItems() {
+    const items = filterMedia(this.galleryIndex, { kind: this.galleryFilter.kind, channelId: this.galleryFilter.channelId });
+    return this.galleryFilter.tri === 'ancien' ? items.reverse() : items;
+  }
+
+  // Filtre, tri ou salon changes : la fenetre peinte ne designe plus rien. Un
+  // changement de largeur, lui, deplace le scroll reel : on garde alors la
+  // position, le repaint se rejoue avec la nouvelle hauteur de rang.
+  resetGalleryPaint(keepScroll = false) {
+    this.galleryPainted = -1;
+    this.gallerySafeTop = 0;
+    this.gallerySafeBottom = 0;
+    this.galleryHtml = '';
+    if (!keepScroll) this.galleryScrollTop = 0;
+  }
+
+  renderGalleryToolbar(items) {
+    const chip = (kind, label) => `<button type="button" class="package-filter-chip${this.galleryFilter.kind === kind ? ' is-active' : ''}" data-gallery-kind="${kind}" aria-pressed="${this.galleryFilter.kind === kind}">${label}</button>`;
+    // Seuls les salons qui portent au moins un media : le selecteur propose
+    // 667 salons et presque tous sont vides.
+    const salons = new Map();
+    for (const item of this.galleryIndex) {
+      if (item.channelId && !salons.has(item.channelId)) salons.set(item.channelId, item.channelName || `Salon ${item.channelId}`);
+    }
+    const options = [...salons].map(([id, nom]) => `<option value="${escHtml(id)}"${this.galleryFilter.channelId === id ? ' selected' : ''}>${escHtml(nom)}</option>`).join('');
+    const prochain = this.galleryFilter.tri === 'recent' ? 'ancien' : 'recent';
+    const libelle = prochain === 'ancien' ? 'Les plus anciens' : 'Les plus récents';
+    return `<div class="package-gallery-toolbar" data-gallery-filter>
+          <div class="package-filter-group" role="group" aria-label="Type de media">${chip('all', 'Tout')}${chip('image', 'Photos')}${chip('video', 'Videos')}${chip('audio', 'Audio')}${chip('file', 'Fichiers')}</div>
+          <select class="package-gallery-channel" data-gallery-channel aria-label="Filtrer par salon"><option value="">Tous les salons</option>${options}</select>
+          <span class="package-gallery-count">${items.length} média${items.length === 1 ? '' : 's'}</span>
+          <button type="button" class="btn btn-secondary btn-xs" data-gallery-sort="${prochain}">${libelle}</button>
+        </div>`;
+  }
+
+  // Index de la piece jointe DANS SON MESSAGE : c est ce que la visionneuse
+  // attend dans data-attachment-index. data-gallery-tile, lui, est la position
+  // dans la liste filtree.
+  galleryAttachmentIndex(item) {
+    const message = (this.package.messages.get(item.channelId) || []).find(entry => String(entry.id) === String(item.messageId));
+    const pieces = Array.isArray(message?.attachments) ? message.attachments : [];
+    const position = pieces.findIndex(piece => String(piece.url) === String(item.url) && String(piece.fileName) === String(item.fileName));
+    return position >= 0 ? position : 0;
+  }
+
+  galleryFileIcon(ext) {
+    const suffixe = String(ext || '').toLowerCase();
+    if (suffixe === 'pdf') return '📕';
+    if (['zip', 'rar', '7z', 'tar', 'gz', 'bz2'].includes(suffixe)) return '🗄️';
+    if (['txt', 'md', 'log', 'csv'].includes(suffixe)) return '📝';
+    return '📎';
+  }
+
+  galleryTileHtml(item, index) {
+    const nom = escHtml(item.fileName || 'fichier');
+    const source = escHtml(this.mediaSourceFor(item));
+    // aspect-ratio est en style inline et non en CSS : aucune dimension d image
+    // n est disponible, le ratio reserve la place AVANT le chargement, sinon
+    // chaque image qui arrive ferait sauter la mise en page.
+    const attrs = `data-gallery-tile="${index}" data-gallery-open data-attachment-index="${this.galleryAttachmentIndex(item)}" title="${nom}" style="aspect-ratio: 1"`;
+    if (item.kind === 'image') {
+      // data-attachment-img + data-attachment-fallback : les memes attributs que
+      // le rendu dans les messages, pour reutiliser la captation d erreur et le
+      // repli is-broken qui existent deja.
+      return `<button type="button" class="package-gallery-tile" ${attrs} data-attachment-fallback><img src="${source}" alt="${nom}" loading="lazy" decoding="async" data-attachment-img><span class="package-gallery-name">${nom}</span></button>`;
+    }
+    const icone = item.kind === 'video' ? '🎬' : item.kind === 'audio' ? '🎵' : this.galleryFileIcon(item.ext);
+    return `<button type="button" class="package-gallery-tile" ${attrs}><span class="package-gallery-icon" aria-hidden="true">${icone}</span><span class="package-gallery-name">${nom}</span></button>`;
+  }
+
+  // LA HAUTEUR D UN RANG N EST PAS LA TUILE : un rang de grille CSS vaut
+  // tuile + gouttiere. galleryWindow n a plus de parametre tileSize, et c est
+  // rowHeight qui porte la donnée — this.galleryTileSize + GALLERY_GAP, a chaque
+  // appel. Tant que la largeur n est pas mesuree (tuile a 0) il n y a pas de rang
+  // a fenetrer : on rend la grille COMPLETE, jamais une grille vide.
+  galleryWindowSlice(items) {
+    const rowHeight = this.galleryTileSize + GALLERY_GAP;
+    if (this.galleryTileSize <= 0) {
+      return { startRow: 0, endRow: Math.ceil(items.length / GALLERY_COLUMNS), padTop: 0, padBottom: 0, rowHeight, full: true };
+    }
+    const slice = galleryWindow({
+      total: items.length,
+      columns: GALLERY_COLUMNS,
+      scrollTop: this.galleryScrollTop,
+      viewport: this.galleryViewport,
+      rowHeight,
+    });
+    return { ...slice, rowHeight, full: false };
+  }
+
+  galleryTilesHtml(items, slice) {
+    const start = slice.startRow * GALLERY_COLUMNS;
+    const end = Math.min(items.length, slice.endRow * GALLERY_COLUMNS);
+    let html = '';
+    for (let index = start; index < end; index += 1) html += this.galleryTileHtml(items[index], index);
+    return html;
+  }
+
+  // Les deux tampons reconstituent la hauteur totale exactement :
+  // padTop + (endRow - startRow) * rowHeight + padBottom vaut rows * rowHeight,
+  // sans quoi la barre de scroll raccourcirait et le scroll deviendrait faux.
+  // Gouttiere et colonnes viennent des constantes du service, jamais d un
+  // literal : le CSS ne peut pas deriver du calcul de tuile.
+  galleryWindowHtml(items, slice) {
+    return `<div data-gallery-pad="top" style="height:${slice.padTop}px"></div>
+          <div data-gallery-rows class="package-gallery-grid" style="grid-template-columns: repeat(${GALLERY_COLUMNS}, 1fr); gap: ${GALLERY_GAP}px">${this.galleryTilesHtml(items, slice)}</div>
+          <div data-gallery-pad="bottom" style="height:${slice.padBottom}px"></div>`;
+  }
+
+  renderGallery() {
+    if (!this.package) return '';
+    if (!this.galleryIndex.length) this.galleryIndex = buildMediaIndex(this.package);
+    const items = this.galleryVisibleItems();
+    const toolbar = this.renderGalleryToolbar(items);
+    if (!items.length) {
+      this.resetGalleryPaint();
+      const message = this.galleryFilter.channelId ? 'Aucun media dans ce salon' : 'Aucun média ne correspond à ce filtre';
+      return `${toolbar}<div class="package-gallery-empty" data-gallery-empty>${message}</div>`;
+    }
+    const slice = this.galleryWindowSlice(items);
+    // Cache de peinture : si la fenetre peinte couvre deja la position de scroll,
+    // on retourne le HTML existant au lieu de le reconstruire. Ce cache n a de
+    // sens qu une fois la largeur mesuree : sans tuile, il n y a pas de fenetre
+    // a proteger, et le HTML est toujours reconstruit (c est aussi ce qui laisse
+    // mediaSourceFor voir ses nouvelles sources a chaque rendu).
+    const couverte = this.galleryTileSize > 0
+      && this.galleryPainted >= 0
+      && this.gallerySafeTop <= this.galleryScrollTop
+      && this.gallerySafeBottom >= this.galleryScrollTop + this.galleryViewport + slice.rowHeight;
+    if (couverte && this.galleryHtml) return this.galleryHtml;
+    const html = `${toolbar}
+        <div class="package-gallery-scroll" data-gallery-scroll>
+          ${this.galleryWindowHtml(items, slice)}
+        </div>`;
+    this.galleryPainted = slice.startRow;
+    this.gallerySafeTop = slice.padTop;
+    this.gallerySafeBottom = slice.full ? Number.POSITIVE_INFINITY : slice.padTop + (slice.endRow - slice.startRow) * slice.rowHeight;
+    this.galleryHtml = html;
+    return html;
+  }
+
+  // La largeur se lit sur la GRILLE elle meme : c est elle qui reclame la tuile,
+  // barre de defilement deduite. Largeur 0 (conteneur non mesurable) : la tuile
+  // reste a 0 et la grille complete rendue par renderGallery tient debout.
+  measureGalleryTile() {
+    const refs = this.galleryRefs;
+    if (!refs) return false;
+    const width = refs.rows.clientWidth || 0;
+    const taille = width > 0 ? tileSizeFor(width) : 0;
+    if (taille === this.galleryTileSize) return false;
+    this.galleryTileSize = taille;
+    // La hauteur de rang change : la fenetre peinte ne correspond plus au DOM.
+    this.resetGalleryPaint(true);
+    return true;
+  }
+
+  attachGalleryScroll() {
+    const scroller = this.contentArea.querySelector('[data-gallery-scroll]');
+    const rows = scroller?.querySelector('[data-gallery-rows]');
+    const top = scroller?.querySelector('[data-gallery-pad="top"]');
+    const bottom = scroller?.querySelector('[data-gallery-pad="bottom"]');
+    if (!scroller || !rows || !top || !bottom) { this.galleryRefs = null; return; }
+    this.galleryRefs = { scroller, rows, top, bottom };
+    if (this.measureGalleryTile()) this.scheduleGalleryWindow();
+    const measured = scroller.clientHeight;
+    if (measured > 0) this.galleryViewport = measured;
+    scroller.scrollTop = this.galleryScrollTop;
+    scroller.addEventListener('scroll', () => {
+      this.galleryScrollTop = scroller.scrollTop;
+      if (scroller.clientHeight > 0) this.galleryViewport = scroller.clientHeight;
+      this.scheduleGalleryWindow();
+    }, { passive: true });
+    this.scheduleGalleryWindow();
+  }
+
+  renderGalleryWindow() {
+    const refs = this.galleryRefs;
+    if (!refs || this.view !== 'gallery') return;
+    // Une seule requete par frame, comme pour la liste des salons.
+    this.galleryScrollTop = refs.scroller.scrollTop;
+    if (refs.scroller.clientHeight > 0) this.galleryViewport = refs.scroller.clientHeight;
+    const items = this.galleryVisibleItems();
+    if (!items.length) return;
+    const slice = this.galleryWindowSlice(items);
+    const couverte = this.galleryPainted >= 0
+      && this.gallerySafeTop <= this.galleryScrollTop
+      && this.gallerySafeBottom >= this.galleryScrollTop + this.galleryViewport + slice.rowHeight;
+    // Ne touche a rien tant que la fenetre peinte couvre le viewport : c est ce
+    // qui evite de recharger les images a chaque pixel de defilement.
+    if (couverte) return;
+    refs.top.style.height = `${slice.padTop}px`;
+    refs.rows.innerHTML = this.galleryTilesHtml(items, slice);
+    refs.bottom.style.height = `${slice.padBottom}px`;
+    this.galleryPainted = slice.startRow;
+    this.gallerySafeTop = slice.padTop;
+    this.gallerySafeBottom = slice.full ? Number.POSITIVE_INFINITY : slice.padTop + (slice.endRow - slice.startRow) * slice.rowHeight;
+    // Le HTML complet en cache decrit l ancienne fenetre : il est invalide.
+    this.galleryHtml = '';
+  }
+
+  scheduleGalleryWindow() {
+    if (this.galleryFrame !== null || typeof requestAnimationFrame !== 'function') return;
+    this.galleryFrame = requestAnimationFrame(() => {
+      this.galleryFrame = null;
+      this.renderGalleryWindow();
+    });
+  }
+
+  // Redimensionner : on reprend la mesure puis on invalide la fenetre peinte.
+  // Sans cela, la grille resterait calée sur l ancienne largeur.
+  handleGalleryResize() {
+    if (this.view !== 'gallery' || !this.galleryRefs) return;
+    if (this.measureGalleryTile()) this.scheduleGalleryWindow();
+  }
+
+  openGalleryTile(tile) {
+    const items = this.galleryVisibleItems();
+    const item = items[Number(tile.dataset.galleryTile)];
+    if (!item) return;
+    // Toute tuile lisible — image, video, audio — s ouvre dans la visionneuse.
+    // Une video non lisible y affiche son nom et le bouton d enregistrement. Le
+    // lien target="_blank" d avant etait refuse par setWindowOpenHandler.
+    if (item.kind !== 'file') {
+      const message = (this.package.messages.get(item.channelId) || []).find(entry => String(entry.id) === String(item.messageId));
+      if (message) { this.openLightbox(message.attachments, Number(tile.dataset.attachmentIndex) || 0); return; }
+    }
+    // Un fichier ordinaire n a pas de lecteur : la seule sortie reelle est de
+    // l enregistrer. Le lien target="_blank" d avant etait refuse par
+    // setWindowOpenHandler (main.cjs) : il n a jamais rien ouvert.
+    this.saveAttachment({ url: this.mediaSourceFor(item), fileName: item.fileName });
   }
 
   // Les hauteurs mesurees doivent survivre a un changement de filtre ou de
@@ -469,22 +818,22 @@ currentSectionLabel() {
   // Une page peut contenir plus de cent images : tout est charge en paresseux et
 // les videos ne telechargent rien avant lecture. Si l URL signee a expire,
 // l image bascule sur son lien plutot que de laisser un trou.
-attachmentHtml(attachment, index = 0, messageKey = '') {
+  attachmentHtml(attachment, index = 0, messageKey = '') {
     const url = escHtml(attachment.url);
     const name = escHtml(attachment.fileName || 'fichier');
     const kind = attachmentKind(attachment.url, attachment.fileName);
 
     if (kind === 'image') {
       const locate = messageKey ? ` data-attachment-message="${escHtml(messageKey)}" data-attachment-index="${index}"` : '';
-      return `<a class="package-attachment package-attachment-image" data-attachment-fallback data-attachment-open${locate} href="${url}" target="_blank" rel="noreferrer" title="${name}"><img data-attachment-img src="${url}" alt="${name}" loading="lazy" decoding="async"><span class="package-attachment-broken">Voir le fichier</span></a>`;
+      return `<a class="package-attachment package-attachment-image" data-attachment-fallback data-attachment-open${locate} data-attachment-url="${url}" data-attachment-file-name="${name}" href="${url}" rel="noreferrer" title="${name}"><img data-attachment-img src="${url}" alt="${name}" loading="lazy" decoding="async"><span class="package-attachment-broken">Voir le fichier</span></a>`;
     }
     if (kind === 'video') {
-      return `<span class="package-attachment package-attachment-media"><video src="${url}" controls preload="metadata" playsinline></video><a class="package-attachment-link" href="${url}" target="_blank" rel="noreferrer">${name}</a></span>`;
+      return `<span class="package-attachment package-attachment-media"><video src="${url}" controls preload="metadata" playsinline></video><a class="package-attachment-link" href="${url}" rel="noreferrer">${name}</a></span>`;
     }
     if (kind === 'audio') {
-      return `<span class="package-attachment package-attachment-media"><audio src="${url}" controls preload="metadata"></audio><a class="package-attachment-link" href="${url}" target="_blank" rel="noreferrer">${name}</a></span>`;
+      return `<span class="package-attachment package-attachment-media"><audio src="${url}" controls preload="metadata"></audio><a class="package-attachment-link" href="${url}" rel="noreferrer">${name}</a></span>`;
     }
-    return `<a class="package-attachment-link" href="${url}" target="_blank" rel="noreferrer">📎 ${name}</a>`;
+    return `<a class="package-attachment-link" href="${url}" rel="noreferrer">📎 ${name}</a>`;
   }
 
   clampLightboxIndex(index, length) {
@@ -494,19 +843,57 @@ attachmentHtml(attachment, index = 0, messageKey = '') {
     return Math.max(0, Math.min(Math.floor(value), length - 1));
   }
 
+  lightboxKind(attachment) {
+    if (attachment?.kind) return attachment.kind;
+    // Le nom de fichier Discord n est pas toujours fiable : un nom sans
+    // extension ne doit pas faire disparaitre une image dont l URL, elle, en a
+    // une. On classe donc par le nom, puis par l URL en repli.
+    const parNom = attachmentKind('', attachment?.fileName);
+    return parNom !== 'file' ? parNom : attachmentKind(attachment?.url, '');
+  }
+
+  // Les conteneurs QuickTime/Matroska/AVI/OGV/M4V ne sont pas demultiplexables
+  // par Chromium : on les nomme et on propose l enregistrement, mais on ne les
+  // monte pas dans un <video>, qui resterait noir et muet.
+  isUnreadableVideo(attachment) {
+    return UNREADABLE_VIDEO_EXT.has(attachmentExtension(attachment?.url, attachment?.fileName));
+  }
+
+  lightboxUnreadableHtml(url, name) {
+    return `<div class="package-lightbox-unreadable"><strong>${name}</strong><p>Format non lisible par le lecteur</p><button type="button" class="package-lightbox-save" data-save-attachment data-save-url="${url}" data-save-name="${name}">Enregistrer le fichier</button></div>`;
+  }
+
+  lightboxMediaHtml(attachment, url, name) {
+    const kind = this.lightboxKind(attachment);
+    if (kind === 'image') return `<img src="${url}" alt="${name}" data-lightbox-img>`;
+    if (kind === 'audio') return `<audio src="${url}" controls preload="metadata" data-lightbox-audio></audio>`;
+    if (kind === 'video' && !this.isUnreadableVideo(attachment)) {
+      return `<video src="${url}" controls playsinline preload="metadata" data-lightbox-video></video>`;
+    }
+    return this.lightboxUnreadableHtml(url, name);
+  }
+
   lightboxHtml(attachments, index) {
-    const safe = this.clampLightboxIndex(index, attachments.length);
-    const current = attachments[safe];
+    const list = Array.isArray(attachments) ? attachments : [];
+    const readable = list.filter(item => this.lightboxKind(item) !== 'file');
+    const cible = list.length ? list[this.clampLightboxIndex(index, list.length)] : null;
+    const position = cible ? Math.max(0, readable.indexOf(cible)) : 0;
+    const current = readable[position] || readable[0];
+    if (!current) {
+      return `<button type="button" class="package-lightbox-backdrop" data-lightbox-close aria-label="Fermer"></button>
+      <figure class="package-lightbox-figure"></figure>
+      <button type="button" class="package-lightbox-close" data-lightbox-close aria-label="Fermer">✕</button>`;
+    }
     const url = escHtml(current.url);
-    const name = escHtml(current.fileName || 'image');
-    const several = attachments.length > 1;
-    const prev = several ? `<button type="button" class="package-lightbox-nav prev" data-lightbox-prev aria-label="Image précédente">‹</button>` : '';
-    const next = several ? `<button type="button" class="package-lightbox-nav next" data-lightbox-next aria-label="Image suivante">›</button>` : '';
-    const counter = several ? `<span class="package-lightbox-counter">${safe + 1} / ${attachments.length}</span>` : '';
+    const name = escHtml(current.fileName || 'média');
+    const several = readable.length > 1;
+    const prev = several ? `<button type="button" class="package-lightbox-nav prev" data-lightbox-prev aria-label="Média précédent">‹</button>` : '';
+    const next = several ? `<button type="button" class="package-lightbox-nav next" data-lightbox-next aria-label="Média suivant">›</button>` : '';
+    const counter = several ? `<span class="package-lightbox-counter">${position + 1} / ${readable.length}</span>` : '';
     return `<button type="button" class="package-lightbox-backdrop" data-lightbox-close aria-label="Fermer"></button>
       <figure class="package-lightbox-figure">
         ${prev}
-        <img src="${url}" alt="${name}" data-lightbox-img>
+        ${this.lightboxMediaHtml(current, url, name)}
         ${next}
         <figcaption class="package-lightbox-caption"><span>${name}</span>${counter}</figcaption>
       </figure>
@@ -515,19 +902,22 @@ attachmentHtml(attachment, index = 0, messageKey = '') {
 
   openLightbox(attachments, index) {
     const list = Array.isArray(attachments) ? attachments : [];
-    // La visionneuse ne parcourt que les images : un message peut melanger une
-    // capture et un zip, et afficher le zip dans un <img> ne donnerait rien.
-    const images = list.filter(item => attachmentKind(item.url, item.fileName) === 'image');
-    if (!images.length) return;
+    // La visionneuse parcourt les medias lisibles (image, video, audio) : un
+    // message peut melanger une capture et un PDF, et un PDF dans un <img> ne
+    // donnerait rien. Les fichiers ordinaires ne sont pas navigables.
+    const readable = list.filter(item => this.lightboxKind(item) !== 'file');
+    if (!readable.length) return;
     const target = list[this.clampLightboxIndex(index, list.length)];
-    const start = images.indexOf(target);
-    this.lightboxState = { attachments: images, index: start >= 0 ? start : 0 };
+    const start = readable.indexOf(target);
+    this.lightboxState = { attachments: readable, index: start >= 0 ? start : 0 };
 
     const overlay = this.lightboxOverlay || document.createElement('div');
     overlay.className = 'package-lightbox';
     overlay.innerHTML = this.lightboxHtml(this.lightboxState.attachments, this.lightboxState.index);
     if (!this.lightboxOverlay) {
       overlay.addEventListener('click', event => {
+        const save = event.target.closest('[data-save-attachment]');
+        if (save) { this.saveAttachment({ url: save.dataset.saveUrl, fileName: save.dataset.saveName }); return; }
         if (event.target.closest('[data-lightbox-close]')) { this.closeLightbox(); return; }
         if (event.target.closest('[data-lightbox-prev]')) { this.stepLightbox(-1); return; }
         if (event.target.closest('[data-lightbox-next]')) { this.stepLightbox(1); }
@@ -553,6 +943,27 @@ attachmentHtml(attachment, index = 0, messageKey = '') {
     this.lightboxOverlay?.remove();
     this.lightboxOverlay = null;
     this.lightboxState = null;
+  }
+
+  // Le telechargement se fait dans le main process : connect-src 'self'
+  // interdit au renderer de fetch le CDN. Ici on ne fait que demander et rendre
+  // compte — un echec se dit, une annulation se tait.
+  async saveAttachment(attachment) {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.saveAttachment) {
+      showNotification('Enregistrement impossible : IPC indisponible');
+      return;
+    }
+    try {
+      const resultat = await api.saveAttachment({ url: attachment?.url || '', fileName: attachment?.fileName || '' });
+      if (resultat?.ok) {
+        showNotification(`Fichier enregistré : ${resultat.chemin}`);
+      } else if (!resultat?.cancelled) {
+        showNotification(`Enregistrement impossible : ${resultat?.error || 'erreur inconnue'}`);
+      }
+    } catch (error) {
+      showNotification(`Enregistrement impossible : ${error.message}`);
+    }
   }
 
   handleLightboxKey(event) {
@@ -588,7 +999,9 @@ attachmentHtml(attachment, index = 0, messageKey = '') {
     this.queue.filter(item => item.status === 'queued').forEach(item => this.importQueueItem(item));
   }
 
-  renderThrottled(delay = 120) {
+  // 90 ms : onze rendus par seconde suffisent a fluidifier sans reconstruire la
+// page plus souvent que nécessaire pendant la lecture d'un gros fichier.
+renderThrottled(delay = 90) {
     if (this.renderTimer) return;
     this.renderTimer = setTimeout(() => {
       this.renderTimer = null;
@@ -601,23 +1014,122 @@ attachmentHtml(attachment, index = 0, messageKey = '') {
     this.render();
   }
 
-  applyImportProgress(item, info) {
-    const current = Number(info?.current || 0);
-    const total = Math.max(1, Number(info?.total || 1));
-    item.percent = Math.min(100, current / total * 100);
+// L importeur parle deux langues : des octets pendant la lecture du ZIP, puis
+// des salons pendant l extraction. Prendre current/total brut faisait passer la
+// barre de 0 a 100 %, puis revenir a 0 : le remplissage paraissait saccade.
+// La lecture pese donc 30 % de la barre, l extraction les 70 % restants.
+//
+// DEUX PHASES SONT DONC DEUX PASSAGES, et le second se reconnait a son ordre : seul le
+// chemin flux annonce des OCTETS, et il le fait avant toute extraction. Un evenement en
+// octets apres un evenement d ENTREE ne peut donc pas venir du meme passage — l index a
+// echoue et le flux prend la main. La jauge repart alors a zero : le second passage
+// relit TOUT le fichier, et une jauge restee au passage mort afficherait un temps
+// restant faux. Le mode, affiche a cote, explique ce retour en arriere.
+//
+// Le mode se deduit de la meme phase plutot que d attendre la reponse du main process,
+// qui ne rend qu a la fin : sur un import lent — le seul cas ou l utilisateur le
+// regarde — la reponse n est pas encore la.
+applyImportProgress(item, info) {
+    if (!info || !Number.isFinite(Number(info.total)) || Number(info.total) <= 0) return;
+    const current = Number(info.current || 0);
+    const total = Math.max(1, Number(info.total));
+    const ratio = Math.max(0, Math.min(1, current / total));
+    const isRead = Boolean(info?.bytes);
+    const phasePrecedente = item.importPhase;
+
+    if (isRead && phasePrecedente === 'entrees') {
+      item.percent = 0;
+      item.startedAt = Date.now(); // l ETA ne doit pas compter le passage mort
+    }
+    item.importMode = isRead || phasePrecedente === 'octets' ? 'flux' : 'index';
+    item.importPhase = isRead ? 'octets' : 'entrees';
+
+    const base = isRead ? 0 : IMPORT_READ_SHARE;
+    const span = isRead ? IMPORT_READ_SHARE : 1 - IMPORT_READ_SHARE;
+    const percent = (base + ratio * span) * 100;
+    item.percent = Math.min(100, percent);
+
+    // L ETA ne peut pas se baser sur current/elapsed : l unite change de bytes
+    // en salons. On l estime donc depuis l avancement global et le temps ecoule.
     const elapsed = (Date.now() - item.startedAt) / 1000;
-    const rate = current / Math.max(elapsed, 0.001);
-    item.statusText = `${escHtml(info?.stage || 'Analyse des salons')} · ${formatEta((total - current) / Math.max(rate, 0.001))}`;
+    const remaining = percent > 1 ? ` · ~${formatEta((elapsed * (100 - percent)) / percent)}` : '';
+    item.statusText = `${escHtml(info?.stage || 'Analyse des salons')} · ${Math.round(percent)} %${remaining} · mode ${item.importMode}`;
     this.renderThrottled();
   }
 
-  async importQueueItem(item) {
-    item.status = 'processing'; item.statusText = 'Lecture locale de l’archive'; item.startedAt = Date.now(); item.percent = 0; this.render();
+  // LECTURE DU PAQUET. Deux chemins, un seul point de sortie.
+  //
+  // Le chemin par index vit dans le main process — `node:zlib` y est autorise,
+  // pas ici — et recoit le CHEMIN du fichier : les octets d une archive de
+  // 394 Mo ne traversent pas l'IPC. Il echoue la ou le chemin local reussit
+  // (un repertoire central illisible, une entree a 4 Go), et le repli se fait
+  // la, dans le main process. Si le main process ne peut pas importer du tout —
+  // pas de `electronAPI`, pas de chemin sur le disque — l'import se fait ici,
+  // comme avant.
+  //
+  // Le chemin retenu est journalise UNE fois par import : deux fois par fichier
+  // versé dans la file rendrait le journal illisible, et jamais ne rendrait
+  // l'information plus exacte. Il est aussi AFFICHE, dans le `statusText` de la file :
+  // c'est le seul endroit où l'utilisateur peut le voir, et le gain de ce chantier peut
+  // disparaître en silence (cf. le commentaire d'`applyImportProgress`).
+  //
+  // `shouldStop` N'EST PAS CABLE ICI, et ce n'est pas un oubli. L'API l'expose et le
+  // service `electron/` lui obeit — une annulation ne doit jamais relancer le chemin flux —
+  // mais RIEN dans cette interface n'annule un import : il n'y a pas de bouton. Le câbler
+  // donnerait l'illusion d'une annulation disponible ; la règle reste écrite dans le
+  // service, où elle protège l'API, et attend son bouton.
+  async readPackage(item) {
+    const api = globalThis.window?.electronAPI;
+    const onProgress = info => this.applyImportProgress(item, info);
+
+    if (!api?.importPackage) {
+      const parsed = await importDiscordPackage(item.file, { onProgress });
+      item.importMode = 'flux';
+      console.info(`Import ${item.file.name} : mode local`);
+      return parsed;
+    }
+
+    // La progression vient du main process par events : `importPackage` ne repond
+    // qu a la fin, et sans ce relais la jauge resterait figee pendant tout
+    // l'import. On se desabonne dans tous les cas, une seule fois.
+    const stopProgress = api.onImportPackageProgress?.(info => { if (info.fichier === item.file.name) onProgress(info); });
     try {
-      const parsed = await importDiscordPackage(item.file, {
-        onProgress: info => this.applyImportProgress(item, info),
-      });
-      item.status = 'success'; item.percent = 100; item.statusText = 'OK';
+      const reponse = await api.importPackage(item.file);
+      if (!reponse?.success) {
+        if (reponse?.fallbackToRenderer) {
+          const parsed = await importDiscordPackage(item.file, { onProgress });
+          item.importMode = 'flux';
+          console.info(`Import ${item.file.name} : mode local (${reponse.error || 'main process indisponible'})`);
+          return parsed;
+        }
+        // Une annulation n est PAS un succes : ni paquet rendu, ni archive
+        // enregistree. Son texte la distingue d un echec d archive, qui a lui
+        // son propre motif.
+        throw new Error(reponse?.cancelled ? 'Import annulé' : (reponse?.error || 'Erreur de lecture'));
+      }
+      // La REPONSE fait autorite sur le mode : c est elle qui sait, et non la phase des
+      // evenements. Sans elle, un import qui n aurait emis aucun evenement — une archive
+      // minuscule — afficherait le mode deduit, donc un mode possible mais jamais verifie.
+      if (reponse.mode) item.importMode = reponse.mode === 'stream' ? 'flux' : 'index';
+      console.info(`Import ${item.file.name} : mode ${reponse.mode}${reponse.reason ? ` (${reponse.reason})` : ''}`);
+      return hydrateImportedPackage(reponse.package);
+    } finally {
+      stopProgress?.();
+    }
+  }
+
+  async importQueueItem(item) {
+    // `importPhase` et `importMode` repartent de zero avec l essai : sans cela, une
+    // annulation puis un reessai verrait le second passage comme un repli, et
+    // afficherait le mode du precedent.
+    item.status = 'processing'; item.statusText = 'Lecture locale de l’archive'; item.startedAt = Date.now(); item.percent = 0; item.importPhase = null; item.importMode = null; this.render();
+    try {
+      const parsed = await this.readPackage(item);
+      item.status = 'success'; item.percent = 100; item.statusText = item.importMode ? `OK · mode ${item.importMode}` : 'OK';
+      // La version du schema est une cle du COTE IHM : `isCurrentPackageArchive`
+      // la lit a la relecture pour ecarter une archive d une version perimee. Le
+      // main process ne la connait pas et ne la pose donc pas — la poser ici,
+      // apres l import et avant la sauvegarde, la conserve pour les DEUX chemins.
       parsed.schemaVersion = PACKAGE_SCHEMA_VERSION;
       const archiveId = createPackageArchiveId(item.file);
       try {
@@ -630,7 +1142,10 @@ attachmentHtml(attachment, index = 0, messageKey = '') {
       this.renderNow();
       this.hydrateDmPartners();
     } catch (error) {
-      item.status = 'error'; item.statusText = error.message || 'Erreur de lecture'; item.percent = Math.max(0, item.percent); this.renderNow();
+      // Un import qui n a rien produit ne montre pas une jauge pleine a cote du mot « error » :
+      // a l oeil, une barre a 100 % EST un succes. Le motif, lui, reste affiche — c est
+      // lui que l utilisateur lit et qu il recopie dans un rapport de bug.
+      item.status = 'error'; item.statusText = error.message || 'Erreur de lecture'; item.percent = 0; this.renderNow();
     }
   }
 
@@ -661,13 +1176,26 @@ attachmentHtml(attachment, index = 0, messageKey = '') {
       this.render();
       return;
     }
-    // Avant la selection : le bouton Ouvrir est imbrique dans la ligne.
-    // La case est traitee par handleChange : ici on evite juste d'ouvrir la
-// conversation quand on clique dessus.
-// Le clic sur une vignette ouvre la visionneuse, pas un nouvel onglet.
-const open = event.target.closest('[data-attachment-open]');
+    const saveButton = event.target.closest('[data-save-attachment]');
+    if (saveButton) {
+      event.preventDefault();
+      await this.saveAttachment({ url: saveButton.dataset.saveUrl, fileName: saveButton.dataset.saveName });
+      return;
+    }
+    // Une tuile de galerie ouvre la visionneuse quand c est un media lisible, et
+    // la source dans un onglet sinon.
+    const galleryTile = event.target.closest('[data-gallery-open]');
+    if (galleryTile) { this.openGalleryTile(galleryTile); return; }
+    // Le clic sur une vignette ouvre la visionneuse. Une image cassee, elle,
+    // laisse place a son repli : elle propose l enregistrement au lieu de
+    // rafraichir la meme image morte.
+    const open = event.target.closest('[data-attachment-open]');
     if (open && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
       event.preventDefault();
+      if (open.classList.contains('is-broken')) {
+        await this.saveAttachment({ url: open.dataset.attachmentUrl, fileName: open.dataset.attachmentFileName });
+        return;
+      }
       const key = open.dataset.attachmentMessage;
       const [channelId, messageId] = String(key || '').split(':');
       const message = channelId && messageId ? (this.package.messages.get(channelId) || []).find(item => String(item.id) === messageId) : null;
@@ -678,6 +1206,10 @@ const open = event.target.closest('[data-attachment-open]');
     if (selectBox) return;
     const kindFilter = event.target.closest('[data-channel-filter]');
     if (kindFilter) { this.channelKindFilter = kindFilter.dataset.channelFilter; this.render(); return; }
+    const galleryKind = event.target.closest('[data-gallery-kind]');
+    if (galleryKind) { this.galleryFilter.kind = galleryKind.dataset.galleryKind || 'all'; this.resetGalleryPaint(); this.render(); return; }
+    const gallerySort = event.target.closest('[data-gallery-sort]');
+    if (gallerySort) { this.galleryFilter.tri = this.galleryFilter.tri === 'recent' ? 'ancien' : 'recent'; this.persistGallerySort(); this.resetGalleryPaint(); this.render(); return; }
     if (event.target.closest('[data-select-all]')) { this.toggleAllFiltered(true); return; }
     if (event.target.closest('[data-select-none]')) { this.toggleAllFiltered(false); return; }
     const showNotes = event.target.closest('[data-show-system-notes]');
@@ -701,7 +1233,7 @@ const open = event.target.closest('[data-attachment-open]');
     }
     const actionButton = event.target.closest('[data-package-action]');
     const action = actionButton?.dataset.packageAction;
-    if (action === 'focus') { this.focusMode = !this.focusMode; this.contentArea.classList.toggle('package-focus-mode', this.focusMode); this.render(); return; }
+    if (action === 'gallery') { this.view = this.view === 'gallery' ? 'messages' : 'gallery'; this.render(); return; }
     if (action === 'export') { this.exportPackage(actionButton.dataset.exportFormat || 'json'); return; }
     if (action === 'close') { this.closeLightbox(); this.package = null; this.selectedChannelId = null; this.selectedMessages.clear(); this.render(); }
     if (action === 'delete') this.deleteSelectedMessages();
@@ -777,6 +1309,7 @@ handleKeydown(event) {
 
   handleChange(event) {
     if (event.target.id === 'packageFileInput') this.addFiles(event.target.files);
+    if (event.target.matches('[data-gallery-channel]')) { this.galleryFilter.channelId = event.target.value || ''; this.resetGalleryPaint(); this.render(); return; }
     if (event.target.matches('[data-hide-empty]')) { this.hideEmptyDms = event.target.checked; this.render(); return; }
     if (event.target.matches('[data-hide-system]')) { this.hideSystemNotes = event.target.checked; this.render(); return; }
     const channelBox = event.target.closest('[data-select-channel]');

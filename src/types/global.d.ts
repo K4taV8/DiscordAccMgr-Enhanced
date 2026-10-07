@@ -2,7 +2,7 @@
  * Augmentations globales du renderer.
  *
  * Formes déduites à l'identique de electron/preload.cjs : `electronAPI`
- * (lignes 24-67) et `persistAPI` (lignes 70-78). Aucun membre ajouté,
+ * (lignes 68-120) et `persistAPI` (lignes 122-130). Aucun membre ajouté,
  * aucun membre omis.
  */
 
@@ -14,6 +14,7 @@ import type {
   FriendSummary,
   GroupSummary,
   LiveMessage,
+  PackageMessage,
   ReactionSummary,
   ReadAllResult,
   ServerSummary,
@@ -25,6 +26,72 @@ import type { Checkpoint, CheckpointOperation } from '../../shared/types';
 export interface ReactionSummaryPayload {
   currentUserId: string;
   reactions: ReactionSummary[];
+}
+
+/** Un salon du paquet, tel que l'assemblage le produit. */
+export interface ImportedChannel {
+  id: string;
+  name: string | null;
+  avatar: string | null;
+  recipient: { id?: string; username?: string; globalName?: string | null; avatar?: string | null } | null;
+  type: string;
+  guildName?: string | null;
+  guildId?: string | null;
+  isLeft: boolean;
+  messagesCount: number;
+}
+
+/**
+ * Le paquet renvoyé par `discord:importPackage`, SUR LE FIL.
+ *
+ * `messages` est un OBJET indexé par identifiant de salon, et non une `Map`.
+ * Raison exacte : l'aplatissement est VOLONTAIRE et explicite, pas une
+ * limitation du transport — l'IPC Electron sérialise ses arguments par clonage
+ * structuré, qui préserve `Map` et `Set` (`structuredClone(new Map(a)) instanceof Map
+ * === true`). Un objet se inspecte dans un journal et se compare dans un test,
+ * là où une `Map` ne se compare pas.
+ *
+ * Le renderer le retransforme (`hydrateImportedPackage`) avant de s'en servir.
+ * Une troisième forme existe, pour la BASE : un tableau de paires, dans
+ * `src/services/packageStorage.service.js` (IndexedDB ne stocke pas une clé
+ * d'objet). Les trois sont nommées là où elles sont écrites.
+ */
+export interface ImportedPackage {
+  user: { id: string; username: string; globalName: string | null; avatar: string | null };
+  guilds: { id: string; name: string; icon: string | null }[];
+  channels: ImportedChannel[];
+  messages: Record<string, PackageMessage[]>;
+  totalMessages: number;
+  packageSizeBytes: number;
+  discarded: { noise: number; oversized: number };
+}
+
+/**
+ * Réponse de `discord:importPackage`.
+ *
+ * - `success` : `package` est complet, `reason` n'est non nul que si l'import a
+ *   fini par le chemin flux après un échec du chemin index.
+ * - `cancelled` : l'import a ete arrete. Ce n'est ni un succes ni un echec
+ *   d'archive, et aucun paquet n'est rendu — un paquet partiel se presenterait
+ *   comme un import complet.
+ * - `fallbackToRenderer` : le main process ne peut pas importer du tout (pas de
+ *   chemin, module du chemin flux introuvable). Le renderer refait l'import
+ *   lui-meme, et non un second essai cote main.
+ */
+export type PackageImportResponse =
+  | { success: true; package: ImportedPackage; mode: 'index' | 'stream'; reason: string | null; cancelled?: false; error?: undefined }
+  | { success: false; cancelled: true; mode: 'index' | 'stream'; reason: string | null; error?: undefined; fallbackToRenderer?: undefined }
+  | { success: false; fallbackToRenderer: true; error: string; mode?: 'index' | 'stream'; reason?: string | null; cancelled?: undefined }
+  | { success: false; fallbackToRenderer?: undefined; cancelled?: false; mode: 'index' | 'stream'; reason: string; error: string };
+
+/** Progression d'un import. `fichier` designe l'archive concernee. */
+export interface PackageImportProgress {
+  fichier: string;
+  current: number;
+  total: number;
+  stage: string;
+  bytes?: boolean;
+  channelId?: string;
 }
 
 export interface ElectronAPI {
@@ -44,6 +111,17 @@ export interface ElectronAPI {
   openExternal(url: string): Promise<{ success: boolean; error?: string }>;
   getAppVersion(): Promise<string>;
   toggleDevTools(): Promise<boolean>;
+
+  // import de paquet (ZIP) — le main process lit le fichier par tranches, les
+  // octets ne traversent pas l'IPC
+  importPackage(file: File): Promise<PackageImportResponse>;
+  onImportPackageProgress(callback: (info: PackageImportProgress) => void): () => void;
+
+  // sortie de secours d'une piece jointe : le renderer ne peut pas fetch le CDN
+  // (connect-src 'self'), le main process telecharge et ecrit le fichier.
+  saveAttachment(
+    attachment: { url: string; fileName: string },
+  ): Promise<{ ok: boolean; chemin?: string; cancelled?: boolean; error?: string }>;
 
   // serveurs
   muteServer(serverId: string): Promise<{ success: boolean; error?: string }>;

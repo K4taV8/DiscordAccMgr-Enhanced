@@ -12,6 +12,7 @@
     "audit:sca": "npm audit --omit=dev",
     "package": "electron-builder",
     "package:portable": "node -e \"require('fs').writeFileSync('.portable','')\" && electron-builder --win dir && node -e \"require('fs').unlinkSync('.portable')\"",
+    "verify:asar": "node scripts/verifier-asar.cjs",
     "postinstall": "electron-builder install-app-deps"
   },
   "dependencies": {
@@ -21,7 +22,7 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.3",
-    "electron": "^43.4.0",
+    "electron": "43.4.0",
     "electron-builder": "^26.15.3",
     "typescript": "^7.0.2"
   },

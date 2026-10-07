@@ -16,6 +16,7 @@ axios.defaults.timeout = 15000;
 const { readJson, writeJson } = require('./persist.cjs');
 const { routeKeyFor, isSnowflake, isOp, isMessageBearingChannel } = require('./helpers.cjs');
 const { createTokenStore } = require('./tokenStore.cjs');
+const { importArchiveDepuisChemin } = require('./packageImporter.service.cjs');
 
 // 100% portable : TOUTES les données (userData, session, cache, crashDumps,
 // logs) vivent dans un dossier data/ à côté de l'app — jamais dans %APPDATA%.
@@ -435,6 +436,59 @@ ipcMain.handle('app:openExternal', async (_, url) => {
     return { success: true };
   } catch (error) {
     return { success: false, error: error.message };
+  }
+});
+
+// Import d'un export Discord (ZIP) — chemin par index, repli sur le chemin flux.
+// Le renderer n'envoie que le CHEMIN du fichier (electron/preload.cjs) : les
+// 394 Mo d'un export réel ne traversent pas l'IPC, et le main process n'ouvre un
+// descripteur de lecture que pour les plages que l'import demande.
+//
+// TOUT le reste — l'ouverture, la comparaison de la taille annoncée à la taille
+// réellement ouverte, la progression, la règle d'annulation, la forme de l'enveloppe
+// — vit dans le service, et y est teste. Ce handler ne fait que router : c'est
+// `importArchiveDepuisChemin` qui décide si l'import a réussi, jamais cette
+// fonction, qui n'aurait aucun test comportemental (le fichier prend le verrou
+// d'instance unique dès son chargement, donc il n'est pas exécutable ici).
+ipcMain.handle('discord:importPackage', (event, demande) => {
+  const nom = typeof demande?.nom === 'string' ? demande.nom : 'package.zip';
+  // La progression traverse par events : `invoke` ne répond qu'à la fin, et la
+  // barre resterait figée pendant tout l'import. `isDestroyed` parce qu'une
+  // fenêtre fermée en cours d'import ne doit pas faire échouer l'import.
+  const publier = info => { if (!event.sender.isDestroyed()) event.sender.send('discord:importPackage:progress', info); };
+  return importArchiveDepuisChemin({ chemin: demande?.chemin, nom, taille: demande?.taille }, { onProgress: publier });
+});
+
+// Sortie de secours d'une piece jointe que Chromium ne sait pas decoder
+// (.mov, .mkv) ou dont l URL signee a expire. Le renderer ne peut PAS fetch le
+// CDN (CSP connect-src 'self') : tout le telechargement vit ici, avec le meme
+// axios (timeout 15 s) que le reste du fichier.
+//
+// Le nom propose au dialogue est assaini avant showSaveDialog, qui refuse les
+// caracteres interdits Windows. Une annulation n'est ni un succes ni un echec :
+// elle se dit `cancelled`, jamais `error`.
+function sanitizeSaveName(name) {
+  const cleaned = String(name || 'piece-jointe')
+    .replace(/[<>:"/\\|?*]/g, '_')
+    .replace(/[\u0000-\u001f]/g, '_')
+    .replace(/[. ]+$/, '')
+    .trim();
+  return cleaned || 'piece-jointe';
+}
+
+ipcMain.handle('discord:saveAttachment', async (event, attachment) => {
+  const url = typeof attachment?.url === 'string' ? attachment.url : '';
+  if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'URL invalide' };
+  const nom = sanitizeSaveName(attachment?.fileName);
+  const parent = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  try {
+    const cible = await dialog.showSaveDialog(parent, { defaultPath: nom });
+    if (cible.canceled || !cible.filePath) return { ok: false, cancelled: true };
+    const reponse = await axios.get(url, { responseType: 'arraybuffer' });
+    await fsp.writeFile(cible.filePath, Buffer.from(reponse.data));
+    return { ok: true, chemin: cible.filePath };
+  } catch (error) {
+    return { ok: false, error: error.message || 'Échec du téléchargement' };
   }
 });
 

@@ -3,7 +3,17 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com; connect-src 'self'">
+  <!--
+    CSP : img-src autorise deja cdn.discordapp.com pour les photos, media-src
+    fait la meme chose pour les videos et l'audio. Sans lui, la directive media
+    retombe sur default-src 'self', refuse le CDN, et chaque <video> reste un
+    rectangle noir avec une barre de lecture inerte, le fond du CSS masquant
+    l echec. connect-src reste 'self' : le renderer ne peut donc toujours pas
+    fetch le CDN. Le README (lignes 269-270, invariants S3/S4) documente
+    script-src 'self' et connect-src 'self' comme zones rouges ; aucun des
+    deux n est touche ici.
+  -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com; media-src 'self' https://cdn.discordapp.com; connect-src 'self'">
   <title>Discord Account Manager - Enhanced Forked By KataV8</title>
   <link rel="stylesheet" href="src/styles/app.css">
 </head>
