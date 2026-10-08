@@ -112,8 +112,8 @@ export class GroupManager {
 
   async deleteMessages(groupId, groupName, oldestFirst = false, skipRefresh = false) {
     if (this.isDeleting) return;
-    if (!skipRefresh && !(await confirmAction('Supprimer les messages', `Supprimer TOUS vos messages dans ${groupName} ? Cette action est irréversible.`))) return;
     this.isDeleting = true;
+    if (!skipRefresh && !(await confirmAction('Supprimer les messages', `Supprimer TOUS vos messages dans ${groupName} ? Cette action est irréversible.`))) { this.isDeleting = false; return; }
 
     try {
       await deleteDMMessages({
@@ -137,7 +137,9 @@ export class GroupManager {
   }
 
   async leaveGroup(btn, groupId) {
-    if (!(await confirmAction('Quitter le groupe', 'Quitter ce groupe ? Cette action est irréversible.'))) return;
+    if (this.isDeleting) return;
+    this.isDeleting = true;
+    if (!(await confirmAction('Quitter le groupe', 'Quitter ce groupe ? Cette action est irréversible.'))) { this.isDeleting = false; return; }
     btn.disabled = true;
     try {
       const result = await window.electronAPI.leaveGroup(groupId);
@@ -147,6 +149,8 @@ export class GroupManager {
     } catch (error) {
       console.error('Failed to leave group:', error);
       btn.disabled = false;
+    } finally {
+      this.isDeleting = false;
     }
   }
 
@@ -183,11 +187,12 @@ export class GroupManager {
   // est fixe (messages → réactions → sortie) et chaque étape tolère l'échec.
   async executeCleaningMode(mode) {
     if (this.isDeleting) return;
-    const selected = Array.from(document.querySelectorAll('.group-checkbox:checked')).map(checkbox => {
+    this.isDeleting = true;
+    const selected = Array.from(this.contentArea.querySelectorAll('.group-checkbox:checked')).map(checkbox => {
       const item = checkbox.closest('.bento-card');
       return { groupId: item.dataset.id, name: decodeURIComponent(item.dataset.name) };
     });
-    if (selected.length === 0) return;
+    if (selected.length === 0) { this.isDeleting = false; return; }
 
     const modeLabels = {
       messages: 'supprimer vos messages',
@@ -195,9 +200,8 @@ export class GroupManager {
       both: 'supprimer vos messages ET vos réactions',
       full: 'supprimer vos messages, vos réactions et quitter',
     };
-    if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${selected.length} groupe(s) sélectionné(s) ?`))) return;
+    if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${selected.length} groupe(s) sélectionné(s) ?`))) { this.isDeleting = false; return; }
 
-    this.isDeleting = true;
     // Comme pour les DM : le debit de Discord impose des attentes, le panneau
     // donne le sentiment d avance et nomme le groupe traite.
     const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);

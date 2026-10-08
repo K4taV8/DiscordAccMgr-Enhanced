@@ -49,7 +49,12 @@ export function showHelpModal() {
 
   document.body.appendChild(overlay);
 
+  // `close()` peut être déclenché deux fois (Échap + clic backdrop, ou bouton) :
+  // la garde évite d'empiler `transitionend` et les `setTimeout` de retrait.
+  let closing = false;
   const close = () => {
+    if (closing) return;
+    closing = true;
     document.removeEventListener('keydown', onKey);
     // Sortie identique à l'îlot de thème : fade + léger repli, puis retrait du
     // nœud sur transitionend (setTimeout = filet si la transition ne part pas).

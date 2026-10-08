@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
-const SENSITIVE_CALLS = new Set(['connectDiscord', 'saveToken', 'getTokens']);
+const SENSITIVE_CALLS = new Set(['connectDiscord', 'saveToken', 'getTokens', 'loginNative']);
 
 function redact(name, args) {
   return SENSITIVE_CALLS.has(name) ? args.map(() => '[redacted]') : args;

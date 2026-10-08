@@ -158,3 +158,20 @@ test("aucune directive n'est déclarée deux fois", () => {
   assert.deepEqual(doublons, [],
     `en doublon, seule la première occurrence compte : réordonner la CSP changerait alors sa portée sans que le diff le montre (doublons : ${doublons.join(', ')})`);
 });
+
+// Durcissement b3829aa : quatre directives fermées par défaut, chacune réduite
+// à une seule source. On les épingle à la valeur exacte (pas seulement « le
+// jeton est présent ») pour qu'un élargissement — un `object-src *`, une
+// `base-uri` distante, une `form-action` qui poste ailleurs, un
+// `frame-ancestors` ouvert — fasse rougir le test au lieu de passer en douce.
+test('directives durcies : object-src, base-uri, form-action, frame-ancestors', () => {
+  const { table } = directivesCsp();
+  assertDirective(table, 'object-src', ["'none'"],
+    "un plugin/embed distant ne doit jamais s'exécuter dans le renderer (ferme la famille <object>/<embed>)");
+  assertDirective(table, 'base-uri', ["'self'"],
+    "sans elle, une <base> injectée détourne silencieusement toutes les URL relatives de la page");
+  assertDirective(table, 'form-action', ["'self'"],
+    "aucune saisie ne doit pouvoir être postée vers une origine distante (exfiltration par formulaire)");
+  assertDirective(table, 'frame-ancestors', ["'none'"],
+    "l'app ne doit jamais pouvoir être encadrée par un site distant (clickjacking)");
+});

@@ -14,7 +14,8 @@ function esc(value) {
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 export function progressPanelHtml({ title, detail = '', done = 0, total = 0, state = 'running' }) {

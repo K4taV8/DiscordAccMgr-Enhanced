@@ -32,6 +32,20 @@ function attachmentsToText(attachments) {
   return (attachments || []).map(attachment => attachment.url).filter(Boolean).join('\n');
 }
 
+// L'import range le hash (avatar/icone) en URL CDN. Pour reexporter EXACTEMENT
+// ce que l'import sait relire, on extrait le hash du dernier segment de chemin
+// (`.../<hash>.png`). Un hash Discord est hex, prefixe `a_` si anime. Sans URL
+// exploitable on rend `null` : le champ est alors omis, comme a l'origine.
+function avatarHashFromUrl(url) {
+  if (!url) return null;
+  let path;
+  try { path = new URL(String(url)).pathname; } catch { return null; }
+  const last = path.split('/').pop() || '';
+  const dot = last.lastIndexOf('.');
+  const hash = dot > 0 ? last.slice(0, dot) : last;
+  return /^(?:a_)?[0-9a-f]+$/i.test(hash) ? hash : null;
+}
+
 // Les identifiants Discord sont des snowflakes sur 18 chiffres : ecrits en
 // nombre ils perdent leur precision au JSON.parse. Tout part donc en chaine.
 function toRow(message, channelId) {
@@ -53,6 +67,8 @@ export function exportDiscordPackage(parsed) {
     username: parsed.user.username || 'Unknown user',
   };
   if (parsed.user.globalName) user.global_name = parsed.user.globalName;
+  const userAvatarHash = avatarHashFromUrl(parsed.user.avatar);
+  if (userAvatarHash) user.avatar_hash = userAvatarHash;
   entries[USER_FILE] = encode(user);
 
   const channels = parsed.channels || [];
@@ -73,7 +89,24 @@ export function exportDiscordPackage(parsed) {
       type: TYPE_BY_KIND[channel.type] || 0,
     };
     if (guild) metadata.guild = { id: String(guild.id), name: guild.name || undefined };
-    if (channel.recipient) metadata.recipients = [{ id: String(channel.recipient.id), username: channel.recipient.username || undefined }];
+    const channelIcon = avatarHashFromUrl(channel.avatar);
+    if (channelIcon) metadata.icon = channelIcon;
+    // On reecrit la LISTE COMPLETE (`channel.recipients`) et non le seul
+    // partenaire : sur un GROUP_DM, `[recipient]` faisait disparaitre les autres
+    // membres a l aller-retour. Repli sur `[channel.recipient]` pour les packages
+    // charges qui ne portent pas encore `recipients` (import d une version
+    // anterieure, fixture), et rien du tout s il n y a aucun destinataire.
+    const recipients = Array.isArray(channel.recipients)
+      ? channel.recipients
+      : (channel.recipient ? [channel.recipient] : undefined);
+    if (recipients && recipients.length) {
+      metadata.recipients = recipients.map(recipient => {
+        const entry = { id: String(recipient.id), username: recipient.username || undefined };
+        const recipientAvatar = avatarHashFromUrl(recipient.avatar);
+        if (recipientAvatar) entry.avatar = recipientAvatar;
+        return entry;
+      });
+    }
 
     entries[`${dir}/${CHANNEL_FILE}`] = encode(metadata);
     entries[`${dir}/${MESSAGES_JSON}`] = encode(rows.map(row => toRow(row, channelId)));
@@ -81,7 +114,10 @@ export function exportDiscordPackage(parsed) {
 
   const guilds = parsed.guilds || [];
   for (const guild of guilds) {
-    entries[`servers/${String(guild.id)}/${GUILD_FILE}`] = encode({ id: String(guild.id), name: guild.name || undefined });
+    const guildEntry = { id: String(guild.id), name: guild.name || undefined };
+    const guildIcon = avatarHashFromUrl(guild.icon);
+    if (guildIcon) guildEntry.icon = guildIcon;
+    entries[`servers/${String(guild.id)}/${GUILD_FILE}`] = encode(guildEntry);
   }
 
   return zipSync(entries, { level: 6 });

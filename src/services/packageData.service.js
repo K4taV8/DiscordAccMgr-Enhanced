@@ -53,13 +53,21 @@ export function countSystemNotifications(messages) {
 const IMAGE_EXT = new Set(['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'avif', 'apng', 'jfif']);
 const VIDEO_EXT = new Set(['mp4', 'webm', 'mov', 'm4v', 'mkv', 'avi', 'ogv']);
 const AUDIO_EXT = new Set(['ogg', 'oga', 'mp3', 'opus', 'wav', 'm4a', 'flac', 'aac']);
+const MAX_EXTENSION_LENGTH = 16;
 
 export function attachmentExtension(url = '', fileName = '') {
   const source = String(fileName || url).split(/[?#]/)[0];
   let name = source.split('/').pop() || '';
   try { name = decodeURIComponent(name); } catch { /* nom mal echappe : on garde brut */ }
   const dot = name.lastIndexOf('.');
-  return dot > 0 ? name.slice(dot + 1).toLowerCase() : '';
+  if (dot <= 0) return '';
+  const extension = name.slice(dot + 1).toLowerCase();
+  // `decodeURIComponent` peut rendre un segment qui contient « / », « \ » ou
+  // « .. » (ex. `%2F` decode) : ce n'est pas une extension, c'est une tentative
+  // de traversee. On refuse aussi les extensions absurdement longues.
+  if (extension.length === 0 || extension.length > MAX_EXTENSION_LENGTH) return '';
+  if (/[/\\]/.test(extension) || extension.includes('..')) return '';
+  return extension;
 }
 
 export function attachmentKind(url, fileName = '') {

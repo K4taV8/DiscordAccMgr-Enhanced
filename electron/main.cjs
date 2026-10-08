@@ -133,6 +133,13 @@ function createWindow() {
   mainWindow.loadFile('./index.html');
   mainWindow.webContents.setBackgroundThrottling(false);
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  // C1a : l'app est une page locale : aucune navigation externe (anti-exfiltration).
+  // On n'autorise QUE la page de l'app (protocole `file:` ET hote vide) : un
+  // `file://hote/share` (UNC) ferait fuiter le hash SMB/NTLM. Une redirection 302
+  // ne passe pas par `will-navigate`, donc meme garde sur `will-redirect`.
+  const estNavigationApp = (u) => { try { const x = new URL(u); return x.protocol === 'file:' && !x.host; } catch { return false; } };
+  mainWindow.webContents.on('will-navigate', (e, url) => { if (!estNavigationApp(url)) e.preventDefault(); });
+  mainWindow.webContents.on('will-redirect',  (e, url) => { if (!estNavigationApp(url)) e.preventDefault(); });
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
@@ -244,6 +251,7 @@ ipcMain.handle('discord:openDM', async (_, userId) => {
   return discordMutate('POST', '/users/@me/channels', { data: { recipient_id: id } });
 });
 ipcMain.handle('discord:leaveGroup', async (_, groupId) => {
+  if (!isSnowflake(groupId)) return { success: false, error: 'identifiant invalide' };
   return discordMutate('DELETE', `/channels/${groupId}`);
 });
 
@@ -258,7 +266,7 @@ async function fetchChannelMessagesRest(channelId, beforeId = null, afterId = nu
     if (r.status) return { success: false, error: `HTTP ${r.status}` };
     return { success: false, error: r.error };
   }
-  const uid = discordClient.user?.id;
+  const uid = discordClient?.user?.id;
   const msgs = r.data.map(msg => ({
     id: msg.id,
     content: typeof msg.content === 'string' ? msg.content.substring(0, 80) : '',
@@ -282,20 +290,23 @@ async function fetchChannelMessagesRest(channelId, beforeId = null, afterId = nu
 }
 
 ipcMain.handle('discord:getChannelMessages', async (_, channelId, beforeId = null, afterId = null) => {
+  if (!isSnowflake(channelId)) return { success: false, error: 'identifiant invalide' };
   return fetchChannelMessagesRest(channelId, beforeId, afterId);
 });
 
 ipcMain.handle('discord:getDMMessages', async (_, channelId, beforeId = null) => {
+  if (!isSnowflake(channelId)) return { success: false, error: 'identifiant invalide' };
   return fetchChannelMessagesRest(channelId, beforeId);
 });
 
 ipcMain.handle('discord:getMessage', async (_, channelId, messageId) => {
+  if (!isSnowflake(channelId) || !isSnowflake(messageId)) return { success: false, error: 'identifiant invalide' };
   const r = await discordFetch('GET', `/channels/${channelId}/messages/${messageId}`);
   if (!r.success) return apiFailure(r);
   const msg = r.data;
   return {
     success: true,
-    currentUserId: discordClient.user.id,
+    currentUserId: discordClient?.user?.id,
     reactions: (msg.reactions || []).map(ra => ({
       emoji: { id: ra.emoji.id, name: ra.emoji.name },
       count: ra.count,
@@ -307,6 +318,7 @@ ipcMain.handle('discord:getMessage', async (_, channelId, messageId) => {
 });
 
 ipcMain.handle('discord:deleteGroupMessage', async (_, channelId, messageId) => {
+  if (!isSnowflake(channelId) || !isSnowflake(messageId)) return { success: false, error: 'identifiant invalide' };
   const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}`);
   if (!r.success) {
     if (r.status === 429) return { success: false, status: 429, error: 'Rate limited', retryAfter: r.retryAfter };
@@ -324,11 +336,10 @@ ipcMain.handle('discord:deleteGroupMessage', async (_, channelId, messageId) => 
 // sans cette lecture prealable, l outil epuisait une requete par message pour
 // apprendre a chaque fois la meme mauvaise nouvelle, a 4 r/s.
 ipcMain.handle('discord:getChannel', async (_, channelId) => {
-  const id = String(channelId || '').trim();
-  if (!id) return { success: false, status: 400, error: 'invalid channel' };
-  const r = await discordFetch('GET', `/channels/${id}`);
+  if (!isSnowflake(channelId)) return { success: false, status: 400, error: 'identifiant invalide' };
+  const r = await discordFetch('GET', `/channels/${channelId}`);
   if (!r.success) return apiFailure(r);
-  return { success: true, channel: { id: String(r.data?.id || id), name: r.data?.name || null, type: r.data?.type ?? null } };
+  return { success: true, channel: { id: String(r.data?.id || channelId), name: r.data?.name || null, type: r.data?.type ?? null } };
 });
 
 // Un fil archive refuse toute suppression (erreur 50083). Le reactiver puis le
@@ -336,17 +347,19 @@ ipcMain.handle('discord:getChannel', async (_, channelId) => {
 // laisse le fil dans l etat ou l utilisateur l avait laisse.
 ipcMain.handle('discord:setThreadArchived', async (_, threadId, archived) => {
   const id = String(threadId || '').trim();
-  if (!id) return apiFailure({ status: 400, error: 'thread id manquant' });
+  if (!isSnowflake(id)) return apiFailure({ status: 400, error: 'identifiant invalide' });
   const r = await discordFetch('PATCH', `/channels/${id}`, { data: { archived: Boolean(archived) } });
   if (!r.success) return apiFailure(r);
   return { success: true };
 });
 
 ipcMain.handle('discord:muteServer', async (_, serverId) => {
+  if (!isSnowflake(serverId)) return { success: false, error: 'identifiant invalide' };
   return discordMutate('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: true } });
 });
 
 ipcMain.handle('discord:unmuteServer', async (_, serverId) => {
+  if (!isSnowflake(serverId)) return { success: false, error: 'identifiant invalide' };
   return discordMutate('PATCH', `/users/@me/guilds/${serverId}/settings`, { data: { muted: false } });
 });
 
@@ -492,12 +505,14 @@ function sanitizeSaveName(name) {
 ipcMain.handle('discord:saveAttachment', async (event, attachment) => {
   const url = typeof attachment?.url === 'string' ? attachment.url : '';
   if (!/^https?:\/\//i.test(url)) return { ok: false, error: 'URL invalide' };
+  // S2 : exige https + CDN Discord (anti-SSRF) et borne le corps a 2 Gio.
+  if (!estUrlDiscordCdn(url)) return { ok: false, error: 'URL non autorisée' };
   const nom = sanitizeSaveName(attachment?.fileName);
   const parent = BrowserWindow.fromWebContents(event.sender) || mainWindow;
   try {
     const cible = await dialog.showSaveDialog(parent, { defaultPath: nom });
     if (cible.canceled || !cible.filePath) return { ok: false, cancelled: true };
-    const reponse = await axios.get(url, { responseType: 'arraybuffer' });
+    const reponse = await axios.get(url, { responseType: 'arraybuffer', maxContentLength: MAX_MEDIA_CONTENT_LENGTH });
     await fsp.writeFile(cible.filePath, Buffer.from(reponse.data));
     return { ok: true, chemin: cible.filePath };
   } catch (error) {
@@ -518,11 +533,54 @@ ipcMain.handle('discord:saveAttachment', async (event, attachment) => {
 // consulte AVANT chaque fichier : une annulation ne laisse donc aucun partiel.
 let mirrorStop = false;
 
+// S2 : seules les URL servies par le CDN Discord sont acceptees en telechargement.
+// Bloque le SSRF : une URL arbitraire vendeur du renderer ne doit jamais faire
+// sortir le main process vers le reseau interne.
+function estUrlDiscordCdn(u) {
+  try {
+    const url = new URL(u);
+    if (url.protocol !== 'https:') return false;
+    const hote = url.hostname.toLowerCase();
+    return hote === 'cdn.discordapp.com'
+      || hote === 'media.discordapp.net'
+      || hote.endsWith('.discordapp.com');
+  } catch {
+    return false;
+  }
+}
+
+// S3 : un segment d'emoji peut etre un emoji Unicode (deja encode par le
+// renderer) ou `name:id` (custom). On NE re-encode jamais une sequence deja
+// percent-encodee (sinon double encodage : `%` -> `%25`), mais on neutralise
+// toute injection de chemin (`/`, `..`) en normalisant a un encodage unique.
+function encodeEmojiSegment(raw) {
+  const s = String(raw || '');
+  const custom = /^([^:/\\]+):(\d+)$/.exec(s);
+  // `encodeURIComponent` laisse le point LITTERAL : un segment `..` replierait
+  // le chemin (`.../reactions/../@me`). On remplace donc les points isoles par
+  // `%2E` pour que le segment ne puisse jamais valoir `.` ou `..`.
+  const encoder = (v) => encodeURIComponent(v).replace(/\./g, '%2E');
+  if (custom) return `${encoder(custom[1])}:${custom[2]}`;
+  try {
+    return encoder(decodeURIComponent(s));
+  } catch {
+    return encoder(s);
+  }
+}
+
 // Transport de production (ruling R3) : `head` lit l'octet annonce, `get`
 // rapporte les octets. Timeout 15000, comme le reste du fichier.
+// S2 : toute URL hors CDN Discord est refusee, et le corps est borne a 2 Gio.
+const MAX_MEDIA_CONTENT_LENGTH = 2 * 1024 * 1024 * 1024;
 const mirrorTransport = {
-  head: url => axios.head(url, { timeout: 15000 }).then(r => Number(r.headers['content-length']) || 0),
-  get: url => axios.get(url, { responseType: 'arraybuffer', timeout: 15000 }).then(r => Buffer.from(r.data)),
+  head: url => {
+    if (!estUrlDiscordCdn(url)) return Promise.reject(new Error('URL média non autorisée'));
+    return axios.head(url, { timeout: 15000, maxContentLength: MAX_MEDIA_CONTENT_LENGTH }).then(r => Number(r.headers['content-length']) || 0);
+  },
+  get: url => {
+    if (!estUrlDiscordCdn(url)) return Promise.reject(new Error('URL média non autorisée'));
+    return axios.get(url, { responseType: 'arraybuffer', timeout: 15000, maxContentLength: MAX_MEDIA_CONTENT_LENGTH }).then(r => Buffer.from(r.data));
+  },
 };
 
 const mirrorRootDir = () => path.join(dataDir, MIRROR_DIR_NAME);
@@ -714,11 +772,22 @@ function ouvrirLoginDiscord() {
       title: 'Connexion Discord',
       webPreferences: {
         partition,
-        contextIsolation: false,
-        sandbox: false,
+        contextIsolation: true,
+        sandbox: true,
         nodeIntegration: false,
         userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
       },
+    });
+
+    // C1a : la fenetre de connexion ne doit naviguer que vers discord.com, en
+    // HTTPS. Ni popup, ni redirection externe (phishing / exfiltration de la
+    // saisie) ; exiger le protocole ferme aussi `file://` et les schemas custom.
+    win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    win.webContents.on('will-navigate', (event, url) => {
+      let hote = '';
+      let protocole = '';
+      try { const u = new URL(url); hote = u.hostname.toLowerCase(); protocole = u.protocol; } catch {}
+      if (protocole !== 'https:' || (hote !== 'discord.com' && !hote.endsWith('.discord.com'))) event.preventDefault();
     });
 
     // Detache le debugger, coupe les timers, detruit la fenetre et libere le
@@ -840,6 +909,7 @@ ipcMain.handle('discord:getDMs', async () => {
 });
 
 ipcMain.handle('discord:deleteDMMessage', async (_, channelId, messageId) => {
+  if (!isSnowflake(channelId) || !isSnowflake(messageId)) return { success: false, error: 'identifiant invalide' };
   const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}`);
   if (!r.success) {
     if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
@@ -850,16 +920,18 @@ ipcMain.handle('discord:deleteDMMessage', async (_, channelId, messageId) => {
 });
 
 ipcMain.handle('discord:closeDM', async (_, channelId) => {
+  if (!isSnowflake(channelId)) return { success: false, error: 'identifiant invalide' };
   return discordMutate('DELETE', `/channels/${channelId}`);
 });
 
 ipcMain.handle('discord:removeOwnReaction', async (_, channelId, messageId, rawEmojiKey) => {
+  if (!isSnowflake(channelId) || !isSnowflake(messageId)) return { success: false, error: 'identifiant invalide' };
   if (!rawEmojiKey) return { success: false, error: 'empty emoji key' };
 
   // La clé vient déjà de formatEmojiForApi (référence discrub) : "name:id" brut
-  // ou unicode URL-encodé AVEC variation selector. Ne PAS re-stripper %EF%B8%8F
-  // (U+FE0F) — c'était la cause des réactions "supprimées" qui restaient en place.
-  const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${rawEmojiKey}/@me`);
+  // ou unicode URL-encodé AVEC variation selector. On ne la re-strippe PAS
+  // (U+FE0F) mais on l'encode pour le chemin (S3 : jamais de segment brut).
+  const r = await discordFetch('DELETE', `/channels/${channelId}/messages/${messageId}/reactions/${encodeEmojiSegment(rawEmojiKey)}/@me`);
 
   if (!r.success) {
     // anti-fantômes : 404 = réaction confirmée absente (ok) ; 400 = requête invalide (échec visible, pas silencieux)
@@ -872,7 +944,8 @@ ipcMain.handle('discord:removeOwnReaction', async (_, channelId, messageId, rawE
 });
 
 ipcMain.handle('discord:getReactions', async (_, channelId, messageId, emoji, afterId) => {
-  const r = await discordFetch('GET', `/channels/${channelId}/messages/${messageId}/reactions/${emoji}`, afterId ? { params: { after: afterId } } : {});
+  if (!isSnowflake(channelId) || !isSnowflake(messageId)) return { success: false, error: 'identifiant invalide' };
+  const r = await discordFetch('GET', `/channels/${channelId}/messages/${messageId}/reactions/${encodeEmojiSegment(emoji)}`, afterId ? { params: { after: afterId } } : {});
   if (!r.success) {
     if (r.status === 429) return { success: false, error: 'Rate limited', retryAfter: r.retryAfter };
     return { success: false, error: r.status ? `HTTP ${r.status}` : 'Failed to get reactions' };
@@ -881,6 +954,7 @@ ipcMain.handle('discord:getReactions', async (_, channelId, messageId, emoji, af
 });
 
 ipcMain.handle('discord:deleteFriend', async (_, friendId) => {
+  if (!isSnowflake(friendId)) return { success: false, error: 'identifiant invalide' };
   return discordMutate('DELETE', `/users/@me/relationships/${friendId}`);
 });
 
@@ -931,9 +1005,10 @@ const channelsCache = new Map(); // serverId -> { at, channels }
 const CHANNELS_TTL = 60000;
 
 ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
+  if (!isSnowflake(serverId)) return { success: false, error: 'identifiant invalide' };
   const hit = channelsCache.get(serverId);
   if (hit && Date.now() - hit.at < CHANNELS_TTL) {
-    return { success: true, channels: hit.channels, currentUserId: discordClient.user?.id };
+    return { success: true, channels: hit.channels, currentUserId: discordClient?.user?.id };
   }
   const r = await discordFetch('GET', `/guilds/${serverId}/channels`);
   if (!r.success) return apiFailure(r);
@@ -945,15 +1020,17 @@ ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
     .filter(ch => isMessageBearingChannel(ch.type))
     .map(ch => ({ id: ch.id, name: ch.name, type: ch.type }));
   channelsCache.set(serverId, { at: Date.now(), channels });
-  return { success: true, channels, currentUserId: discordClient.user?.id };
+  return { success: true, channels, currentUserId: discordClient?.user?.id };
 });
 
 ipcMain.handle('discord:leaveServer', async (_, serverId) => {
+  if (!isSnowflake(serverId)) return { success: false, error: 'identifiant invalide' };
   return discordMutate('DELETE', `/users/@me/guilds/${serverId}`);
 });
 
 // Marquage "lu" d'un seul serveur (le dock de sélection) — même ack que readAll.
 ipcMain.handle('discord:readServer', async (_, serverId) => {
+  if (!isSnowflake(serverId)) return { success: false, error: 'identifiant invalide' };
   return discordFetch('PUT', `/guilds/${serverId}/ack`, { data: { token: null } });
 });
 
@@ -1026,7 +1103,9 @@ const MEDIA_MIME_TYPES = {
   '.webp': 'image/webp',
   '.avif': 'image/avif',
   '.bmp': 'image/bmp',
-  '.svg': 'image/svg+xml',
+  // Un SVG peut porter du script : on le sert en text/plain pour neutraliser
+  // toute execution (nosniff en tete, cf. servirMedia).
+  '.svg': 'text/plain',
   '.ico': 'image/x-icon',
   '.mp4': 'video/mp4',
   '.webm': 'video/webm',
@@ -1065,7 +1144,7 @@ async function servirMedia(request) {
     const reelle = await fsp.realpath(cible);
     if (!isMediaPathInside(racine, reelle)) return new Response('Introuvable', { status: 404 });
     const corps = await fsp.readFile(reelle);
-    return new Response(corps, { headers: { 'Content-Type': mediaContentType(reelle) } });
+    return new Response(corps, { headers: { 'Content-Type': mediaContentType(reelle), 'X-Content-Type-Options': 'nosniff' } });
   } catch {
     return new Response('Introuvable', { status: 404 });
   }

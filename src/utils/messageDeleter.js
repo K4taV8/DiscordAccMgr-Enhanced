@@ -2,13 +2,13 @@ import { ProgressBar } from '../components/ProgressBar.js';
 import { escHtml } from './emojiUtils.js';
 import { humanDelay, sleep } from './delay.js';
 import { scanLimiter, deleteLimiter } from './rateLimiter.js';
+import { showNotification } from './ui.js';
 
 export async function deleteDMMessages({
   channelId,
   username,
   electronAPI,
   onComplete = () => {},
-  skipRefresh = false,
   isGroup = false,
   oldestFirst = false,
   quiet = false,
@@ -53,6 +53,7 @@ export async function deleteDMMessages({
 
   try {
     let deletedCount = 0;
+    let failedCount = 0;
     let totalMessages = 0;
     let lastMessageId = null;
     let hasMore = true;
@@ -71,10 +72,10 @@ export async function deleteDMMessages({
       }
 
       if (!result.success) {
-        throw new Error(`Failed to fetch messages: ${result.error || 'network error'} — deletion aborted, remaining messages preserved.`);
+        throw new Error(`Failed to fetch messages: ${result.error?.message || String(result.error || 'network error')} — deletion aborted, remaining messages preserved.`);
       }
 
-      if (!result.messages.length) {
+      if (!Array.isArray(result.messages) || !result.messages.length) {
         hasMore = false;
         continue;
       }
@@ -144,7 +145,7 @@ export async function deleteDMMessages({
               await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 5) * 1000) + 1000));
             } else break;
           }
-          if (!ok) continue;
+          if (!ok) { failedCount++; continue; }
         } else {
           let ok = false;
           for (let attempt = 0; attempt < 3; attempt++) {
@@ -157,7 +158,7 @@ export async function deleteDMMessages({
               await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 5) * 1000) + 1000));
             } else break;
           }
-          if (!ok) continue;
+          if (!ok) { failedCount++; continue; }
         }
         
         deletedCount++;
@@ -177,15 +178,23 @@ export async function deleteDMMessages({
         await sleep(humanDelay(200));
       } catch (error) {
         console.error('Unexpected IPC error:', error);
+        failedCount++;
         await new Promise(resolve => setTimeout(resolve, 2500));
       }
     }
 
-    if (!shouldStop) {
+    if (!shouldStop && failedCount === 0) {
       progressBar?.update(100);
     }
 
     if (shouldStop || isStopSignal?.()) return 'cancelled';
+    if (failedCount > 0) {
+      console.warn(`[DelMessages] ${failedCount}/${totalMessages} suppression(s) échouée(s)`);
+      // L'utilisateur doit savoir qu'il reste des messages : sans quoi un
+      // statut « partial » invisible passe pour un succès complet.
+      showNotification(`${failedCount} message(s) non supprimé(s)`);
+      return 'partial';
+    }
     return 'done';
   } catch (error) {
     console.error('Delete messages error:', error);

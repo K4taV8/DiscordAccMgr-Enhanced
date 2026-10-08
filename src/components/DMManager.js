@@ -95,8 +95,8 @@ export class DMManager {
 
   async deleteDMMessages(channelId, username, oldestFirst = false, skipRefresh = false) {
     if (this.isDeleting) return;
-    if (!(await confirmAction('Delete Messages', `Delete ALL your messages with ${username}? This cannot be undone.`))) return;
     this.isDeleting = true;
+    if (!(await confirmAction('Delete Messages', `Delete ALL your messages with ${username}? This cannot be undone.`))) { this.isDeleting = false; return; }
 
     try {
       await deleteDMMessages({
@@ -120,7 +120,8 @@ export class DMManager {
 
   async closeDM(btn, channelId) {
     if (this.isDeleting) return;
-    if (!(await confirmAction('Close DM', 'Close this DM? The conversation will be deleted.'))) return;
+    this.isDeleting = true;
+    if (!(await confirmAction('Close DM', 'Close this DM? The conversation will be deleted.'))) { this.isDeleting = false; return; }
     btn.disabled = true;
 
     try {
@@ -131,6 +132,8 @@ export class DMManager {
     } catch (error) {
       console.error('Failed to close DM:', error);
       btn.disabled = false;
+    } finally {
+      this.isDeleting = false;
     }
   }
 
@@ -161,8 +164,8 @@ export class DMManager {
   // un échec sur les messages n'empêche pas les réactions (et inversement).
   async cleanBoth(btn, channelId, username) {
     if (this.isDeleting) return;
-    if (!(await confirmAction('Nettoyer', `Supprimer vos messages ET vos réactions avec ${username} ? Le DM restera ouvert.`))) return;
     this.isDeleting = true;
+    if (!(await confirmAction('Nettoyer', `Supprimer vos messages ET vos réactions avec ${username} ? Le DM restera ouvert.`))) { this.isDeleting = false; return; }
     btn.disabled = true;
 
     try {
@@ -201,11 +204,12 @@ export class DMManager {
 
   async executeCleaningMode(mode) {
     if (this.isDeleting) return;
-    const selected = Array.from(document.querySelectorAll('.dm-checkbox:checked')).map(checkbox => {
+    this.isDeleting = true;
+    const selected = Array.from(this.contentArea.querySelectorAll('.dm-checkbox:checked')).map(checkbox => {
       const item = checkbox.closest('.bento-card');
       return { channelId: item.dataset.id, username: decodeURIComponent(item.dataset.username) };
     });
-    if (selected.length === 0) return;
+    if (selected.length === 0) { this.isDeleting = false; return; }
 
     const modeLabels = {
       messages: 'supprimer les messages',
@@ -213,9 +217,8 @@ export class DMManager {
       both: 'supprimer messages et réactions',
       full: 'supprimer messages, réactions et fermer les DM'
     };
-    if (!(await confirmAction('Nettoyer', `Confirmer : ${modeLabels[mode]} dans ${selected.length} DM(s) sélectionné(s) ?`))) return;
+    if (!(await confirmAction('Nettoyer', `Confirmer : ${modeLabels[mode]} dans ${selected.length} DM(s) sélectionné(s) ?`))) { this.isDeleting = false; return; }
 
-    this.isDeleting = true;
     // Le nettoyage respecte le debit de Discord : sans panneau, plusieurs DM
     // donnaient l impression que rien ne se passait.
     const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);

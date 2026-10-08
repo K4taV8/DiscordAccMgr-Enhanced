@@ -3,8 +3,10 @@
 // La version precedente wasait une seule colonne triee par volume : 667 lignes
 // melangeant MP, groupes et salons de serveur, sans moyen de retrouver un
 // serveur. Ici on regroupe : Messages directs, Groupes, puis un bloc par
-// serveur, le tout classe par volume decroissant pour que le plus actif reste
-// en haut.
+// serveur. Les MP et les groupes sont TOUJOURS en tete, dans cet ordre, quel que
+// soit leur volume ; viennent ensuite les serveurs, classes par volume
+// decroissant (le plus actif d'abord). A l'interieur de chaque section, les
+// salons sont eux aussi classes par volume decroissant.
 
 const ORPHAN = 'orphan';
 

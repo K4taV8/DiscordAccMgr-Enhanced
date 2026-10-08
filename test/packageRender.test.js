@@ -961,6 +961,12 @@ test('un nom encode en pourcentage reste lisible', () => {
   assert.equal(attachmentExtension('https://cdn.discordapp.com/a/b/Screenshot%202025-05-07.png'), 'png');
 });
 
+test('une extension decodee ne peut pas trahir une traversee de chemin', () => {
+  assert.equal(attachmentExtension('https://x/file.png%2F..%2F..%2Fsecret'), '', 'un / et des .. decodes sont refuses');
+  assert.equal(attachmentExtension('https://x/normal.tar.gz'), 'gz', 'une extension normale survit');
+  assert.equal(attachmentExtension(`https://x/f.${'a'.repeat(30)}`), '', 'une extension absurdement longue est refusee');
+});
+
 test('une image est rendue en image, pas en lien', () => {
   const manager = new PackageManager(makeArea());
   const url = 'https://cdn.discordapp.com/attachments/1/2/photo.png';

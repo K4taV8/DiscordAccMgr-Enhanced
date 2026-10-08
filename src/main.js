@@ -64,6 +64,22 @@ installAvatarFallbacks();
 
 window._dlOpen = false;
 window._dlPanel = null;
+window._dlListeners = null;
+
+// Ferme le panneau Debug Log et retire TOUJOURS les listeners globaux
+// mousemove/mouseup — quel que soit le chemin de fermeture (toggle, croix,
+// déconnexion). Sans cela, ils fuient et restent actifs après disparition.
+const closeDebugLog = () => {
+  if (window._dlListeners) {
+    document.removeEventListener('mousemove', window._dlListeners.onMouseMove);
+    document.removeEventListener('mouseup', window._dlListeners.onMouseUp);
+    window._dlListeners = null;
+  }
+  window._dlPanel?.remove();
+  window._dlPanel = null;
+  window._dlOpen = false;
+  document.getElementById('logNavItem')?.classList.remove('active');
+};
 
 window.toggleDebugLog = () => {
   const n = document.getElementById('logNavItem');
@@ -71,8 +87,7 @@ window.toggleDebugLog = () => {
   n?.classList.toggle('active', window._dlOpen);
 
   if (!window._dlOpen) {
-    window._dlPanel?.remove();
-    window._dlPanel = null;
+    closeDebugLog();
     return;
   }
 
@@ -121,6 +136,7 @@ window.toggleDebugLog = () => {
   });
   document.addEventListener('mousemove', onMouseMove);
   document.addEventListener('mouseup', onMouseUp);
+  window._dlListeners = { onMouseMove, onMouseUp };
 
   // resize
   let rx, ry, rw, rh, resizing = false;
@@ -138,9 +154,7 @@ window.toggleDebugLog = () => {
     copyToClipboard(window.__logs.join('\n'));
   };
   p.querySelector('#dlClose').onclick = () => {
-    document.removeEventListener('mousemove', onMouseMove);
-    document.removeEventListener('mouseup', onMouseUp);
-    window._dlOpen = false; n?.classList.remove('active'); p.remove(); window._dlPanel = null;
+    closeDebugLog();
   };
   window._dlPanel = p;
 };
@@ -292,9 +306,10 @@ document.getElementById('saveTokenBtn').addEventListener('click', () => saveToke
 // Disconnect handler
 document.getElementById('disconnectBtn').addEventListener('click', () => {
   window.electronAPI.disconnect();
-  window._dlOpen = false;
-  window._dlPanel?.remove();
-  window._dlPanel = null;
+  closeDebugLog();
+  // La visionneuse (lightbox) vit hors des pages : sans fermeture explicite, son
+  // overlay et son listener `keydown` survivraient à la déconnexion.
+  window.packageManager?.closeLightbox?.();
   window.currentUser = null;
   clearPageCaches();
   hideUserProfile();

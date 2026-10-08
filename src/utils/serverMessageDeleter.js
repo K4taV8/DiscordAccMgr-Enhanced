@@ -15,6 +15,33 @@ export function snowflakeForDate(d) {
   return ((BigInt(Math.max(d.getTime(), DISCORD_EPOCH)) - BigInt(DISCORD_EPOCH)) << 22n).toString();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// LOGIQUE DE REPRISE (pure, testable sans DOM).
+//   Le curseur `progress.done` n'avance QUE sur un vrai succès : un échec le
+//   laisse sur le message fautif pour qu'il soit retenté au prochain run.
+//   Le watermark/checkpoint ne peuvent être finalisés QUE si TOUT a été
+//   supprimé (aucun échec) — sinon on conserve le checkpoint (perte = 0).
+// ─────────────────────────────────────────────────────────────────────────────
+export function nextDeleteCursor(done, ok) {
+  return ok ? done + 1 : done;
+}
+
+export function deletionsComplete(deleted, total, failed = 0) {
+  return failed === 0 && deleted === total;
+}
+
+// Un message déjà absent (404 « Unknown Message » / « not found ») est un
+// SUCCÈS : il n'existe plus, le curseur doit avancer. Un 404 « Unknown Channel »
+// désigne un MAUVAIS identifiant de salon — ce n'est pas un succès. Les deux
+// arrivent avec `status === 404`, seule la raison les distingue (main.cjs
+// conserve le message de Discord pour cela).
+export function isAlreadyDeleted(result) {
+  if (result?.success) return true;
+  if (/unknown channel/i.test(String(result?.error || ''))) return false;
+  if (Number(result?.status) === 404) return true;
+  return /not found|unknown message/i.test(String(result?.error || ''));
+}
+
 async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, stopBeforeId) {
   const found = [];
   let lastId = beforeId;
@@ -263,6 +290,9 @@ export async function deleteServerMessages({
     updateBar(total ? (checkpoint.progress.done / total) * 100 : 0);
 
     let deleted = checkpoint.progress.done;
+    let failed = 0;
+    // Index du PREMIER échec réel : la reprise y repart. `-1` = aucun échec.
+    let firstFail = -1;
     const delStart = Date.now();
 
     for (let i = checkpoint.progress.done; i < total && !shouldStop(); i++) {
@@ -274,15 +304,31 @@ export async function deleteServerMessages({
           let r;
           try { r = await electronAPI.deleteGroupMessage(channelId, msgId); }
           finally { release(); }
-          if (r.success) { ok = true; break; }
+          // 404 « Unknown Message » / déjà absent = SUCCÈS : le message n'existe
+          // plus, le curseur doit avancer. Seul le 429 se réessaie.
+          if (isAlreadyDeleted(r)) { ok = true; break; }
           if (r.error === 'Rate limited') {
             await new Promise(resolve => setTimeout(resolve, ((r.retryAfter || 5) * 1000) + 1000));
           } else break;
         } catch (e) { console.error('Delete msg error:', e); await new Promise(resolve => setTimeout(resolve, 2500)); break; }
       }
 
-      if (ok) deleted++;
-      checkpoint.progress.done = i + 1;
+      if (ok) {
+        deleted++;
+      } else if (!shouldStop()) {
+        // Échec réel (hors annulation) : on consigne l'index fautif mais on
+        // N'INTERROMPT PAS la file — le reste des messages est quand même
+        // traité. Le curseur, lui, reste figé sur ce premier échec, donc la
+        // reprise repart exactement là et rien n'est sauté (pas de livelock).
+        failed++;
+        if (firstFail === -1) firstFail = i;
+        checkpoint.progress.failed = failed;
+        log(`delete failed @${i} (${channelId}/${msgId}) — file poursuivie`);
+      }
+
+      // Le curseur n'avance QUE tant qu'aucun échec n'a été vu : dès le premier
+      // échec il se fige sur son index, y compris pour les succès suivants.
+      checkpoint.progress.done = nextDeleteCursor(checkpoint.progress.done, ok && failed === 0);
       if ((i + 1) % 25 === 0 || shouldStop()) {
         checkpoint = touch(checkpoint);
         await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
@@ -303,6 +349,29 @@ export async function deleteServerMessages({
       await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
       log('cancelled (checkpoint sauvegardé)');
       cleanExit(onComplete);
+      return;
+    }
+
+    // Des suppressions ont échoué : NE PAS finaliser le watermark (sinon les
+    // canaux inchangés seraient sautés au prochain run alors que des messages
+    // restent) ni supprimer le checkpoint — la reprise retente les échecs.
+    if (!deletionsComplete(deleted, total, failed)) {
+      // La reprise repart du PREMIER échec : tout ce qui suit a pu échouer aussi,
+      // on ne saute donc rien (les succès ultérieurs seront rejoués en 404 =
+      // succès). Le watermark reste NON finalisé tant qu'un échec subsiste.
+      if (firstFail >= 0) checkpoint.progress.done = firstFail;
+      checkpoint = touch(checkpoint);
+      await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
+      log(`incomplete: ${deleted}/${total} (${failed} échec(s)) — reprise @${checkpoint.progress.done}`);
+      updateBar(total ? (deleted / total) * 100 : 0);
+      if (phase) { phase.textContent = 'Incomplete'; phase.style.background = '#ed4245'; }
+      if (status) status.textContent = `Deleted ${deleted} / ${total} — ${failed} failed (resume available)`;
+      if (details) details.textContent = 'Des suppressions ont échoué — relancez pour réessayer';
+      actionBtn.textContent = 'Close';
+      actionBtn.style.background = '#ed4245';
+      actionBtn.disabled = false;
+      actionBtn.onclick = () => cleanExit(onComplete);
+      safeTimeout(() => cleanExit(onComplete), 5000);
       return;
     }
 

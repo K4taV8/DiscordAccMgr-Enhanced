@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { zipSync, strToU8 } from '../node_modules/fflate/esm/browser.js';
-import { importDiscordPackage, normalizeChannelType } from '../src/services/packageImporter.service.js';
+import { importDiscordPackage, normalizeChannelType, parseAttachments } from '../src/services/packageImporter.service.js';
 
 // Un export Discord de 394 Mo echouait avec « Array buffer allocation failed » :
 // l'archive etait lue d'un bloc (file.arrayBuffer) puis decompressee entierement
@@ -228,6 +228,29 @@ test('les recipients lus comme ids en texte donnent le partenaire du MP', async 
   assert.equal(parsed.channels[0].recipient.id, '222222222222222222', 'le partenaire est identifié');
 });
 
+// --- S1 : `recipient` ne suffisait pas. Sur un GROUP_DM, mémoriser uniquement
+// le partenaire faisait disparaître les autres membres à l export. Le salon
+// porte désormais la LISTE COMPLÈTE, sans que `recipient` (l interlocuteur de
+// l IHM) change de sens.
+test('un groupe memorise la liste complete des destinataires, recipient compris', async () => {
+  const zip = zipSync({
+    'Compte/user.json': strToU8(JSON.stringify({ id: USER_ID, username: 'tester' })),
+    'Messages/c111111111111111111/channel.json': strToU8(JSON.stringify({ id: '111111111111111111', type: 3, recipients: ['222222222222222222', '333333333333333333', USER_ID] })),
+    'Messages/c111111111111111111/messages.json': strToU8(JSON.stringify([])),
+  });
+
+  const parsed = await importDiscordPackage(chunkOnlyFile(zip));
+
+  assert.equal(parsed.channels[0].recipients.length, 3, 'les trois destinataires sont conserves');
+  assert.deepEqual(
+    parsed.channels[0].recipients.map(item => item.id),
+    ['222222222222222222', '333333333333333333', USER_ID],
+    'dans l ordre de l archive, compte exporte compris',
+  );
+  assert.equal(parsed.channels[0].recipient.id, '222222222222222222', 'et le partenaire reste le premier autre que soi');
+});
+
+
 test('un utilisateur supprime reste affiche avec son nom', async () => {
   const zip = zipSync({
     'Compte/user.json': strToU8(JSON.stringify({ id: USER_ID, username: 'tester' })),
@@ -397,4 +420,90 @@ test('les deux index.json de l archive sont fusionnes', async () => {
   const parsed = await importDiscordPackage(chunkOnlyFile(zip));
 
   assert.equal(parsed.channels[0].name, 'maliksync', 'le nom du MP est retrouve');
+});
+
+// --- C1b : l'archive est NON FIABLE, une piece jointe ne peut pas etre un lien
+// arbitraire. `new URL(url)` seul acceptait `javascript:`, `file:` ou un domaine
+// de phishing : on n'accepte que https + un CDN Discord. Tout le reste garde son
+// entree mais sans lien cliquable.
+test('parseAttachments n accepte que https vers un CDN Discord', () => {
+  for (const ok of [
+    'https://cdn.discordapp.com/attachments/1/2/x.png',
+    'https://media.discordapp.net/attachments/1/2/x.png',
+    'https://foo.discordapp.com/attachments/1/2/x.png',
+  ]) {
+    const [entry] = parseAttachments(ok);
+    assert.equal(entry.url, ok, `${ok} doit rester cliquable`);
+  }
+  for (const ko of [
+    'http://cdn.discordapp.com/a/1.png',
+    'https://evil.example/a/1.png',
+    'https://cdn.discordapp.com.evil.example/a/1.png',
+    'ftp://cdn.discordapp.com/a/1.png',
+    'javascript:alert(1)',
+  ]) {
+    const entries = parseAttachments(ko);
+    assert.equal(entries.length, 1, `${ko} garde son entree`);
+    assert.equal(entries[0].url, null, `${ko} ne doit pas etre cliquable`);
+  }
+  assert.deepEqual(parseAttachments(''), [], 'une valeur vide ne produit rien');
+});
+
+test('une piece jointe forgee est neutralisee dans le package importe', async () => {
+  const zip = zipSync({
+    'Compte/user.json': strToU8(JSON.stringify({ id: USER_ID, username: 'tester' })),
+    'Messages/c111111111111111111/channel.json': strToU8(JSON.stringify({ id: '111111111111111111', type: 'DM', recipients: ['222222222222222222', USER_ID] })),
+    'Messages/c111111111111111111/messages.json': strToU8(JSON.stringify([
+      { ID: '1', Timestamp: '2024-01-01T00:00:00.000Z', Contents: 'piege', Attachments: 'javascript:alert(1) https://evil.example/a/1.png https://cdn.discordapp.com/a/good.png' },
+    ])),
+  });
+
+  const parsed = await importDiscordPackage(chunkOnlyFile(zip));
+  const attachments = parsed.messages.get('111111111111111111')[0].attachments;
+
+  assert.deepEqual(attachments.map(a => a.url), [null, null, 'https://cdn.discordapp.com/a/good.png']);
+  assert.ok(attachments.every(a => a.fileName), 'chaque entree garde un nom de fichier');
+});
+
+// --- Messages doubles : un même salon peut fournir `messages.json` ET
+// `messages.csv`. Sans dedoublonnage par id, chaque message etait compte deux fois.
+test('un salon avec messages.json ET messages.csv ne double pas ses messages', async () => {
+  const zip = zipSync({
+    'Compte/user.json': strToU8(JSON.stringify({ id: USER_ID, username: 'tester' })),
+    'Messages/c111111111111111111/channel.json': strToU8(JSON.stringify({ id: '111111111111111111', type: 'DM', recipients: ['222222222222222222', USER_ID] })),
+    'Messages/c111111111111111111/messages.json': strToU8(JSON.stringify([
+      { ID: '1', Timestamp: '2024-01-01T00:00:00.000Z', Contents: 'json-1', Attachments: '' },
+      { ID: '2', Timestamp: '2024-01-02T00:00:00.000Z', Contents: 'json-2', Attachments: '' },
+    ])),
+    'Messages/c111111111111111111/messages.csv': strToU8('ID,Timestamp,Contents,Attachments\n1,2024-01-01T00:00:00.000Z,csv-1,\n3,2024-01-03T00:00:00.000Z,csv-3,\n'),
+  });
+
+  const parsed = await importDiscordPackage(chunkOnlyFile(zip));
+  const ids = parsed.messages.get('111111111111111111').map(message => message.id);
+
+  assert.deepEqual(ids, ['1', '2', '3'], 'l id 1 n apparait qu une seule fois');
+  assert.equal(parsed.channels[0].messagesCount, 3);
+  assert.equal(parsed.totalMessages, 3);
+});
+
+// --- `file.size` invalide : l'ancienne version faisait slice(0, MAX_SAFE_INTEGER)
+// et chargeait TOUT d'un coup. La lecture doit rester bornee.
+test('une taille invalide ne provoque pas une lecture globale non bornee', async () => {
+  const blob = new Blob([buildDiscordZip()]);
+  const CAP = 4 * 1024 * 1024;
+  const file = {
+    name: 'taille-inconnue.zip',
+    size: 0,
+    type: 'application/zip',
+    slice(start, end) {
+      const stop = end === undefined ? blob.size : end;
+      assert.ok(stop - start <= CAP, `une tranche depasse le plafond : ${stop - start}`);
+      return blob.slice(start, stop);
+    },
+  };
+
+  const parsed = await importDiscordPackage(file);
+
+  assert.equal(parsed.user.id, USER_ID, 'le package est quand meme lu');
+  assert.equal(parsed.totalMessages, 3);
 });

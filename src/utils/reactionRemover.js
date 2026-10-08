@@ -217,7 +217,7 @@ export async function removeReactionsFromChannel({
   } catch (error) {
     console.error('Remove reactions error:', error);
     const progressContainer = document.getElementById('progressContainer');
-    if (progressContainer) progressContainer.innerHTML = `<p class="error">${error.message}</p>`;
+    if (progressContainer) progressContainer.innerHTML = `<p class="error">${escHtml(error?.message || String(error))}</p>`;
   } finally {
     clearTimers();
     safeTimeout(() => { modalOverlay.remove(); onComplete(); }, 1000);

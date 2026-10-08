@@ -213,15 +213,22 @@ function parseAttachments(value) {
   return decodeEntities(value)
     .split(/[\s,]+/)
     .filter(Boolean)
-    .map(url => {
-      try {
-        const parsed = new URL(url);
-        return { url, fileName: decodeURIComponent(parsed.pathname.split('/').pop() || 'attachment') };
-      } catch {
-        return null;
+    .map(raw => {
+      let parsed = null;
+      try { parsed = new URL(raw); } catch { parsed = null; }
+      const host = parsed ? parsed.hostname.toLowerCase() : '';
+      const cdn = parsed !== null
+        && parsed.protocol === 'https:'
+        && (host === 'cdn.discordapp.com' || host === 'media.discordapp.net' || host.endsWith('.discordapp.com'));
+      const path = parsed ? parsed.pathname : raw.split(/[?#]/)[0];
+      const last = path.split('/').pop() || '';
+      let fileName = 'attachment';
+      if (last) {
+        try { fileName = decodeURIComponent(last) || 'attachment'; }
+        catch { fileName = last; }
       }
-    })
-    .filter(Boolean);
+      return { url: cdn ? raw : null, fileName };
+    });
 }
 
 function parseCsv(text) {
@@ -338,13 +345,24 @@ function assemble(entries, { packageSizeBytes = 0, discarded = { noise: 0, overs
   }
 
   const rowsByChannel = new Map();
+  const seenMessageIds = new Map();
   for (const entry of entries) {
     if (entry.kind !== 'messages') continue;
     const match = MESSAGES_ENTRY.exec(entry.path);
     if (!match) continue;
     const key = channelKey(match[1]);
     const list = rowsByChannel.get(key) || [];
-    for (const message of entry.value) list.push({ ...message });
+    // Un même salon peut fournir `messages.json` ET `messages.csv` : sans
+    // dédoublonnage par id, chaque message serait compté (et affiché) deux
+    // fois. On garde la première occurrence, dans l'ordre des entrées.
+    const seen = seenMessageIds.get(key) || new Set();
+    for (const message of entry.value) {
+      const id = String(message.id);
+      if (seen.has(id)) continue;
+      seen.add(id);
+      list.push({ ...message });
+    }
+    seenMessageIds.set(key, seen);
     rowsByChannel.set(key, list);
   }
 
@@ -379,6 +397,12 @@ function assemble(entries, { packageSizeBytes = 0, discarded = { noise: 0, overs
       name,
       avatar: channel.icon ? `https://cdn.discordapp.com/channel-icons/${channelId}/${channel.icon}.png?size=64` : null,
       recipient: partner,
+      // La LISTE COMPLETE des destinataires, et non le seul « partner » : sur un
+      // GROUP_DM, ne garder que `recipient` perdait tous les autres membres a
+      // l export. `recipient` reste le partenaire affiche par l IHM ; `recipients`
+      // est ce que l export reecrit. Meme bloc, au caractere pres, dans la copie
+      // CommonJS (electron/packageImporter.parse.cjs) — test de parite.
+      recipients,
       type,
       guildName: channel.guild?.name,
       guildId: channel.guild?.id ? String(channel.guild.id) : undefined,

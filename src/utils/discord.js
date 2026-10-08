@@ -3,7 +3,7 @@ export { copyToClipboard, showNotification } from './clipboard.js';
 export const getFriendsList = async () => {
   const result = await window.electronAPI.getFriends();
   if (!result.success) {
-    throw new Error(result.error);
+    throw new Error(result.error?.message || String(result.error));
   }
   return result.friends || [];
 };
@@ -11,7 +11,7 @@ export const getFriendsList = async () => {
 export const getServersList = async (force = false) => {
   const result = await window.electronAPI.getServers(force);
   if (!result.success) {
-    throw new Error(result.error);
+    throw new Error(result.error?.message || String(result.error));
   }
   return result.servers || [];
 };
@@ -19,7 +19,7 @@ export const getServersList = async (force = false) => {
 export const getDMsList = async () => {
   const result = await window.electronAPI.getDMs();
   if (!result.success) {
-    throw new Error(result.error);
+    throw new Error(result.error?.message || String(result.error));
   }
   return result.dms || [];
 };

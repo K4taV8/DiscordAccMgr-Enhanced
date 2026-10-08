@@ -1,4 +1,4 @@
-﻿import { getServersList, copyToClipboard } from '../utils/discord.js';
+import { getServersList, copyToClipboard } from '../utils/discord.js';
 import { showNotification, confirmAction } from '../utils/ui.js';
 import { deleteServerMessages } from '../utils/serverMessageDeleter.js';
 import { removeServerReactions } from '../utils/serverReactionRemover.js';
@@ -61,7 +61,7 @@ export class ServerManager {
   }
 
   async muteSelectedServers() {
-    const selectedServers = document.querySelectorAll('.server-checkbox:checked');
+    const selectedServers = this.contentArea.querySelectorAll('.server-checkbox:checked');
     let failed = 0;
     for (const checkbox of selectedServers) {
       const serverItem = checkbox.closest('.bento-card');
@@ -161,7 +161,7 @@ export class ServerManager {
   }
 
   async readSelectedServers() {
-    const ids = [...document.querySelectorAll('.server-checkbox:checked')]
+    const ids = [...this.contentArea.querySelectorAll('.server-checkbox:checked')]
       .map(cb => cb.closest('.bento-card')?.dataset.id)
       .filter(Boolean);
     if (ids.length === 0) return;
@@ -179,26 +179,26 @@ export class ServerManager {
   }
 
   selectAllServers() {
-    document.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = true; });
+    this.contentArea.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = true; });
     this.updateSelectedServersCount();
   }
 
   // Vide la sélection quoi qu'il reste de coché.
   deselectAllServers() {
-    document.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = false; });
+    this.contentArea.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = false; });
     this.updateSelectedServersCount();
   }
 
   updateSelectedServersCount() {
-    const total = document.querySelectorAll('.server-checkbox').length;
-    const selected = document.querySelectorAll('.server-checkbox:checked').length;
+    const total = this.contentArea.querySelectorAll('.server-checkbox').length;
+    const selected = this.contentArea.querySelectorAll('.server-checkbox:checked').length;
     this.selectionDock.sync(selected, total);
   }
 
   async deleteServerMessages(serverId) {
     if (this.isDeleting) return;
-    if (!(await confirmAction('Delete Messages', 'Delete ALL your messages in this server? This cannot be undone.'))) return;
     this.isDeleting = true;
+    if (!(await confirmAction('Delete Messages', 'Delete ALL your messages in this server? This cannot be undone.'))) { this.isDeleting = false; return; }
     try {
       const item = document.querySelector(`.bento-card[data-id="${serverId}"]`);
       const serverName = item?.querySelector('.bento-name')?.textContent || 'this server';
@@ -215,8 +215,8 @@ export class ServerManager {
 
   async removeServerReactions(serverId) {
     if (this.isDeleting) return;
-    if (!(await confirmAction('Remove Reactions', 'Remove all your reactions in this server?'))) return;
     this.isDeleting = true;
+    if (!(await confirmAction('Remove Reactions', 'Remove all your reactions in this server?'))) { this.isDeleting = false; return; }
     try {
       const item = document.querySelector(`.bento-card[data-id="${serverId}"]`);
       const serverName = item?.querySelector('.bento-name')?.textContent || 'this server';
@@ -234,7 +234,9 @@ export class ServerManager {
   copyToClipboard = copyToClipboard;
 
   async leaveServer(btn, serverId) {
-    if (!(await confirmAction('Leave Server', 'Leave this server? This cannot be undone.'))) return;
+    if (this.isDeleting) return;
+    this.isDeleting = true;
+    if (!(await confirmAction('Leave Server', 'Leave this server? This cannot be undone.'))) { this.isDeleting = false; return; }
     btn.disabled = true;
     try {
       await window.electronAPI.leaveServer(serverId);
@@ -242,6 +244,8 @@ export class ServerManager {
     } catch (error) {
       console.error('Failed to leave server:', error);
       btn.disabled = false;
+    } finally {
+      this.isDeleting = false;
     }
   }
 
@@ -255,10 +259,11 @@ export class ServerManager {
   // (messages → réactions → sortie) ; chaque étape tolère l'échec.
   async executeCleaningMode(mode) {
     if (this.isDeleting) return;
-    const items = [...document.querySelectorAll('.server-checkbox:checked')]
+    this.isDeleting = true;
+    const items = [...this.contentArea.querySelectorAll('.server-checkbox:checked')]
       .map(cb => cb.closest('.bento-card'))
       .filter(Boolean);
-    if (items.length === 0) return;
+    if (items.length === 0) { this.isDeleting = false; return; }
 
     const modeLabels = {
       messages: 'supprimer vos messages',
@@ -266,9 +271,8 @@ export class ServerManager {
       both: 'supprimer vos messages ET vos réactions',
       full: 'supprimer vos messages, vos réactions et quitter',
     };
-    if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${items.length} serveur(s) sélectionné(s) ?`))) return;
+    if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${items.length} serveur(s) sélectionné(s) ?`))) { this.isDeleting = false; return; }
 
-    this.isDeleting = true;
     // Le meme panneau que pour les DM et les groupes : la suppression d un
     // serveur parcourt tous ses salons et peut durer tres longtemps.
     const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);

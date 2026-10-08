@@ -46,16 +46,36 @@ export async function deletePackageArchive(id) { await requestTransaction('readw
 
 export async function prunePackageArchives({ maxArchives = DEFAULT_MAX_ARCHIVES, maxBytes = DEFAULT_MAX_BYTES } = {}) {
   const archives = await listPackageArchives();
-  let bytes = archives.reduce((sum, archive) => sum + Number(archive.metadata?.size || archive.packageData.packageSizeBytes || 0), 0);
-  const keep = [];
-  const remove = [];
-  for (const archive of archives) {
-    const size = Number(archive.metadata?.size || archive.packageData.packageSizeBytes || 0);
-    if (keep.length < maxArchives && bytes <= maxBytes) keep.push(archive);
-    else { remove.push(archive.id); bytes -= size; }
-  }
+  const { remove } = selectPackageArchivesToPrune(archives, { maxArchives, maxBytes });
   if (remove.length) await requestTransaction('readwrite', store => { remove.forEach(id => store.delete(id)); });
   return remove;
+}
+
+// Choisit, dans une liste TRIEE du plus recent au plus ancien, ce qui survit.
+// On n'elague QUE la queue (les plus anciennes) : des qu'une archive ne rentre
+// plus (en nombre ou en octets), toutes celles qui la suivent partent aussi.
+// `bytes` accumule la taille des archives CONSERVEES, pas le total : sinon le
+// budget etait deja depasse au premier tour et la purge supprimait l'archive la
+// PLUS RECENTE. L'archive la plus recente est toujours conservee, quitte a
+// depasser `maxBytes` une fois si elle est seule plus grosse que la limite.
+export function selectPackageArchivesToPrune(archives, { maxArchives = DEFAULT_MAX_ARCHIVES, maxBytes = DEFAULT_MAX_BYTES } = {}) {
+  const keep = [];
+  const remove = [];
+  let keptBytes = 0;
+  let dropping = false;
+  archives.forEach((archive, index) => {
+    const size = Number(archive.metadata?.size || archive.packageData?.packageSizeBytes || 0);
+    const withinCount = keep.length < maxArchives;
+    const withinBytes = index === 0 || keptBytes + size <= maxBytes;
+    if (!dropping && withinCount && withinBytes) {
+      keep.push(archive);
+      keptBytes += size;
+    } else {
+      dropping = true;
+      remove.push(archive.id);
+    }
+  });
+  return { keep, remove };
 }
 
 export async function getPackageMessagePage(archiveId, channelId, { offset = 0, limit = 100 } = {}) {
@@ -66,7 +86,27 @@ export async function getPackageMessagePage(archiveId, channelId, { offset = 0, 
   return { messages: messages.slice(offset, offset + limit), total: messages.length, offset, limit };
 }
 
-export function createPackageArchiveId(file) { return `${file.name}:${file.size}:${file.lastModified}`; }
+// L'id `${name}:${size}:${lastModified}` peut entrer en collision : deux
+// fichiers DIFFERENTS (exports d'un meme compte) partageant ces trois valeurs
+// s'ecrasaient en base. On ajoute un discriminant stable par objet `file` (donc
+// le meme fichier re-importe garde le meme id), unique entre objets distincts.
+const archiveIdDiscriminants = new WeakMap();
+let archiveIdSequence = 0;
+
+export function createPackageArchiveId(file) {
+  // Le test AVANT tout dereferencement : `createPackageArchiveId(null)` levait
+  // sur `file.name`, et la garde qui suivait ne servait donc a rien. Un fichier
+  // absent ou non-objet n a pas d id : on rend une chaine stable, sans lever.
+  if (!file || typeof file !== 'object') return `${file?.name}:${file?.size}:${file?.lastModified}`;
+  const base = `${file.name}:${file.size}:${file.lastModified}`;
+  let discriminant = archiveIdDiscriminants.get(file);
+  if (!discriminant) {
+    archiveIdSequence += 1;
+    discriminant = String(archiveIdSequence);
+    archiveIdDiscriminants.set(file, discriminant);
+  }
+  return `${base}:${discriminant}`;
+}
 
 // Version du schema de package en base. Une correction de l import ne change
 // pas le fichier importe, donc l identifiant d archive reste identique : une

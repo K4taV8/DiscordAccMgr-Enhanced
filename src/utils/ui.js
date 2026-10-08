@@ -1,4 +1,5 @@
 export { copyToClipboard, showNotification } from './clipboard.js';
+import { escHtml } from './emojiUtils.js';
 
 export const confirmAction = (title, message, confirmLabel = 'Confirm') => new Promise(resolve => {
   const modal = document.createElement('div');
@@ -136,7 +137,7 @@ export const showInfoModal = async () => {
       <div class="modal-icon"><img class="modal-logo" src="assets/logo.png" alt="" loading="lazy"></div>
       <div class="info-head-copy">
         <h2>Discord Account Manager</h2>
-        <span class="version-badge">Version ${versionText || '1.5.6'}</span>
+        <span class="version-badge">Version ${escHtml(versionText || '1.5.6')}</span>
       </div>
     </div>
     <div class="info-authors">

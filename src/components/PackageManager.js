@@ -146,6 +146,7 @@ export class PackageManager {
     this.hideSystemNotes = true;
     this.hideLeftServers = false;
     this.filterTimer = null;
+    this.messageSearchTimer = null;
     this.renderTimer = null;
     this.channelScrollTop = 0;
     this.channelViewport = 800;
@@ -401,18 +402,20 @@ filteredChannels() {
 
   galleryTileHtml(item, index) {
     const nom = escHtml(item.fileName || 'fichier');
-    const source = escHtml(this.mediaSourceFor(item));
+    const rawSource = this.mediaSourceFor(item);
     // aspect-ratio est en style inline et non en CSS : aucune dimension d image
     // n est disponible, le ratio reserve la place AVANT le chargement, sinon
     // chaque image qui arrive ferait sauter la mise en page.
     const attrs = `data-gallery-tile="${index}" data-gallery-open data-attachment-index="${this.galleryAttachmentIndex(item)}" title="${nom}" style="aspect-ratio: 1"`;
-    if (item.kind === 'image') {
+    // URL vide/rejetée : jamais de `<img src="null">` — on retombe sur l'icône.
+    if (item.kind === 'image' && rawSource) {
+      const source = escHtml(rawSource);
       // data-attachment-img + data-attachment-fallback : les memes attributs que
       // le rendu dans les messages, pour reutiliser la captation d erreur et le
       // repli is-broken qui existent deja.
       return `<button type="button" class="package-gallery-tile" ${attrs} data-attachment-fallback><img src="${source}" alt="${nom}" loading="lazy" decoding="async" data-attachment-img><span class="package-gallery-name">${nom}</span></button>`;
     }
-    const icone = item.kind === 'video' ? '🎬' : item.kind === 'audio' ? '🎵' : this.galleryFileIcon(item.ext);
+    const icone = item.kind === 'image' ? '🖼️' : item.kind === 'video' ? '🎬' : item.kind === 'audio' ? '🎵' : this.galleryFileIcon(item.ext);
     return `<button type="button" class="package-gallery-tile" ${attrs}><span class="package-gallery-icon" aria-hidden="true">${icone}</span><span class="package-gallery-name">${nom}</span></button>`;
   }
 
@@ -977,10 +980,19 @@ currentSectionLabel() {
 // les videos ne telechargent rien avant lecture. Si l URL signee a expire,
 // l image bascule sur son lien plutot que de laisser un trou.
   attachmentHtml(attachment, index = 0, messageKey = '') {
-    const url = escHtml(attachment.url);
+    // Une URL rejetée/non signée vaut `null` : sans ce garde, `escHtml(null)`
+    // produisait la chaîne "null" et le rendu posait href="null" / src="null".
+    const rawUrl = attachment?.url || '';
     const name = escHtml(attachment.fileName || 'fichier');
     const kind = attachmentKind(attachment.url, attachment.fileName);
 
+    if (!rawUrl) {
+      // Ni lien ni source : on n'affiche que le nom et une icône, sans href/src.
+      const icone = kind === 'image' ? '🖼️' : kind === 'video' ? '🎬' : kind === 'audio' ? '🎵' : '📎';
+      return `<span class="package-attachment package-attachment-missing">${icone} ${name}</span>`;
+    }
+
+    const url = escHtml(rawUrl);
     if (kind === 'image') {
       const locate = messageKey ? ` data-attachment-message="${escHtml(messageKey)}" data-attachment-index="${index}"` : '';
       return `<a class="package-attachment package-attachment-image" data-attachment-fallback data-attachment-open${locate} data-attachment-url="${url}" data-attachment-file-name="${name}" href="${url}" rel="noreferrer" title="${name}"><img data-attachment-img src="${url}" alt="${name}" loading="lazy" decoding="async"><span class="package-attachment-broken">Voir le fichier</span></a>`;
@@ -1143,13 +1155,16 @@ currentSectionLabel() {
     if (!shownMessages.length && hiddenNotes) {
       return `<div class="package-message-header"><div><div class="package-conversation-title"><img class="package-message-avatar" src="${escHtml(avatarFor(channel))}" alt="" data-hide-on-error><h3>${escHtml(displayChannelName(channel))}</h3></div></div></div><div class="package-placeholder package-system-note"><p>${hiddenNotes} notification${hiddenNotes > 1 ? 's' : ''} système${hiddenNotes > 1 ? 's' : ''} ${hiddenNotes > 1 ? 'masquées' : 'masquée'}.</p><p class="text-muted">L'export de Discord ne contient pas leur texte : ni l'appelant, ni la durée. Seul l'horodatage est conservé.</p><button type="button" class="btn btn-secondary btn-xs" data-show-system-notes>Afficher quand même</button></div>`;
     }
-    const selectedCount = allMessages.reduce((count, message) => count + (this.selectedMessages.has(`${channel.id}:${message.id}`) ? 1 : 0), 0);
     const start = this.messagePageOffset;
     const query = this.messageQuery.trim().toLowerCase();
     const sourceMessages = query ? shownMessages.filter(message => `${message.content || ''} ${message.id}`.toLowerCase().includes(query)) : shownMessages;
     const messages = sourceMessages.slice(start, start + this.messagePageSize);
     const end = Math.min(sourceMessages.length, start + this.messagePageSize);
-    return `<div class="package-message-header"><div><div class="package-conversation-title"><img class="package-message-avatar" src="${escHtml(avatarFor(channel))}" alt="" data-hide-on-error><h3>${escHtml(displayChannelName(channel))}</h3></div><span class="text-muted">${start + 1}-${end} / ${allMessages.length} messages${channel.isLeft ? ' · serveur quitté' : ''}</span></div><div class="package-message-actions"><input class="package-message-search" data-message-search value="${escHtml(this.messageQuery)}" placeholder="Rechercher dans le salon..." aria-label="Rechercher dans les messages"><label><input type="checkbox" data-select-page ${selectedCount === messages.length && messages.length ? 'checked' : ''}> Tout sélectionner</label></div></div><div class="package-message-list">${messages.map(message => { const key = `${channel.id}:${message.id}`; return `<article class="package-message${this.selectedMessages.has(key) ? ' selected' : ''}"><label class="package-message-select"><input type="checkbox" data-message-key="${escHtml(key)}" data-message-index="${start + messages.indexOf(message)}" ${this.selectedMessages.has(key) ? 'checked' : ''}><span></span></label><div><div class="package-message-meta"><img class="package-message-avatar small" src="${escHtml(this.package.user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="" data-hide-on-error><strong>${escHtml(this.package.user.username)}</strong><time>${escHtml(message.timestamp)}</time></div><p>${isSystemNotification(message) ? '<span class="package-system-badge">Notification système</span> <span class="text-muted">(texte absent de l’export Discord)</span>' : escHtml(message.content) || '<span class="text-muted">(message sans contenu)</span>'}</p>${message.attachments.length ? `<div class="package-attachments">${message.attachments.map((attachment, index) => this.attachmentHtml(attachment, index, key)).join('')}</div>` : ''}</div></article>`; }).join('')}</div><div class="package-pagination">${start > 0 ? '<button class="btn btn-secondary btn-xs" data-package-page="prev">← Précédent</button>' : ''}${end < sourceMessages.length ? '<button class="btn btn-secondary btn-xs" data-package-page="next">Suivant →</button>' : ''}</div>`;
+    // « Tout sélectionner » raisonne sur la PAGE courante (les cases réellement
+    // rendues), pas sur le canal entier : l'ancien comptage à l'échelle du canal
+    // se croyait coché dès que le total canal égalait la taille de page.
+    const pageFullySelected = messages.length > 0 && messages.every(message => this.selectedMessages.has(`${channel.id}:${message.id}`));
+    return `<div class="package-message-header"><div><div class="package-conversation-title"><img class="package-message-avatar" src="${escHtml(avatarFor(channel))}" alt="" data-hide-on-error><h3>${escHtml(displayChannelName(channel))}</h3></div><span class="text-muted">${start + 1}-${end} / ${allMessages.length} messages${channel.isLeft ? ' · serveur quitté' : ''}</span></div><div class="package-message-actions"><input class="package-message-search" data-message-search value="${escHtml(this.messageQuery)}" placeholder="Rechercher dans le salon..." aria-label="Rechercher dans les messages"><label><input type="checkbox" data-select-page ${pageFullySelected ? 'checked' : ''}> Tout sélectionner</label></div></div><div class="package-message-list">${messages.map(message => { const key = `${channel.id}:${message.id}`; const pieces = Array.isArray(message.attachments) ? message.attachments : []; return `<article class="package-message${this.selectedMessages.has(key) ? ' selected' : ''}"><label class="package-message-select"><input type="checkbox" data-message-key="${escHtml(key)}" ${this.selectedMessages.has(key) ? 'checked' : ''}><span></span></label><div><div class="package-message-meta"><img class="package-message-avatar small" src="${escHtml(this.package.user.avatar || 'https://cdn.discordapp.com/embed/avatars/0.png')}" alt="" data-hide-on-error><strong>${escHtml(this.package.user.username)}</strong><time>${escHtml(message.timestamp)}</time></div><p>${isSystemNotification(message) ? '<span class="package-system-badge">Notification système</span> <span class="text-muted">(texte absent de l’export Discord)</span>' : escHtml(message.content) || '<span class="text-muted">(message sans contenu)</span>'}</p>${pieces.length ? `<div class="package-attachments">${pieces.map((attachment, index) => this.attachmentHtml(attachment, index, key)).join('')}</div>` : ''}</div></article>`; }).join('')}</div><div class="package-pagination">${start > 0 ? '<button class="btn btn-secondary btn-xs" data-package-page="prev">← Précédent</button>' : ''}${end < sourceMessages.length ? '<button class="btn btn-secondary btn-xs" data-package-page="next">Suivant →</button>' : ''}</div>`;
   }
 
   addFiles(files) {
@@ -1318,6 +1333,8 @@ applyImportProgress(item, info) {
   handleDrop(event) { event.preventDefault(); this.isDragging = false; this.addFiles(event.dataTransfer.files); }
 
   async handleClick(event) {
+    const attachmentLink = event.target.closest('a.package-attachment-link');
+    if (attachmentLink) { event.preventDefault(); return; }
     const retry = event.target.closest('[data-retry-index]');
     if (retry) { const item = this.queue[Number(retry.dataset.retryIndex)]; if (item) { item.status = 'queued'; item.statusText = 'Nouvel essai'; this.render(); this.importQueueItem(item); } return; }
     const openArchive = event.target.closest('[data-archive-id]');
@@ -1472,6 +1489,22 @@ handleKeydown(event) {
     return updated;
   }
 
+  // La selection raisonne sur les cases REELLEMENT rendues (page courante,
+  // recherche et masquage des notifications compris), jamais sur la liste
+  // complete : un index recalcule pouvait viser des messages invisibles et les
+  // supprimer pour de vrai.
+  renderedMessageKeys() {
+    return [...this.contentArea.querySelectorAll('.package-message-list [data-message-key]')]
+      .map(box => box.dataset.messageKey)
+      .filter(key => key && !key.endsWith(':undefined'));
+  }
+
+  setMessageSelected(key, selected) {
+    if (!key || key.endsWith(':undefined')) return;
+    if (selected) this.selectedMessages.add(key);
+    else this.selectedMessages.delete(key);
+  }
+
   handleChange(event) {
     if (event.target.id === 'packageFileInput') this.addFiles(event.target.files);
     if (event.target.matches('[data-gallery-channel]')) { this.galleryFilter.channelId = event.target.value || ''; this.resetGalleryPaint(); this.render(); return; }
@@ -1486,25 +1519,25 @@ handleKeydown(event) {
       return;
     }
     if (event.target.matches('[data-select-page]') && this.selectedChannelId) {
-      const messages = this.package.messages.get(this.selectedChannelId) || [];
-      const page = messages.slice(this.messagePageOffset, this.messagePageOffset + this.messagePageSize);
-      page.forEach(message => {
-        const key = `${this.selectedChannelId}:${message.id}`;
-        if (event.target.checked) this.selectedMessages.add(key); else this.selectedMessages.delete(key);
-      });
+      this.renderedMessageKeys().forEach(key => this.setMessageSelected(key, event.target.checked));
       this.render();
       return;
     }
     const checkbox = event.target.closest('[data-message-key]');
     if (checkbox) {
       const key = checkbox.dataset.messageKey;
-      if (event.shiftKey && this.lastMessageKey && typeof CSS !== 'undefined' && CSS.escape) {
-        const previous = this.contentArea.querySelector(`[data-message-key="${CSS.escape(this.lastMessageKey)}"]`);
-        const currentIndex = Number(checkbox.dataset.messageIndex);
-        const previousIndex = Number(previous?.dataset.messageIndex);
-        const messages = this.package.messages.get(this.selectedChannelId) || [];
-        if (Number.isFinite(previousIndex)) for (let index = Math.min(previousIndex, currentIndex); index <= Math.max(previousIndex, currentIndex); index += 1) this.selectedMessages.add(`${this.selectedChannelId}:${messages[index]?.id}`);
-      } else if (checkbox.checked) this.selectedMessages.add(key); else this.selectedMessages.delete(key);
+      if (event.shiftKey && this.lastMessageKey) {
+        const keys = this.renderedMessageKeys();
+        const previousIndex = keys.indexOf(this.lastMessageKey);
+        const currentIndex = keys.indexOf(key);
+        if (previousIndex !== -1 && currentIndex !== -1) {
+          for (let index = Math.min(previousIndex, currentIndex); index <= Math.max(previousIndex, currentIndex); index += 1) this.setMessageSelected(keys[index], true);
+        } else {
+          this.setMessageSelected(key, checkbox.checked);
+        }
+      } else {
+        this.setMessageSelected(key, checkbox.checked);
+      }
       this.lastMessageKey = key;
       this.render();
     }
@@ -1525,8 +1558,8 @@ handleKeydown(event) {
     if (!event.target.matches('[data-message-search]')) return;
     this.messageQuery = event.target.value;
     this.messagePageOffset = 0;
-    clearTimeout(this.filterTimer);
-    this.filterTimer = setTimeout(() => this.renderKeepingFocus('[data-message-search]'), 80);
+    clearTimeout(this.messageSearchTimer);
+    this.messageSearchTimer = setTimeout(() => this.renderKeepingFocus('[data-message-search]'), 80);
   }
 
   handleFilter(event) {
@@ -1694,19 +1727,25 @@ async deleteChannelGroup(channel, group, counts, onProgress) {
 
   async deleteSelectedMessages() {
     if (this.isDeleting || !this.selectedMessages.size) return;
-    const targets = getSelectedPackageMessageKeys(this.selectedMessages);
-    if (!targets.length || !(await confirmAction('Supprimer les messages', `Supprimer ${targets.length} message(s) sélectionné(s) ? Cette action est irréversible.`))) return;
-    this.isDeleting = true; this.deleteProgress = { done: 0, total: targets.length };
-    const counts = { deleted: 0, missing: 0, forbidden: 0, failed: 0 };
-    const skippedChannels = [];
-    showProgressPanel({ title: 'Suppression des messages', total: targets.length, detail: 'préparation' });
-    // Regroupement par salon : l acces se verifie une fois, pas par message.
-    const byChannel = new Map();
-    for (const target of targets) {
-      if (!byChannel.has(target.channelId)) byChannel.set(target.channelId, []);
-      byChannel.get(target.channelId).push(target);
-    }
+    // Le verrou est posé AVANT le moindre `await` : sinon un double-clic laisse
+    // les deux appels franchir la garde tant que la confirmation est ouverte
+    // (TOCTOU). Il est relâché dans le `finally`, y compris sur annulation/erreur.
+    this.isDeleting = true;
+    let started = false;
     try {
+      const targets = getSelectedPackageMessageKeys(this.selectedMessages);
+      if (!targets.length || !(await confirmAction('Supprimer les messages', `Supprimer ${targets.length} message(s) sélectionné(s) ? Cette action est irréversible.`))) return;
+      started = true;
+      this.deleteProgress = { done: 0, total: targets.length };
+      const counts = { deleted: 0, missing: 0, forbidden: 0, failed: 0 };
+      const skippedChannels = [];
+      showProgressPanel({ title: 'Suppression des messages', total: targets.length, detail: 'préparation' });
+      // Regroupement par salon : l acces se verifie une fois, pas par message.
+      const byChannel = new Map();
+      for (const target of targets) {
+        if (!byChannel.has(target.channelId)) byChannel.set(target.channelId, []);
+        byChannel.get(target.channelId).push(target);
+      }
       let sincePause = 0;
       let reactived = 0;
       for (const [channelId, group] of byChannel) {
@@ -1749,6 +1788,12 @@ async deleteChannelGroup(channel, group, counts, onProgress) {
       const resume = summarizeDelete(counts, counts.reasons).text + skipped + (reactived ? ` · ${reactived} fil${reactived > 1 ? 's' : ''} réarchivé${reactived > 1 ? 's' : ''}` : '');
       showNotification(resume);
       finishProgressPanel({ detail: resume });
-    } finally { this.isDeleting = false; this.deleteProgress = null; this.render(); }
+    } finally {
+      this.isDeleting = false;
+      this.deleteProgress = null;
+      // Sur annulation/erreur avant démarrage, ne pas reconstruire la vue
+      // (le panneau de confirmation peut encore disparaître).
+      if (started) this.render();
+    }
   }
 }

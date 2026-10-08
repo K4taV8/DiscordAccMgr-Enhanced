@@ -57,15 +57,24 @@ function makeRouteScheduler({ nominalRatePerSec, burst, maxConcurrent }) {
       b.remaining = Number(rem);
       if (isGlobal) globalBucket.remaining = Number(rem);
     }
+    // Un en-tete malforme donnerait `NaN` : `Date.now() + NaN * 1000` vaut NaN,
+    // et `acquire` bouclerait alors sans jamais attendre (`sleep(NaN)` = 0). On
+    // ignore donc l'en-tete tant que la valeur n'est pas un nombre fini.
     if (resetAfter !== undefined) {
-      const at = Date.now() + Number(resetAfter) * 1000;
-      b.resetAt = at;
-      if (isGlobal) globalBucket.resetAt = at;
+      const secondes = Number(resetAfter);
+      if (Number.isFinite(secondes)) {
+        const at = Date.now() + secondes * 1000;
+        b.resetAt = at;
+        if (isGlobal) globalBucket.resetAt = at;
+      }
     }
     const retryAfter = headers['retry-after'];
     if (retryAfter !== undefined) {
-      b.remaining = 0;
-      b.resetAt = Date.now() + Number(retryAfter) * 1000;
+      const secondes = Number(retryAfter);
+      if (Number.isFinite(secondes)) {
+        b.remaining = 0;
+        b.resetAt = Date.now() + secondes * 1000;
+      }
     }
   }
 

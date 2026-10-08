@@ -7,6 +7,7 @@ import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 export class FriendsManager {
   constructor(contentArea) {
     this.contentArea = contentArea;
+    this.isDeleting = false;
 
     // R03b : handlers inline → délégation d'événements (CSP sans 'unsafe-inline').
     const itemId = (el) => el.closest('.bento-card')?.dataset.id;
@@ -84,7 +85,9 @@ export class FriendsManager {
   }
 
   async removeFriend(btn, friendId) {
-    if (!(await confirmAction('Remove Friend', 'Remove this friend?'))) return;
+    if (this.isDeleting) return;
+    this.isDeleting = true;
+    if (!(await confirmAction('Remove Friend', 'Remove this friend?'))) { this.isDeleting = false; return; }
     btn.disabled = true;
     try {
       await window.electronAPI.deleteFriend(friendId);
@@ -92,32 +95,42 @@ export class FriendsManager {
     } catch (error) {
       console.error('Failed to remove friend:', error);
       btn.disabled = false;
+    } finally {
+      this.isDeleting = false;
     }
   }
 
   async removeSelected() {
-    const selectedFriends = document.querySelectorAll('.friend-checkbox:checked');
-    const total = selectedFriends.length;
-    if (total === 0) return;
-    if (!(await confirmAction('Remove Friends', `Remove ${total} selected friend(s)? This cannot be undone.`))) return;
+    if (this.isDeleting) return;
+    this.isDeleting = true;
+    // try/finally : une exception (confirmation, modale, IPC) ne doit jamais
+    // laisser le verrou posé, sinon la page entière reste bloquée.
+    try {
+      const selectedFriends = this.contentArea.querySelectorAll('.friend-checkbox:checked');
+      const total = selectedFriends.length;
+      if (total === 0) return;
+      if (!(await confirmAction('Remove Friends', `Remove ${total} selected friend(s)? This cannot be undone.`))) return;
 
-    const { updateProgress, closeModal } = showProgressModal('Removing Friends', total);
-    let completed = 0;
+      const { updateProgress, closeModal } = showProgressModal('Removing Friends', total);
+      let completed = 0;
 
-    for (const checkbox of selectedFriends) {
-      const friendId = checkbox.closest('.bento-card').dataset.id;
-      try {
-        await window.electronAPI.deleteFriend(friendId);
-        completed++;
-        updateProgress(completed);
-      } catch (error) {
-        console.error('Failed to remove friend:', error);
+      for (const checkbox of selectedFriends) {
+        const friendId = checkbox.closest('.bento-card').dataset.id;
+        try {
+          await window.electronAPI.deleteFriend(friendId);
+          completed++;
+          updateProgress(completed);
+        } catch (error) {
+          console.error('Failed to remove friend:', error);
+        }
       }
-    }
 
-    setTimeout(() => {
-      closeModal();
-      this.refreshFriendsList(true);
-    }, 1000);
+      setTimeout(() => {
+        closeModal();
+        this.refreshFriendsList(true);
+      }, 1000);
+    } finally {
+      this.isDeleting = false;
+    }
   }
 }

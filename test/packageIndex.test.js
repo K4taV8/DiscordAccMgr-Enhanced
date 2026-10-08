@@ -2686,9 +2686,15 @@ test('les deux copies des parseurs repondent pareil sur les cas choisis', async 
   for (const valeur of PIECES) comparer('parseAttachments', valeur);
   // Affirmation avant controle : sans elle, les trois lignes ci-dessus pourraient
   // etre rejetees par les deux copies, et la comparaison ne porterait sur rien.
-  const deshappe = renderer.parseAttachments('https://a/1.png?quote=&#039;&amp;x=1');
+  // C1b : seules les URL `https:` d'un CDN Discord survivent comme lien ; un hote
+  // quelconque (`a/...`) garde son entree mais avec `url: null`. Le deshappage se
+  // verifie donc sur un hote AUTORISE.
+  const deshappe = renderer.parseAttachments('https://cdn.discordapp.com/1.png?quote=&#039;&amp;x=1');
   assert.equal(deshappe.length, 1, 'l entite doit etre toleree dans une URL');
-  assert.equal(deshappe[0].url, "https://a/1.png?quote='&x=1", `les entites sont deshappees avant d etre rangees : ${ deshappe[0].url }`);
+  assert.equal(deshappe[0].url, "https://cdn.discordapp.com/1.png?quote='&x=1", `les entites sont deshappees avant d etre rangees : ${ deshappe[0].url }`);
+  const neutralise = renderer.parseAttachments('https://a/1.png');
+  assert.equal(neutralise.length, 1, 'une URL non CDN garde son entree');
+  assert.equal(neutralise[0].url, null, 'une URL non CDN n est pas cliquable');
 
   // --- parseEntry : la reconnaissance des noms, et la casse -------------------
   const NOMS = [
