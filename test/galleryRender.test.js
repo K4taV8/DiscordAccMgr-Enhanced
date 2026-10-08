@@ -420,3 +420,53 @@ test('downloadAllMedia : le clic annuler appelle mediaMirror.cancel (F2)', async
     globalThis.document = docAvant;
   }
 });
+
+test('le defilement de la galerie desactive l ancrage de scroll', () => {
+  const css = readFileSync(new URL('../src/styles/app.css', import.meta.url), 'utf8');
+  const regle = css.match(/\.package-gallery-scroll\s*\{[^}]*\}/);
+  assert.ok(regle, 'la regle .package-gallery-scroll existe');
+  assert.match(regle[0], /overflow-anchor:\s*none/, 'sans overflow-anchor:none l ancrage fait s emballer la grille virtualisee');
+});
+
+// ---------------------------------------------------------------------------
+// Recyclage : galleryTilesForRows borne le dernier rang partiel et garde
+// l index ABSOLU de chaque tuile. Sans cela, une tuile ajoutee en tete aurait
+// l index 0 et ouvrirait le premier media de la galerie, pas le sien.
+// ---------------------------------------------------------------------------
+
+test('galleryTilesForRows borne le dernier rang et garde les index absolus', () => {
+  const m = galerieDeTest();
+  const items = m.galleryIndex;
+  assert.equal(items.length, 5, 'la fixture porte cinq medias');
+  // Rangs 0..1 : les quatre premiers items, index absolus 0 a 3.
+  const premier = m.galleryTilesForRows(items, 0, 1);
+  assert.equal((premier.match(/data-gallery-tile=/g) || []).length, 4, 'un rang plein de quatre tuiles');
+  assert.ok(premier.includes('data-gallery-tile="0"') && premier.includes('data-gallery-tile="3"'));
+  // Rang 1..2 : un seul item restant : borne par items.length, pas 4.
+  const dernier = m.galleryTilesForRows(items, 1, 2);
+  assert.equal((dernier.match(/data-gallery-tile=/g) || []).length, 1, 'le dernier rang est partiel');
+  assert.ok(dernier.includes('data-gallery-tile="4"'), 'l index reste ABSOLU, jamais renumberote');
+  assert.ok(!dernier.includes('data-gallery-tile="0"'), 'aucune renumerotation');
+  // Un rang entierement au dela de la fin ne rend rien, sans exception.
+  assert.equal(m.galleryTilesForRows(items, 5, 6).trim(), '');
+});
+
+test('la galerie occupe toute la largeur, pas la colonne des salons', () => {
+  const manager = galerieDeTest();
+  assert.match(manager.contentArea.innerHTML, /package-layout-gallery/, 'mise en page une colonne en galerie');
+});
+
+test('la modale info monte son contenu dans l overlay', () => {
+  const src = readFileSync(new URL('../src/utils/ui.js', import.meta.url), 'utf8');
+  const fn = src.slice(src.indexOf('export const showInfoModal'), src.indexOf('export const showInputModal'));
+  const montageContenu = fn.indexOf('modal.appendChild(content)');
+  const montageOverlay = fn.indexOf('document.body.appendChild(modal)');
+  assert.ok(montageContenu > -1, 'modal.appendChild(content) est present (sans lui, l overlay est vide)');
+  assert.ok(montageContenu < montageOverlay, 'le contenu est monte AVANT l overlay');
+});
+
+test('l ecran de connexion propose Connexion avec Discord', () => {
+  const html = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(html, /id="discordLoginBtn"/);
+  assert.match(html, /Connexion avec Discord/);
+});

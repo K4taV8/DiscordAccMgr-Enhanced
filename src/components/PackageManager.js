@@ -8,7 +8,7 @@ import { closeProgressPanel, finishProgressPanel, showProgressPanel, updateProgr
 import { createPackageArchiveId, deletePackageArchive, isCurrentPackageArchive, listPackageArchives, savePackageArchive, PACKAGE_SCHEMA_VERSION } from '../services/packageStorage.service.js';
 import { groupChannels } from '../services/packageSections.service.js';
 import { channelWindow, CHANNEL_ROW_HEIGHT, CHANNEL_OVERSCAN } from '../services/packageWindow.service.js';
-import { GALLERY_COLUMNS, GALLERY_GAP, buildMediaIndex, filterMedia, tileSizeFor, galleryWindow } from '../services/galleryIndex.service.js';
+import { GALLERY_COLUMNS, GALLERY_GAP, buildMediaIndex, filterMedia, tileSizeFor, galleryWindow, galleryRepaintPlan } from '../services/galleryIndex.service.js';
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024 * 1024;
 
@@ -97,6 +97,7 @@ export class PackageManager {
     this.galleryIndex = [];
     this.galleryScrollTop = 0;
     this.galleryPainted = -1;
+    this.galleryPaintedEnd = -1;
     this.gallerySafeTop = 0;
     this.gallerySafeBottom = 0;
     this.galleryHtml = '';
@@ -119,6 +120,7 @@ export class PackageManager {
     this.galleryScrollTop = 0;
     this.galleryViewport = 800;
     this.galleryPainted = -1;
+    this.galleryPaintedEnd = -1;
     this.gallerySafeTop = 0;
     this.gallerySafeBottom = 0;
     this.galleryTileSize = 0;
@@ -140,7 +142,9 @@ export class PackageManager {
     this.channelQuery = '';
     this.channelKindFilter = 'all';
     this.hideEmptyDms = false;
+    this.hideEmptyGroups = false;
     this.hideSystemNotes = true;
+    this.hideLeftServers = false;
     this.filterTimer = null;
     this.renderTimer = null;
     this.channelScrollTop = 0;
@@ -236,6 +240,8 @@ filteredChannels() {
         if (family !== kind) return false;
       }
       if (this.hideEmptyDms && channel.type === 'DM' && !channel.messagesCount) return false;
+      if (this.hideEmptyGroups && channel.type === 'GROUP' && !channel.messagesCount) return false;
+      if (this.hideLeftServers && channel.isLeft) return false;
       if (query) {
         const haystack = `${channel.name || ''} ${channel.guildName || ''} ${channel.recipient?.username || ''} ${channel.type} ${channel.id}`.toLowerCase();
         if (!haystack.includes(query)) return false;
@@ -261,12 +267,16 @@ filteredChannels() {
   renderChannelFilterBar() {
     const kindButton = kind => `<button type="button" class="package-filter-chip${this.channelKindFilter === kind ? ' is-active' : ''}" data-channel-filter="${kind}" aria-pressed="${this.channelKindFilter === kind}">${{ all: 'Tous', dm: 'MP', group: 'Groupes', server: 'Serveurs' }[kind]}</button>`;
     return `<div class="package-filter-bar">
-          <div class="package-filter-group" role="group" aria-label="Type de conversation">${['all', 'dm', 'group', 'server'].map(kindButton).join('')}</div>
-          <label class="package-filter-toggle"><input type="checkbox" data-hide-empty${this.hideEmptyDms ? ' checked' : ''}> MP vides</label>
-          <label class="package-filter-toggle"><input type="checkbox" data-hide-system${this.hideSystemNotes ? ' checked' : ''}> Notifs système</label>
           <div class="package-filter-bulk">
-            <button type="button" class="btn btn-secondary btn-xs" data-select-all>Tout cocher</button>
-            <button type="button" class="btn btn-secondary btn-xs" data-select-none>Tout décocher</button>
+            <button type="button" class="package-link-btn" data-select-all>Tout cocher</button>
+            <button type="button" class="package-link-btn" data-select-none>Tout décocher</button>
+          </div>
+          <div class="package-filter-group" role="group" aria-label="Type de conversation">${['all', 'dm', 'group', 'server'].map(kindButton).join('')}</div>
+          <div class="package-filter-toggles">
+            <label class="package-filter-toggle"><input type="checkbox" data-hide-empty${this.hideEmptyDms ? ' checked' : ''}> Masquer les MP vides</label>
+            <label class="package-filter-toggle"><input type="checkbox" data-hide-empty-groups${this.hideEmptyGroups ? ' checked' : ''}> Masquer les groupes vides</label>
+            <label class="package-filter-toggle"><input type="checkbox" data-hide-system${this.hideSystemNotes ? ' checked' : ''}> Masquer les notifications système</label>
+            <label class="package-filter-toggle"><input type="checkbox" data-hide-left${this.hideLeftServers ? ' checked' : ''}> Masquer les serveurs quittés</label>
           </div>
         </div>`;
   }
@@ -294,9 +304,9 @@ filteredChannels() {
     this.contentArea.innerHTML = `
       <div class="list-toolbar package-toolbar">
         <div><h2 class="page-title"><span class="package-title-icon">📦</span> Data Package <span class="list-count">${channels.length}</span></h2><p class="text-muted">${escHtml(this.package.user.username)} · ${this.package.totalMessages} messages</p></div>
-        <div class="toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><button class="btn btn-secondary" data-package-action="download-all">Télécharger les médias</button><button class="btn btn-secondary" data-package-action="purge-media">Purger les médias</button><button class="btn btn-secondary" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button class="btn btn-secondary" data-package-action="export" data-export-format="json">Exporter JSON</button><button class="btn btn-secondary" data-package-action="close">Fermer</button></div>
+        <div class="toolbar-actions package-toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Médias</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="download-all">Télécharger les médias</button><button type="button" class="package-menu-item" data-package-action="purge-media">Purger les médias</button></div></details><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Exporter</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button type="button" class="package-menu-item" data-package-action="export" data-export-format="json">Exporter JSON</button></div></details><button class="btn btn-icon" data-package-action="close" aria-label="Fermer" title="Fermer">✕</button></div>
       </div>
-      <div class="package-layout">${this.view === 'gallery' ? this.renderGallery() : this.layoutMessages()}</div>`;
+      <div class="package-layout${this.view === 'gallery' ? ' package-layout-gallery' : ''}">${this.view === 'gallery' ? this.renderGallery() : this.layoutMessages()}</div>`;
     this.attachChannelScroll();
     if (this.view === 'gallery') this.attachGalleryScroll();
   }
@@ -345,6 +355,7 @@ filteredChannels() {
   // position, le repaint se rejoue avec la nouvelle hauteur de rang.
   resetGalleryPaint(keepScroll = false) {
     this.galleryPainted = -1;
+    this.galleryPaintedEnd = -1;
     this.gallerySafeTop = 0;
     this.gallerySafeBottom = 0;
     this.galleryHtml = '';
@@ -433,6 +444,18 @@ filteredChannels() {
     return html;
   }
 
+  // Tuiles des rangs [fromRow, toRow), bornees par items.length : le dernier rang
+  // peut donc etre partiel. L index passe a galleryTileHtml est ABSOLU — le rang
+  // multiplie GALLERY_COLUMNS — donc une tuile ajoutee en tete porte les index
+  // des rangs prepends, jamais 0 : c est ce qui distingue recyclage et rendu.
+  galleryTilesForRows(items, fromRow, toRow) {
+    const start = fromRow * GALLERY_COLUMNS;
+    const end = Math.min(items.length, toRow * GALLERY_COLUMNS);
+    let html = '';
+    for (let index = start; index < end; index += 1) html += this.galleryTileHtml(items[index], index);
+    return html;
+  }
+
   // Les deux tampons reconstituent la hauteur totale exactement :
   // padTop + (endRow - startRow) * rowHeight + padBottom vaut rows * rowHeight,
   // sans quoi la barre de scroll raccourcirait et le scroll deviendrait faux.
@@ -476,6 +499,7 @@ filteredChannels() {
           ${this.galleryWindowHtml(items, slice)}
         </div>`;
     this.galleryPainted = slice.startRow;
+    this.galleryPaintedEnd = slice.endRow;
     this.gallerySafeTop = slice.padTop;
     this.gallerySafeBottom = slice.full ? Number.POSITIVE_INFINITY : slice.padTop + (slice.endRow - slice.startRow) * slice.rowHeight;
     this.galleryHtml = html;
@@ -622,10 +646,35 @@ filteredChannels() {
     // Ne touche a rien tant que la fenetre peinte couvre le viewport : c est ce
     // qui evite de recharger les images a chaque pixel de defilement.
     if (couverte) return;
+    // Recyclage : on retire les seuls rangs qui sortent et on ajoute les seuls
+    // qui entrent, dans l ordre du DOM (tete..queue = rangs croissants, sinon la
+    // grille CSS se reordonne). Les tuiles communes ne sont pas touchees, donc
+    // leurs <img> restent decodees. Hors recouvrement, ou rien de peint, le plan
+    // demande la reconstruction complete.
+    const plan = galleryRepaintPlan({
+      paintedStart: this.galleryPainted,
+      paintedEnd: this.galleryPaintedEnd,
+      nextStart: slice.startRow,
+      nextEnd: slice.endRow,
+      columns: GALLERY_COLUMNS,
+      totalTiles: items.length,
+    });
+    if (plan.rebuild) {
+      refs.rows.innerHTML = this.galleryTilesHtml(items, slice);
+    } else {
+      for (let i = 0; i < plan.removeTopTiles; i += 1) refs.rows.firstElementChild?.remove();
+      for (let i = 0; i < plan.removeBottomTiles; i += 1) refs.rows.lastElementChild?.remove();
+      if (plan.addTopRows) {
+        refs.rows.insertAdjacentHTML('afterbegin', this.galleryTilesForRows(items, plan.addTopRows[0], plan.addTopRows[1]));
+      }
+      if (plan.addBottomRows) {
+        refs.rows.insertAdjacentHTML('beforeend', this.galleryTilesForRows(items, plan.addBottomRows[0], plan.addBottomRows[1]));
+      }
+    }
     refs.top.style.height = `${slice.padTop}px`;
-    refs.rows.innerHTML = this.galleryTilesHtml(items, slice);
     refs.bottom.style.height = `${slice.padBottom}px`;
     this.galleryPainted = slice.startRow;
+    this.galleryPaintedEnd = slice.endRow;
     this.gallerySafeTop = slice.padTop;
     this.gallerySafeBottom = slice.full ? Number.POSITIVE_INFINITY : slice.padTop + (slice.endRow - slice.startRow) * slice.rowHeight;
     // Le HTML complet en cache decrit l ancienne fenetre : il est invalide.
@@ -1427,7 +1476,9 @@ handleKeydown(event) {
     if (event.target.id === 'packageFileInput') this.addFiles(event.target.files);
     if (event.target.matches('[data-gallery-channel]')) { this.galleryFilter.channelId = event.target.value || ''; this.resetGalleryPaint(); this.render(); return; }
     if (event.target.matches('[data-hide-empty]')) { this.hideEmptyDms = event.target.checked; this.render(); return; }
+    if (event.target.matches('[data-hide-empty-groups]')) { this.hideEmptyGroups = event.target.checked; this.render(); return; }
     if (event.target.matches('[data-hide-system]')) { this.hideSystemNotes = event.target.checked; this.render(); return; }
+    if (event.target.matches('[data-hide-left]')) { this.hideLeftServers = event.target.checked; this.render(); return; }
     const channelBox = event.target.closest('[data-select-channel]');
     if (channelBox) {
       this.toggleChannelSelection(channelBox.dataset.selectChannel, channelBox.checked);
@@ -1459,25 +1510,30 @@ handleKeydown(event) {
     }
   }
 
+  // Un champ de filtre relance un rendu complet (la liste se reconstruit), ce
+  // qui detruit l input et lui fait perdre le focus apres chaque frappe : on
+  // restaure donc le focus et la position du curseur apres le rendu.
+  renderKeepingFocus(selector) {
+    const input = this.contentArea.querySelector(selector);
+    const position = input?.selectionStart;
+    this.render();
+    const nextInput = this.contentArea.querySelector(selector);
+    if (nextInput) { nextInput.focus(); nextInput.setSelectionRange(position ?? nextInput.value.length, position ?? nextInput.value.length); }
+  }
+
   handleMessageSearch(event) {
     if (!event.target.matches('[data-message-search]')) return;
     this.messageQuery = event.target.value;
     this.messagePageOffset = 0;
     clearTimeout(this.filterTimer);
-    this.filterTimer = setTimeout(() => this.render(), 80);
+    this.filterTimer = setTimeout(() => this.renderKeepingFocus('[data-message-search]'), 80);
   }
 
   handleFilter(event) {
     if (!event.target.matches('[data-package-filter]')) return;
     this.channelQuery = event.target.value;
     clearTimeout(this.filterTimer);
-    this.filterTimer = setTimeout(() => {
-      const input = this.contentArea.querySelector('[data-package-filter]');
-      const position = input?.selectionStart;
-      this.render();
-      const nextInput = this.contentArea.querySelector('[data-package-filter]');
-      if (nextInput) { nextInput.focus(); nextInput.setSelectionRange(position ?? nextInput.value.length, position ?? nextInput.value.length); }
-    }, 80);
+    this.filterTimer = setTimeout(() => this.renderKeepingFocus('[data-package-filter]'), 80);
   }
 
   // L'export d'avant ne proposait qu'un JSON alors que l'import exige un ZIP :

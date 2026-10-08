@@ -100,6 +100,8 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getAppVersion: wrap('getAppVersion', () => ipcRenderer.invoke('app:getVersion')),
   disconnect: wrap('disconnect', () => ipcRenderer.invoke('discord:disconnect')),
 
+  loginNative: wrap('loginNative', () => ipcRenderer.invoke('discord:loginNative')),
+
   importPackage,
   onImportPackageProgress,
 

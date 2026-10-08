@@ -12,7 +12,7 @@ export async function loadSavedTokens() {
         const tokenManagement = document.getElementById('tokenManagement');
         if (!tokenManagement) return;
 if (!result.tokens.length) {
-            tokenManagement.innerHTML = '<p class="text-muted">No saved tokens</p>';
+            tokenManagement.innerHTML = '<p class="text-muted">Aucun token enregistré</p>';
             return;
         }
 
@@ -34,12 +34,12 @@ if (!result.tokens.length) {
 
 export async function saveToken(token, status) {
     if (!token) {
-        status.textContent = 'Please enter a token';
+        status.textContent = 'Veuillez saisir un token';
         status.className = 'error';
         return;
     }
 
-    const name = await showInputModal('Save Token', 'Enter a name for this token:');
+    const name = await showInputModal('Enregistrer le compte', 'Entrez un nom pour ce compte :');
     if (!name) return;
 
     try {
@@ -54,7 +54,7 @@ export async function saveToken(token, status) {
             status.className = 'error';
         }
     } catch (error) {
-        status.textContent = 'Failed to save token';
+        status.textContent = "Échec de l'enregistrement du token";
         status.className = 'error';
     }
 }
@@ -66,10 +66,10 @@ function showSavedFeedback() {
   if (!btn) return;
   clearTimeout(savedTimer);
   btn.classList.add('btn-saved');
-  btn.innerHTML = 'Saved ✓';
+  btn.innerHTML = 'Enregistré ✓';
   savedTimer = setTimeout(() => {
     btn.classList.remove('btn-saved');
-    btn.innerHTML = 'Save';
+    btn.innerHTML = 'Enregistrer';
   }, 2000);
 }
 

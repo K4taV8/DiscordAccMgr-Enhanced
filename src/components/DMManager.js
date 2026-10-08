@@ -27,12 +27,12 @@ export class DMManager {
     delegate(contentArea, this.actions);
 
     this.selectionDock = new FloatingSelectionDock({
-      onSelectAll: () => this.toggleSelectAllDMs(),
+      onSelectAll: () => this.selectAllDMs(),
       onDeselectAll: () => this.deselectAllDMs(),
       actions: [
         // Un seul bouton : les 4 modes de « Nettoyer » couvrent messages,
         // réactions, les deux, et fermeture du DM. Pas de doublon dans la barre.
-        { label: '🧹 Nettoyer', tip: 'Ouvrir les 4 modes : messages, réactions, les deux, ou tout + fermeture du DM.', className: 'dock-combo', onClick: (btn) => this.openCleaningMode(btn) },
+        { label: '🧹 Nettoyer', tip: 'Ouvrir les 4 modes : messages, réactions, les deux, ou tout + fermer la conversation.', className: 'dock-combo', menu: true, onClick: (btn) => this.openCleaningMode(btn) },
       ],
     });
   }
@@ -55,13 +55,13 @@ export class DMManager {
             icon: dm.avatar,
             iconAlt: dm.displayName,
             checkboxClass: 'dm-checkbox',
-            badge: { label: 'DM' },
+            badge: { label: 'MP' },
             quick: [
-              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️' },
-              { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
+              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
+              { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
               // Nettoyage combiné sur CE DM : messages + réactions, sans le fermer.
-              { action: 'cleanBoth', label: 'Msgs + Réac', theme: 'combo', emoji: '📦' },
-              { action: 'close', label: 'Close DM', theme: 'crimson', emoji: '🚪' },
+              { action: 'cleanBoth', label: 'Messages + réactions', theme: 'combo', emoji: '📦' },
+              { action: 'close', label: 'Fermer la conversation', theme: 'crimson', emoji: '🚪' },
             ],
           })).join('')}
         </div>
@@ -74,15 +74,12 @@ export class DMManager {
     }
   }
 
-  toggleSelectAllDMs() {
-    const checkboxes = [...this.contentArea.querySelectorAll('.dm-checkbox')];
-    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
-    checkboxes.forEach(cb => cb.checked = !allChecked);
+  selectAllDMs() {
+    this.contentArea.querySelectorAll('.dm-checkbox').forEach(cb => { cb.checked = true; });
     this.updateSelectedCount();
   }
 
-  // Vide la sélection quoi qu'il reste de coché — le toggle « Tout sélectionner »
-  // ne décoche que si TOUT était coché, sinon il rebranche tout.
+  // Vide la sélection quoi qu'il reste de coché.
   deselectAllDMs() {
     this.contentArea.querySelectorAll('.dm-checkbox').forEach(cb => { cb.checked = false; });
     this.updateSelectedCount();

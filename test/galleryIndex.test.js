@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   GALLERY_COLUMNS, GALLERY_GAP, mediaKindOf, buildMediaIndex, filterMedia, tileSizeFor, galleryWindow,
+  galleryRepaintPlan,
 } from '../src/services/galleryIndex.service.js';
 
 // Reperes de la section 5.3 : la CSP interdit file://, donc une copie locale
@@ -204,4 +205,71 @@ test('galleryWindow borne aux extremites et tolere un etat vide', () => {
   const fin = galleryWindow({ total: 10, columns: 4, scrollTop: 999999, viewport: 300, rowHeight: 100, overscan: 2 });
   assert.equal(fin.endRow, 3, 'un scrollTop aberrant ne sort pas de la grille');
   assert.ok(fin.startRow >= 0 && fin.startRow <= 2, 'et le debut de la fenetre non plus');
+});
+
+// ---------------------------------------------------------------------------
+// Recyclage : le plan dit quoi retirer et quoi ajouter, sans jamais renumeroter
+// une tuile qui reste. Une fenetre peinte et une fenetre suivante qui se
+// recouvrent se transforment en quelques retraits de tete/queue et deux ajouts
+// bornes ; hors recouvrement, la seule reponse sure est de tout reconstruire.
+// ---------------------------------------------------------------------------
+
+test('galleryRepaintPlan : une descente d un rang retire en tete et ajoute en bas', () => {
+  assert.deepEqual(
+    galleryRepaintPlan({ paintedStart: 10, paintedEnd: 20, nextStart: 11, nextEnd: 21, columns: 4 }),
+    { rebuild: false, removeTopTiles: 4, removeBottomTiles: 0, addTopRows: null, addBottomRows: [20, 21] });
+});
+
+test('galleryRepaintPlan : une montee d un rang retire en queue et ajoute en haut', () => {
+  assert.deepEqual(
+    galleryRepaintPlan({ paintedStart: 10, paintedEnd: 20, nextStart: 9, nextEnd: 19, columns: 4 }),
+    { rebuild: false, removeTopTiles: 0, removeBottomTiles: 4, addTopRows: [9, 10], addBottomRows: null });
+});
+
+test('galleryRepaintPlan : un saut qui ne recouvre plus impose la reconstruction', () => {
+  assert.equal(
+    galleryRepaintPlan({ paintedStart: 10, paintedEnd: 20, nextStart: 30, nextEnd: 40, columns: 4 }).rebuild, true);
+});
+
+test('galleryRepaintPlan : rien de peint impose la reconstruction', () => {
+  assert.equal(
+    galleryRepaintPlan({ paintedStart: -1, paintedEnd: -1, nextStart: 0, nextEnd: 5, columns: 4 }).rebuild, true);
+});
+
+test('galleryRepaintPlan : une fenetre inchangee ne retire ni n ajoute rien', () => {
+  assert.deepEqual(
+    galleryRepaintPlan({ paintedStart: 10, paintedEnd: 20, nextStart: 10, nextEnd: 20, columns: 4 }),
+    { rebuild: false, removeTopTiles: 0, removeBottomTiles: 0, addTopRows: null, addBottomRows: null });
+});
+
+test('galleryRepaintPlan : un grand saut recouvrant retire et ajoute a la mesure des rangs', () => {
+  // 5 rangs retires en tete, 5 rangs ajoutes en queue : les 5 rangs communs
+  // (15..20) restent en place, donc leurs tuiles et leurs images aussi.
+  assert.deepEqual(
+    galleryRepaintPlan({ paintedStart: 10, paintedEnd: 20, nextStart: 15, nextEnd: 25, columns: 4 }),
+    { rebuild: false, removeTopTiles: 20, removeBottomTiles: 0, addTopRows: null, addBottomRows: [20, 25] });
+});
+
+// ---------------------------------------------------------------------------
+// Ronde de correction 1 : le dernier rang peint peut etre PARTIEL. Le DOM est
+// borne par min(items.length, paintedEnd * columns), donc compter
+// (paintedEnd - nextEnd) * columns retire des tuiles qui n existent pas et
+// laisse un trou. totalTiles borne le seul retrait en queue.
+// ---------------------------------------------------------------------------
+
+test('galleryRepaintPlan : un dernier rang partiel borne le retrait en queue', () => {
+  // items.length=18 (5 rangs, le dernier a 2 tuiles) ; remonter de [2,5) a [0,3).
+  // Le DOM est borne a 18, la fenetre cible a 12 : retirer 6, pas 8.
+  assert.deepEqual(
+    galleryRepaintPlan({ paintedStart: 2, paintedEnd: 5, nextStart: 0, nextEnd: 3, columns: 4, totalTiles: 18 }),
+    { rebuild: false, removeTopTiles: 0, removeBottomTiles: 6, addTopRows: [0, 2], addBottomRows: null });
+});
+
+test('galleryRepaintPlan : le bornage tient sur un total non multiple de 4', () => {
+  // totalTiles=18 : peinte [3,5) couvre les indices 12..17 (le rang 4 n a que
+  // 2 tuiles), cible [2,4) couvre 8..15. min(18, 5*4)=18 et min(18, 4*4)=16,
+  // donc le retrait en queue vaut 2, pas (5-4)*4 = 4.
+  assert.deepEqual(
+    galleryRepaintPlan({ paintedStart: 3, paintedEnd: 5, nextStart: 2, nextEnd: 4, columns: 4, totalTiles: 18 }),
+    { rebuild: false, removeTopTiles: 0, removeBottomTiles: 2, addTopRows: [2, 3], addBottomRows: null });
 });

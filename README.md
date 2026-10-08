@@ -1,336 +1,270 @@
-﻿# ` 🎤 `︲Discord Account Manager - Enhanced Forked By KataV8 : Gestion de comptes Discord sans client officiel
+# Discord Account Manager — Enhanced Fork (KataV8)
+
+<p align="center">
+  <img src="assets/logo.png" alt="Logo" width="120">
+</p>
 
 <p align="center">
   <img src="https://img.shields.io/badge/Electron-43-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
   <img src="https://img.shields.io/badge/Node.js-22-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
   <img src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
   <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Anti_RateLimit-X_RateLimit_aware-00b87c?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Persistence-Checkpoint_%7C_Watermark_%7C_Ledger-4b0082?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Tests-52_verts-3ba55d?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Tests-420_verts-3ba55d?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
----
-
-<p align="center">Application de bureau Electron — gestion de serveurs, amis, messages et réactions. Automatisation d'actions Discord sans client officiel, sur son propre compte.</p>
+<p align="center">Application de bureau Electron pour la gestion de votre propre compte Discord : serveurs, amis, messages privés, groupes, réactions, import d'export de données, galerie média et nettoyage — sans le client officiel.</p>
 
 ---
 
 > [!CAUTION]
-> **Outil non officiel.** Utilisation sous votre entière responsabilité — pas d'abus, pas de spam.
-> `discord.js-selfbot-v13` et l'API v9 avec un jeton utilisateur **violent les conditions d'utilisation de Discord** : risque de bannissement du compte. Cette application est un outil de gestion de données personnelles, pas un bot d'automatisation abusive.
+> **Outil non officiel, à usage personnel.** L'utilisation d'un **jeton utilisateur** avec l'API Discord (`discord.js-selfbot-v13`, API v9) **est contraire aux conditions d'utilisation de Discord** et peut entraîner la **suspension ou le bannissement du compte**. Cette application est un outil de gestion de vos propres données : pas d'abus, pas de spam. Utilisation sous votre entière responsabilité.
 
 ---
 
-## `📑`︲Sommaire
+## Sommaire
 
-1. [`📘`︲Présentation.](#presentation)
-2. [`✨`︲Fonctionnalités.](#fonctionnalites)
-3. [`🧩`︲Architecture du projet.](#architecture)
-4. [`⚡`︲Performances et optimisations.](#performances)
-5. [`🎨`︲Interface : Sidebar Icon-Rail, Bento Grid & Thèmes.](#interface)
-6. [`🛡️`︲Garde-fous & Do Not Break.](#gardefous)
-7. [`⚖️`︲Choix techniques & limitations.](#choices)
-8. [`🧰`︲Technologies utilisées.](#technologies)
-9. [`🛠️`︲Installation.](#installation)
-10. [`▶️`︲Utilisation.](#utilisation)
-11. [`⚙️`︲Configuration.](#configuration)
-12. [`🔧`︲Maintenance & débogage.](#maintenance)
-13. [`🗺️`︲Roadmap.](#roadmap)
-14. [`🤝`︲Contribution.](#contribution)
-15. [`📜`︲Licence.](#licence)
+1. [Présentation](#presentation)
+2. [Fonctionnalités](#fonctionnalites)
+3. [Connexion à Discord](#connexion)
+4. [Le Data Package (import d'export)](#data-package)
+5. [Sécurité](#securite)
+6. [Architecture](#architecture)
+7. [Performances & anti rate-limit](#performances)
+8. [Technologies](#technologies)
+9. [Installation](#installation)
+10. [Utilisation pas à pas](#utilisation)
+11. [Configuration](#configuration)
+12. [Garde-fous (Do Not Break)](#gardefous)
+13. [Dépannage / FAQ](#depannage)
+14. [Crédits & licence](#credits)
 
 ---
 
 <a id="presentation"></a>
-# `📘`︲Présentation.
+# 1. Présentation
 
----
+**Discord Account Manager** est une application de bureau **Electron** qui pilote **votre propre compte Discord** (technique dite « selfbot ») pour vous faire gagner du temps sur les tâches répétitives et la gestion de vos données :
+
+- lister / nettoyer vos **serveurs**, **messages privés**, **groupes** et **amis** ;
+- **supprimer vos messages**, **retirer vos réactions** (avec vérification) ;
+- **importer un export de compte Discord** (le fichier `.zip` officiel) pour **explorer vos messages, vos photos, vos vidéos et vos fichiers**, et même **télécharger vos médias** en local ;
+- le tout avec une **interface claire**, des **thèmes**, et un **contrôle du débit réseau** qui évite les erreurs `429` (rate-limit).
 
 > [!NOTE]
-> **Problème résolu :** gérer plusieurs comptes Discord (serveurs, amis, messages, réactions, « tout marquer comme lu ») sans lancer le client officiel, avec des volumes allant jusqu'à **100 serveurs** (comptes standard) et **200 serveurs** (comptes Nitro), **sans jamais déclencher de rate-limit** (429) ni de drapeau d'abus.
->
-> **Objectif :** une application Electron légère, sans bundler ni framework, dont le cœur réseau est **piloté par les en-têtes de débit réels de l'API** (`X-RateLimit-Remaining` / `X-RateLimit-Reset-After`) — jamais par des délais arbitraires — avec une couche de **cache local** et de **reprise de scan** (checkpointing) pour ne jamais re-scanner intégralement des serveurs déjà analysés.
-
-**Architecture en trois sous-systèmes isolés :**
-
-| Sous-système | Fichiers | Rôle |
-|---|---|---|
-| **UI (renderer, ESM)** | `src/` — `components/` (4 managers + `bento.js`), `utils/` | Interface, opérations lourdes (scan/suppression), rendu fluide |
-| **Pont (preload)** | `electron/preload.cjs` | `contextBridge` isolé, redaction des IPC sensibles |
-| **Noyau (main, CJS)** | `electron/main.cjs`, `rateLimiter.cjs`, `persist.cjs` | **Autorité débit** (ordonnanceur header-aware), persistance atomique, sécurité des tokens |
+> **Objectif :** une application légère, **sans bundler ni framework**, dont le **cœur réseau est piloté par les en-têtes de débit réels** de l'API (`X-RateLimit-*`), avec **cache local** et **reprise de scan** (checkpointing), pour ne jamais re-scanner inutilement.
 
 ---
 
 <a id="fonctionnalites"></a>
-# `✨`︲Fonctionnalités.
+# 2. Fonctionnalités
+
+## 2.1 Connexion
+- **Connexion avec Discord** (nouveau) : une fenêtre Discord s'ouvre, vous vous connectez (mot de passe, 2FA ou **QR code**) — **Discord gère le captcha et la 2FA** — et l'app récupère votre session. **Isolée et jetable** (voir [Sécurité](#securite)).
+- **Jeton manuel** : collez un jeton utilisateur, avec bouton œil pour l'afficher/masquer. Reste disponible à tout moment.
+- **Enregistrement de compte** : enregistrez un compte connecté pour le recharger plus tard, **chiffré au repos** (`safeStorage`).
+
+## 2.2 Amis (`Friends`)
+- Liste de vos amis (avatar, pseudo, identifiant).
+- **Retirer l'ami** (unitaire ou en lot).
+- Copie de l'ID en un clic.
+
+## 2.3 Serveurs (`Servers`)
+- Liste de vos serveurs, avec badge **Propriétaire** pour ceux que vous possédez.
+- **Mettre en sourdine** / réactiver les notifications.
+- **Supprimer les messages** (scan + suppression, reprise par checkpoint).
+- **Retirer les réactions** (scan complet + re-scan de vérification).
+- **Quitter le serveur**.
+- **Marquer comme lu** (avec progression live).
+
+## 2.4 Messages privés (`DMs`)
+- Liste de vos conversations privées.
+- **Supprimer les messages**, **Retirer les réactions**, **Messages + réactions** (combiné), **Fermer la conversation**.
+
+## 2.5 Groupes (`Groups`)
+- Liste de vos groupes (DM de groupe), avec **avatar par défaut** si le groupe n'a pas d'icône.
+- **Supprimer les messages**, **Retirer les réactions**, **Quitter le groupe**.
+
+## 2.6 Nettoyage en un geste
+Chaque carte propose un bouton **Nettoyer** qui ouvre **4 modes** :
+| Mode | Effet |
+|---|---|
+| **Messages** | supprime vos messages |
+| **Réactions** | retire vos réactions |
+| **Msg + Réac** | supprime messages **et** réactions |
+| **Tout + Quitter** | messages + réactions **puis** quitte le serveur/groupe/ferme le MP |
+
+Sélectionnez plusieurs cartes, puis lancez un mode : **tout s'exécute en séquence**, avec progression et annulation.
+
+## 2.7 Data Package — import, galerie et médias
+Voir la [section dédiée](#data-package). En résumé :
+- **Importez un export Discord `.zip`** (100 % local, aucun envoi) ;
+- **Parcourez les messages** par salon, avec recherche, sélection et suppression ;
+- **Galerie média** : mosaïque 4 colonnes de **toutes les pièces jointes** (photos, vidéos, audio, fichiers), avec filtres ;
+- **Lecteur intégré** pour les **vidéos** et **audios**, navigation clavier ;
+- **Enregistrer** n'importe quelle pièce jointe (et les autres formats) via une boîte de dialogue native ;
+- **Miroir local** : téléchargez toutes vos pièces jointes en local pour un usage hors ligne.
+
+## 2.8 Marquage « tout lu »
+- **Read All** : marque tous vos serveurs comme lus, débit gouverné, **progression live**.
+
+## 2.9 Interface
+- **Rail d'icônes** latéral (compact), **grille Bento** (cartes) ou **vue liste** (persistée).
+- **Dock flottant** de sélection multiple (actions groupées).
+- **Thèmes** : **Sombre**, **Clair**, **Discord** (Blurple) — bascule en un clic.
 
 ---
 
-* ` 🖥️ `︲**Serveurs** : liste, quitter, mute / unmute, sélection multiple, suppression de messages et retrait de réactions à l'échelle du serveur.
+<a id="connexion"></a>
+# 3. Connexion à Discord
 
-* ` 👥 `︲**Amis** : liste, suppression.
+Deux méthodes, au choix.
 
-* ` 💬 `︲**Messages** : suppression dans les DMs et groupes (avec progression, ETA, annulation, reprise par checkpoint).
+### Méthode A — Connexion avec Discord (recommandée)
+1. Cliquez sur **« Connexion avec Discord »**.
+2. Une fenêtre Discord s'ouvre : connectez-vous (mot de passe / 2FA / **scan du QR**). Discord gère le captcha.
+3. Une fois connecté, la fenêtre se ferme et l'app vous connecte.
+4. Vous pouvez **enregistrer le compte** pour le réutiliser.
 
-* ` 🗂️ `︲**Groupes DM** : gestion complète (lister, quitter, supprimer messages, retirer réactions).
+> [!IMPORTANT]
+> Cette fenêtre utilise une **session isolée et éphémère** : aucun cookie Discord n'est conservé, elle repart **toujours vierge**. Votre mot de passe ne transite **jamais** par l'application (il reste dans la page Discord).
 
-* ` ⭐ `︲**Réactions** : retrait de vos propres réactions (DMs, groupes, serveurs). Fiabilité garantie par le modèle **scan → suppression → vérification** : encodage emoji conforme à Discord (`U+FE0F` conservé — un ❤️ n'est plus envoyé comme ❤), scan **complet** à chaque run (plus de delta par watermark qui sautait des canaux et affichait « 0 réaction »), et **re-scan de contrôle** qui ne comptabilise « supprimé » que si Discord confirme l'absence. Registre local de confirmation (ledger) contre les fantômes du cache `me:true` périmé.
+### Méthode B — Jeton manuel
+1. Collez votre **jeton utilisateur** dans le champ, cliquez sur l'œil pour l'afficher.
+2. **« Se connecter »**.
+3. **« Enregistrer »** pour le conserver (chiffré).
 
-* ` 📖 `︲**Read All** : marquer tous les serveurs comme lus, débit gouverné, **progression live** sur le bouton.
+> [!TIP]
+> Pour obtenir votre jeton manuellement : dans le client Discord (navigateur), DevTools → onglet Réseau → une requête vers `discord.com/api` → en-tête `Authorization`. **Ne partagez jamais un jeton** : il donne un accès complet à votre compte.
 
-* ` 🔑 `︲**Gestion des tokens** : enregistrer / charger / supprimer, **chiffrés au repos** (`safeStorage`), enveloppe de schéma versionnée, écritures sérialisées (mutex) et atomiques.
+---
 
-* ` 🩹 `︲**Reprise de scan** : toute opération interrompue (annulation, perte réseau) propose **« Reprendre / Repartir à zéro »** et reprend à l'élément près.
+<a id="data-package"></a>
+# 4. Le Data Package (import d'export)
 
-* ` ⚡ `︲**Delta par watermark** : un serveur déjà nettoyé n'est plus re-scanné intégralement — les canaux inchangés sont sautés (1 requête de contrôle), les modifiés sont scannés **bornés** au dernier point nettoyé.
+Le **Data Package** est l'onglet dédié à **l'exploitation locale d'un export de compte Discord** — le fichier `.zip` que Discord vous envoie sur demande (« Mes données » → « Demander mes données »). **Tout est traité sur votre machine.**
+
+## 4.1 Importer
+- Glissez-déposez votre `.zip` ou sélectionnez-le. L'app lit l'archive **par tranches** (les centaines de Mo ne sont pas copiés en mémoire) et affiche la progression.
+
+## 4.2 Vue Messages
+- Liste des salons, **groupée** (Messages directs, Groupes, puis un bloc par serveur) et triée par volume.
+- **Filtres** : par type (Tous / MP / Groupes / Serveurs) et options **« Masquer les MP vides »**, **« Masquer les groupes vides »**, **« Masquer les notifications système »**, **« Masquer les serveurs quittés »**.
+- **Recherche** dans les salons/messages.
+- **Sélection** (par message ou tout) et **suppression** des messages.
+- **Export** de ce que vous voulez en **ZIP** ou **JSON**.
+
+## 4.3 Vue Galerie
+- **Mosaïque 4 colonnes** de **toutes** les pièces jointes : **photos, vidéos, audio et fichiers** (icônes par type).
+- **Filtres** : par genre (Tout / Photos / Vidéos / Audio / Fichiers) et par **salon**.
+- **Tri** : plus récents d'abord, avec bouton pour **inverser** (mémorisé).
+- **Clic sur une pièce jointe** → **lecteur** intégré : images, **vidéos** (lecture, plein écran de la visionneuse, navigation ‹ ›) et **audio**.
+- Les formats que le moteur ne sait pas lire (`.mov`, `.mkv`) affichent un message clair + un bouton **Enregistrer**.
+
+## 4.4 Miroir local (optionnel)
+- **« Télécharger les médias »** : télécharge toutes vos pièces jointes (jusqu'à **~1,8 Gio**) dans un dossier local `data/media`, **photos d'abord** (la galerie devient complète visuellement bien avant la fin), avec **reprise** après coupure, **annulation**, et **progression**.
+- Une fois téléchargés, les médias sont servis **depuis le disque** (la galerie **fonctionne hors ligne**) ; sinon, repli automatique sur le CDN Discord.
+- **« Purger les médias »** : supprime les copies locales pour libérer l'espace.
+
+## 4.5 Enregistrer une pièce jointe
+- Depuis la galerie ou le lecteur, **Enregistrer** ouvre une **boîte de dialogue native** et télécharge le fichier dans le dossier choisi (le téléchargement se fait côté application, pas dans l'interface).
+
+---
+
+<a id="securite"></a>
+# 5. Sécurité
+
+> [!IMPORTANT]
+> Cette section décrit ce que l'application fait pour **protéger votre compte et vos données**. Les invariants marqués sont des **zones rouges** : ne pas les casser.
+
+## 5.1 Jetons
+- **Chiffrés au repos** via `safeStorage` (chiffrement lié au système), jamais en clair sur disque. Enveloppe de schéma **versionnée** + **écritures sériaisées** (mutex) et **atomiques**.
+- **Rédaction des IPC sensibles** : les appels `getTokens` / `connectDiscord` / `saveToken` sont masqués (`[redacted]`) dans les journaux internes.
+- **Le mot de passe n'est jamais saisi dans l'app** lors de la connexion native : il reste dans la page Discord.
+
+## 5.2 Fenêtre de connexion native — session éphémère
+- La fenêtre Discord utilise une **session isolée, en mémoire, jamais écrite sur disque**, avec un **nom unique à chaque tentative**. Elle **repart toujours vierge** : aucune connexion Discord ne « fuit » d'une fois sur l'autre.
+- La session est **purgée** (cookies + stockage) à la fermeture, dans tous les cas.
+- Aucun `preload`, `nodeIntegration` désactivé : la page distante n'a **aucun accès** à Node ou au système.
+
+## 5.3 Isolation du renderer (CSP)
+- **`script-src 'self'`** : aucun script inline (les handlers sont migrés vers `addEventListener` / délégation `data-action`). **Ne jamais réintroduire** de script inline ni `'unsafe-inline'` dans `script-src`.
+- **`connect-src 'self'`** : le renderer **ne peut pas** contacter le réseau directement (pas d'exfiltration possible des jetons par une XSS). Tous les appels Discord passent par le **main process**.
+- **`img-src` / `media-src`** : limités à `'self'`, `data:`, le CDN Discord, et le schéma interne `media:` (copies locales). **Le renderer ne peut pas lire `file://`.**
+- **Ouverture externe verrouillée** : `openExternal` n'autorise qu'une **liste blanche** (aucune URL arbitraire).
+
+## 5.4 100 % portable, zéro télémétrie
+- **Toutes** les données (compte, cache, sessions, journaux) vivent dans un dossier **`data/` à côté de l'exécutable** — rien n'est écrit dans `%APPDATA%`.
+- **Aucune donnée n'est envoyée** à un serveur tiers : les seules communications sont celles vers **Discord** (pour votre compte) et **GitHub** (si vous cliquez un lien du panneau info).
+
+## 5.5 Données d'export
+- Le **Data Package** est traité **entièrement en local**. Le miroir média n'écrit que dans `data/media`.
 
 ---
 
 <a id="architecture"></a>
-# `🧩`︲Architecture du projet.
+# 6. Architecture
 
----
+Trois sous-systèmes isolés :
+
+| Sous-système | Fichiers | Rôle |
+|---|---|---|
+| **UI (renderer, ESM)** | `src/components/`, `src/utils/`, `src/styles/` | Interface, opérations lourdes (scan/suppression), galerie, rendu fluide |
+| **Pont (preload)** | `electron/preload.cjs` | `contextBridge` isolé, rédaction des IPC sensibles |
+| **Noyau (main, CJS)** | `electron/main.cjs`, `rateLimiter.cjs`, `persist.cjs`, `discordLogin.service.cjs` | Autorité du débit réseau, persistance atomique, sécurité des jetons, fenêtre de connexion native |
 
 > [!IMPORTANT]
 > **Un seul chemin HTTP autorisé** : `discordFetch()` dans le main process. Le renderer ne parle **jamais** directement à Discord — uniquement par IPC. C'est ce point unique qui garantit le contrôle du débit.
 
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│   RENDERER  (src/ · ESM · sandbox · contextIsolation)            │
-│                                                                  │
-│   components/  ServerManager · DMManager · GroupManager          │
-│                FriendsManager · ProgressBar · bento.js           │
-│   utils/       serverMessageDeleter · serverReactionRemover      │
-│                messageDeleter · reactionRemover · persist.js     │
-│   limiters renderer = FILET (scan 100 r/s · delete 30 r/s)       │
-└───────────────────────────────┬──────────────────────────────────┘
-                                │  contextBridge · IPC (invoke/on)
-┌───────────────────────────────▼──────────────────────────────────┐
-│   PRELOAD  (preload.cjs)                                         │
-│   electronAPI (handlers wrappés) · persistAPI                    │
-│   SENSITIVE_CALLS → args/réponses masqués [redacted]             │
-└───────────────────────────────┬──────────────────────────────────┘
-                                │
-┌───────────────────────────────▼──────────────────────────────────┐
-│   MAIN PROCESS  (electron/ · CJS)                                │
-│                                                                  │
-│   discordFetch(method, path) ── AUTORITÉ DÉBIT                    │
-│      makeRouteScheduler (X-RateLimit-aware)                      │
-│        readScheduler     nominal 25 r/s · burst 16 · 12 conc.    │
-│        deleteScheduler   nominal  4 r/s · burst  2 ·  4 conc.    │
-│      routeKeyFor(path) → bucket par route (snowflakes masqués)   │
-│                                                                  │
-│   persist.cjs  → JSON atomique (tmp + rename), async             │
-│      checkpoints/<op>-<serverId>.json                            │
-│      watermark-<serverId>.json  ·  cleaned_reactions.json        │
-│   safeStorage (tokens chiffrés) + mutex withTokenLock            │
-└───────────────────────────────┬──────────────────────────────────┘
-                                │  HTTPS · axios · timeout 15 s
-                  ┌─────────────▼─────────────┐
-                  │      DISCORD API v9       │
-                  │ X-RateLimit-Remaining     │
-                  │ X-RateLimit-Reset-After   │
-                  │ X-RateLimit-Global        │
-                  └───────────────────────────┘
+RENDERER (src/ — ESM, sandbox, contextIsolation)
+  components/  Managers (Serveurs, MP, Groupes, Amis, Data Package) · bento.js · HelpModal
+  utils/       deleters / removers, persist, progressPanel, theme
+        │  contextBridge · IPC (invoke / on)
+PRELOAD (preload.cjs)  electronAPI (wrappé) · persistAPI · [redacted] sur les appels sensibles
+        │
+MAIN PROCESS (electron/ — CJS)
+  discordFetch()  →  makeRouteScheduler (X-RateLimit-aware)
+  persist.cjs     →  JSON atomique (tmp + rename) : checkpoints, watermark, ledger
+  safeStorage     →  jetons chiffrés + mutex
+  discordLogin    →  fenêtre native + debugger CDP (session éphémère)
+        │  HTTPS · axios · timeout 15 s
+   DISCORD API v9  (X-RateLimit-Remaining / Reset-After / Global)
 ```
-
-**Blocs fonctionnels :**
-
-| Bloc | Fichier | Rôle |
-|---|---|---|
-| `discordFetch()` | `electron/main.cjs` | Seul proxy REST : acquire scheduler → requête → `applyHeaders` (route + global) |
-| `makeRouteScheduler` | `electron/rateLimiter.cjs` | Budget consommé optimistement (`remaining`), pause jusqu'à `reset-after`, repli nominal sans en-têtes, `Retry-After` honoré, anti-deadlock |
-| `makeRateLimiter` | `electron/rateLimiter.cjs` | Token-bucket nominal (repli avant premier en-tête) |
-| `readJson`/`writeJson` | `electron/persist.cjs` | I/O asynchrone, écriture atomique — **jamais de fichier tronqué** |
-| `persist.js` | `src/utils/persist.js` | Checkpoint, watermark, ledger — helpers testables |
-| `serverMessageDeleter.js` / `serverReactionRemover.js` | `src/utils/` | Scans (segmentés en parallèle, ≤12 segments), suppression, checkpoint/reprise |
-| `messageDeleter.js` / `reactionRemover.js` | `src/utils/` | Opérations DM/groupe (scan + suppression, humanisation DELETE conservée) |
-| `rateLimiter.js` | `src/utils/` | Filet renderer — **ne contraint plus** le débit réel (le main décide) |
-| `ServerManager.js` | `src/components/` | Rendu chunké de la liste serveurs (50 lignes/frame) |
 
 ---
 
 <a id="performances"></a>
-# `⚡`︲Performances et optimisations.
+# 7. Performances & anti rate-limit
 
----
-
-## Réseau & Anti-Rate-Limit
-
-* ` 🚦 `︲**Ordonnanceur header-aware** (`makeRouteScheduler`) : avant chaque requête, le budget réel annoncé par `X-RateLimit-Remaining` est consommé de façon optimiste ; si le bucket (route **ou** global) est à zéro, l'ordonnanceur **attend `X-RateLimit-Reset-After`** au lieu d'envoyer la requête. **Les 429 sont évités par construction**, pas subis puis punis.
-
-* ` 📊 `︲**Zéro pénalité post-429** : l'ancien mécanisme coupait le débit à 40 % pendant 40 s après chaque 429. Désormais inatteignable : le budget est lu avant d'agir. `Retry-After` reste en ceinture de sécurité.
-
-* ` ⚡ `︲**Bursts sûrs** : quand le bucket annonce du budget, les requêtes partent en rafale jusqu'à `remaining` (au lieu d'être bridées à un taux nominal). Benchmark local : 40 requêtes nominales ≈ 981 ms (~41 r/s) vs **0 ms** avec budget en-têtes.
-
-* ` 🪣 `︲**Débits nominaux calibrés** (repli, avant premier en-tête) : lecture **25 r/s**, suppression **4 r/s** — seuils sûrs pour un jeton utilisateur (selfbot), plus stricts que les 50 r/s documentés des bots. Les en-têtes peuvent ensuite accorder plus.
-
-* ` 🧵 `︲**Scan serveur parallèle segmenté** : jusqu'à 12 segments temporels par canal (découpage snowflake), workers ≤ 8 canaux — le **limiter global** plafonne le débit combiné (pas de pic local).
-
-* ` 🔁 `︲**Retry borné** (3 tentatives) avec backoff `Retry-After` sur les mutations ; 3 tentatives réseau avant d'abandonner un segment de scan (résilience).
-
-* ` ⏱️ `︲**Timeout global** `axios` 15 s — aucun appel ne peut pendre indéfiniment.
-
-## Cache local & Reprise
-
-* ` 💾 `︲**Checkpoints** (`checkpoints/<op>-<serverId>.json`) : état `scan → delete → verifying`, file de travail (`queue`) et progression (`progress.done`) par opération/serveur. Sauvegarde après chaque canal, toutes les 25 suppressions, et **à l'annulation**. Reprise à l'élément près via le prompt « Reprendre / Repartir à zéro ». Nettoyage automatique au-delà de 7 jours.
-
-* ` 🗂️ `︲**Watermarks** (`watermark-<serverId>.json`) : dernier id vu par canal (TTL 24 h). Canal inchangé → **skip** (1 requête de contrôle) ; modifié → scan **borné** au dernier id nettoyé. Un serveur déjà analysé ne repart jamais de zéro.
-
-* ` 🩹 `︲**Ledger anti-fantômes** (`cleaned_reactions.json`) : chaque réaction **confirmée supprimée** (204) ou **confirmée absente** (404) est mémorisée (TTL 24 h). Le cache `me:true` périmé de l'API Discord ne produit donc plus de « réactions fantômes » re-signalées à chaque run.
-
-* ` 🔒 `︲**Écritures atomiques** (`persist.cjs` : tmp + rename, async) — un arrêt brutal ne corrompt jamais un checkpoint, watermark ou ledger.
-
-* ` 📁 `︲**Caches à TTL** : serveurs (persistant, 30 s, contournable en `force` après mutation), canaux (mémoire, 60 s).
-
-## UI/UX — fluidité
-
-* ` 🎨 `︲**Design system léger** : variables CSS dans `src/styles/theme.css` — thèmes **dark** (défaut) / **light** / **discord** pilotés par `data-theme` sur `<html>` (cycle au clic, persisté en localStorage), breakpoints réels dans `app.css` — **768 / 640 / 480 px**.
-
-* ` 📜 `︲**Rendu chunké** des listes serveurs : 50 cartes par frame (`requestAnimationFrame`) — plus de frame bloquée sur 200 entrées.
-
-* ` 🔄 `︲**Scroll préservé** après chaque rafraîchissement de liste (`preservePageScroll`).
-
-* ` ⏳ `︲**ETA temps réel** (suppressions), **progression live** sur « Read All », barres de progression déterminées/indéterminées.
-
-* ` ⚡ `︲**Warm-up GPU/layout** au démarrage (`warmUpPages`) : les premiers changements de page sont aussi fluides que les suivants.
-
-* ` 🖥️ `︲**Panneau de log debug** intégré (draggable, resizable, copie, cap 500 lignes) et `window.__logs` capé à 5000 lignes — pas de fuite mémoire. Ouvert via `window.toggleDebugLog()` depuis la console DevTools (le bouton nav « Log » a été retiré).
-
-* ` 📉 `︲**Mapping minimal des messages** : `attachments`/`embeds`/`sticker_items`/`message_snapshots` transmis en **nombres** (`(x || 0) > 0`) au lieu de tableaux complets — parsing plus léger, `reactions` conservé complet (nécessaire).
-
----
-
-<a id="interface"></a>
-# `🎨`︲Interface : Sidebar Icon-Rail, Bento Grid & Thèmes.
-
----
-
-## Sidebar Icon-Rail (76px)
-
-* ` 🧊 `︲**Barre latérale compacte** (240px → 76px) : chaque onglet (**Friends / Servers / DMs / Groups**) est un **icon box** carré `48×48` (`border-radius: 12px`, fond `--bg-card`), icône centrée, **tooltip** au survol (`data-tooltip`, pur CSS, sans JS).
-* ` 💜 `︲**Onglet actif** : fond `--brand` + icône sombre + glow violet.
-* ` 👤 `︲**Profil compact** : avatar + bouton déconnexion (power) en boxes — le nom/texte ont été retirés.
-* ` 🌗 `︲**Toggle de thème** (orb 38px) au-dessus de l'avatar : bascule `data-theme="dark|light|discord"` sur `<html>` (cycle Sombre → Clair → Discord), persisté en localStorage
-* Le bouton nav « Log » a été **retiré** — le panneau de log debug reste accessible via `window.toggleDebugLog()` (console).
-
-## Bento Grid (cartes)
-
-* ` 🃏 `︲**Composant unifié** `src/components/bento.js` : `bentoCard()` partagé par les **4 managers** (Serveurs, DMs, Groups, Friends) + `FloatingSelectionDock` (dock d'actions groupées) + `listView` (toggle Grid/Liste).
-* ` 🧱 `︲**Anatomie de carte** : en-tête (cercle de sélection `(○)` autonome à gauche, badge de statut à droite — `👑 Owner`, `DM`, `Group`, `Friend`) · identité (avatar `40×40` **dégagé de toute superposition** + nom + badge `[ID]` inline + sous-titre) · **grille d'actions 2×2** en bas.
-* ` ✅ `︲**Sélection multiple** : cercle autonome (aucun chevauchement / clipping sur l'avatar) ; **Dock flottant** glassmorphism (bas-centre) avec compteur, *Select All* et actions groupées (*Read*, *Mute*, *Delete Msgs*, *Rm Reactions*, *Leave*, *Close*, *Remove*) — les boutons statiques du haut ont été supprimés.
-* ` 🔀 `︲**Toggle Grid / Liste** (persisté par page en localStorage) : même DOM, bascule **CSS seule** (`.list-view`).
-* ` 🎨 `︲**Actions toujours visibles, texte + emoji, codées par thème de dangerosité** — aucun menu déroulant :
-  `🔕 Mute` (slate neutre) · `🗑️ Delete Msgs` (rouge mât) · `💥 Rm Reactions` (ambre) · `🚪 Leave` / `Close DM` / `🚫 Remove` (crimson).
-* ` 🆔 `︲**Badge `[ID]`** inline à côté du nom : copie l'ID en 1 clic (toast « Copied to clipboard! »).
-
-## Thèmes Clair / Sombre
-
-* ` 🌗 `︲**Dark Slate** (défaut) : `#0f1015` app · `#16171d` sidebar · `#21232c` cartes · `#f4f4f5` texte · `#8E95E1` brand.
-* ` ☀️ `︲**Light Portfolio** : `#f0f2f5` app · `#e5e8ef` sidebar · `#ffffff` cartes · `#18181b` texte · `#6366f1` brand.
-* ` 🎮 `︲**Discord Dark** : `#313338` app · `#2b2d31` cartes/sidebar · `#1e1f22` neutre · `#5865f2` (Blurple) · `#f2f3f5` texte.
-* ` 🎛️ `︲Toutes les couleurs passent par les variables CSS (`theme.css`, `:root[data-theme="dark|light|discord"]`) ; **transition douce** `background-color / color / border-color` au changement de thème.
-* ` 📊 `︲Variables ajoutées : `--bg-sidebar`, `--btn-{neutre,danger,amber,crimson}-*`, `--owner-badge-*`, `--action-grid-*`, `--dock-bg`, `--checkbox-border`, `--hover-overlay`, `--border-subtle/strong`, `--card-shadow`.
-
-## Backend lié
-
-* ` 🏷️ `︲Titre de l'app + modal À propos : **« Discord Account Manager - Enhanced Forked By KataV8 »**, mention **« Forked & Enhanced by KataV8 »** sous la version.
-* ` 🖥️ `︲IPC ajouté : `discord:readServer` (marquage « lu » d'un serveur — ack simple, même pattern que `readAll`) + champ `owner` dans la liste des serveurs (badge `👑 Owner`).
-
----
-
-<a id="gardefous"></a>
-# `🛡️`︲Garde-fous & Do Not Break.
-
----
-
-> [!CAUTION]
-> **Ces zones rouges protègent la garantie zéro-429 et l'intégrité des données. Toute modification d'un de ces éléments sans comprendre les conséquences peut entraîner des 429 en cascade, des blocages de jeton, des suppressions manquées ou des états corrompus.**
-
-### 🚫 Réseau / Rate-Limit
-
-| # | Zone rouge | Conséquence si modifiée |
-|---|---|---|
-| **G1** | Tout appel HTTP DOIT passer par `discordFetch()` (+ `routeKeyFor`, acquire/release scheduler) dans `main.cjs` | 429, coupure de débit, restriction d'IP, suspension de jeton |
-| **G2** | Ne pas bypasser `makeRouteScheduler` (`electron/rateLimiter.cjs`) | Perte de la lecture des `X-RateLimit-*` → 429 systématiques |
-| **G3** | Ne pas dépasser les nominaux lecture **25 r/s** / suppression **4 r/s** sans preuve empirique | Buckets user-token non documentés et plus stricts que les 50 r/s des bots |
-| **G4** | Ne pas retirer les boucles de retry 429 (3 tentatives) ni le `Retry-After` | Suppressions perdues + drapeaux d'abus |
-| **G5** | Ne pas dépasser 12 segments de scan parallèle ni `autoConcurrency` > 8 | Aucun gain (débit global déjà plafonné) + pics locaux |
-| **G6** | Conserver `humanDelay(200)` sur les **DELETE** DM/groupe (le `sleep` de scan a été retiré à dessein) | Détection comportementale anti-abus (au-delà du rate-limit) |
-
-### 🚫 Sécurité
-
-| # | Zone rouge | Conséquence |
-|---|---|---|
-| **S1** | Ne jamais retirer `getTokens`/`connectDiscord`/`saveToken` de `SENSITIVE_CALLS` (`preload.cjs`) | Tokens en clair dans la console DevTools |
-| **S2** | Ne jamais stocker de token en clair : `safeStorage` + enveloppe `schemaVersion` + **mutex `withTokenLock`** obligatoires | Fuite ou perte de token (race read-modify-write) |
-| **S3** | Ne pas élargir l'allowlist `app:openExternal` (dépôt GitHub uniquement) ni `connect-src 'self'` | Surface d'attaque : une XSS du renderer exfiltrerait les tokens |
-| **S4** | CSP `script-src 'self'` en place (les 36 handlers inline ont été migrés vers `addEventListener` / délégation `data-action`). **Ne jamais ré-introduire** de handler inline ni `'unsafe-inline'` dans `script-src` | Réouverture d'une XSS du renderer |
-
-### 🚫 Cache / Checkpoint / Ledger
-
-| # | Zone rouge | Conséquence |
-|---|---|---|
-| **P1** | Toute écriture de persistance passe par `electron/persist.cjs` (atomique) — **jamais de `writeFileSync` brut** | Fichier tronqué sur arrêt brutal → état corrompu |
-| **P2** | Ne pas changer le format checkpoint/watermark/ledger sans bumper `schemaVersion` + migration | Fichiers anciens ignorés, reprise cassée |
-| **P3** | Ledger : ne ledgérer que sur **204 (supprimé) ou 404 (absent)** ; un **400 ne doit jamais** être ledgéré ; **TTL 24 h à conserver** | Masquer de vraies réactions ré-ajoutées (perte d'intégrité) ou régression fantômes |
-| **P4** | Ne pas retirer le prompt « Reprendre / Repartir à zéro » ni la sauvegarde à l'annulation | Progression perdue à la moindre interruption |
-
-### 🚫 UI / Intégrité des données
-
-| # | Zone rouge | Conséquence |
-|---|---|---|
-| **U1** | Rendu chunké 50/frame dans `ServerManager` à conserver | Frame bloquée sur 200 serveurs |
-| **U2** | `attachments`/`embeds`/`snapshots` sont des **nombres** : les consommateurs testent `(x || 0) > 0`, **pas `.length`** | Messages « pièce jointe seule » jamais supprimés (régression déjà rencontrée et corrigée) |
-| **U3** | `reactions` doit rester mappé **complet** (`emoji`, `me`) | Retrait de réactions cassé |
-| **U4** | Ne pas supprimer `test/routeScheduler.test.js` / `test/persist.test.js` (garanties zéro-429 + atomicité) | Régressions silencieuses |
-
----
-
-<a id="choices"></a>
-# `⚖️`︲Choix techniques & limitations.
-
-| Choix | Justification |
-|---|---|
-| **Electron 43 + Node 22, sans bundler** | Renderer ESM natif chargé tel quel (`index.html` → `src/main.js`), main/preload en `.cjs`. Aucune étape de build de dev. |
-| **`discordFetch()` unique + `makeRouteScheduler`** | Toute la politique de débit vit au **seul endroit** où l'HTTP est émis. Les limiters renderer ne sont qu'un filet (taux relevés : scan 100 r/s, delete 30 r/s) pour ne jamais brider les bursts que les en-têtes autorisent. |
-| **Bucket par route normalisée (`routeKeyFor`)** | Approximation des « major params » Discord (snowflakes masqués) — suffisant pour éviter les 429 sans modèle exact de bucket, qui n'est pas public pour les jetons utilisateur. |
-| **Persistance JSON atomique plutôt que SQLite/IndexedDB** | Volumes modestes (IDs + curseurs, pas de contenu), zéro dépendance, écriture `tmp+rename` crash-safe. Pas de BBD nécessaire (YAGNI). |
-| **Checkpoint en `queue` de chaînes compactes** | `"canal:message:emoji"` — non sensible, dédupliqué, repris à l'index près. Aucun contenu de message n'est stocké. |
-| **Ledger TTL 24 h** | Compromis assumé : une réaction réellement ré-ajoutée dans les 24 h serait ignorée (borné dans le temps) ; en échange, le cache `me:true` périmé de Discord ne crée plus de fantômes récurrents. |
-| **Scan segmenté (messages serveur)** | La parallélisation temporelle ne débloque pas le débit (plafonné par le limiter) mais rend chaque segment résilient ; la **reprise par canal** couvre l'interruption (un canal `partial` se re-scanne seul). |
-| **`humanDelay` conservé sur les DELETE DM** | Au-delà du rate-limit, la suppression est la route la plus surveillée ; l'humanisation est une protection comportementale. Retirée du scan (lecture, peu risquée). |
-| **`except` larges dans les opérations GUI** | Un crash silencieux journalisé vaut mieux qu'un traceback non géré qui gèle l'UI ; chaque erreur est loggée avec contexte. |
-| **Limitations connues** | Couverture de tests ≈ **36 % ligne** sur le périmètre réel (le cœur pur est bien couvert : `helpers.cjs` 100 %, `emojiUtils.js` 100 %, `tokenStore.cjs` 93 % ; les composants UI et `main.cjs` restent peu testés) · `style-src 'unsafe-inline'` conservé (styles inline = risque faible) · le `X-RateLimit` des jetons utilisateur n'est pas documenté par Discord — les en-têtes sont la seule vérité. |
+- **Ordonnanceur conscient des en-têtes** : avant chaque requête, le budget réel (`X-RateLimit-Remaining`) est consommé de façon optimiste ; si un bucket (route **ou** global) est à zéro, l'ordonnanceur **attend `X-RateLimit-Reset-After`**. Les `429` sont **évités par construction**.
+- **Bursts sûrs** : quand le bucket annonce du budget, les requêtes partent en rafale jusqu'à `remaining`.
+- **Débits nominaux (repli)** : lecture **25 r/s**, suppression **4 r/s** (seuils sûrs pour un jeton utilisateur).
+- **Scan serveur parallèle segmenté** : jusqu'à 12 segments temporels par canal, 8 canaux en parallèle, débit global plafonné par l'ordonnanceur.
+- **Retry borné** (3 tentatives), **timeout global** `axios` 15 s.
+- **Reprise** : **checkpoints** (par opération/serveur), **watermarks** (delta par canal, TTL 24 h), **ledger** anti-fantômes pour les réactions. Écritures **atomiques** (jamais de fichier tronqué).
+- **Interface fluide** : rendu **chunké** (50 cartes/frame), scroll préservé, ETA temps réel, warm-up au démarrage, rendu galerie **virtualisé** (fenêtrage) et **recyclage des tuiles** au défilement.
 
 ---
 
 <a id="technologies"></a>
-# `🧰`︲Technologies utilisées.
+# 8. Technologies
 
----
-
-* ` ⚛️ ` ︲**Electron 43** : application de bureau (renderer sandboxé, `contextIsolation`).
-* ` 🟢 ` ︲**Node.js 22** (bundlé) : moteur (main/preload `.cjs`, renderer ESM).
-* ` 🌐 ` ︲**axios** : HTTP vers l'API Discord (timeout 15 s, `validateStatus`).
-* ` 🤖 ` ︲**discord.js-selfbot-v13** : connexion WebSocket (login uniquement ; toutes les opérations passent par le REST).
-* ` 📦 ` ︲**electron-builder** : packaging Windows (NSIS / dir) — 100% portable.
-* ` 🧪 ` ︲**node:test** (stdlib) : 10 fichiers, 52 tests — `npm test`, coverage via `npm run test:coverage`.
+- **Electron 43** — application de bureau (renderer sandboxé, `contextIsolation`). Icône de fenêtre personnalisée.
+- **Node.js 22** — moteur (main/preload `.cjs`, renderer ESM).
+- **axios** — HTTP vers l'API Discord (timeout 15 s).
+- **discord.js-selfbot-v13** — connexion WebSocket pour la session (les opérations passent par le REST).
+- **fflate** — lecture/création des archives ZIP (import/export).
+- **electron-builder** — packaging Windows (NSIS / dossier), 100 % portable.
+- **TypeScript** — types (aucune étape de build obligatoire).
+- **node:test** (stdlib) — **420 tests** (`npm test`), couverture via `npm run test:coverage`.
 
 ---
 
 <a id="installation"></a>
-# `🛠️`︲Installation.
+# 9. Installation
 
----
-
-1️⃣︲**Prérequis.**
-
-* ` 🟢 ` ︲**Node.js LTS** (`^20`) et **npm**.
-
-2️⃣︲**Cloner et installer.**
+**Prérequis :** Node.js LTS (≥ 20) et npm.
 
 ```bash
 git clone https://github.com/Bherl1/DiscordAccMgr.git
@@ -338,140 +272,133 @@ cd DiscordAccMgr
 npm install
 ```
 
-3️⃣︲**Lancer l'application.**
-
+**Lancer :**
 ```bash
-npm run start
+npm start
 ```
 
-4️⃣︲**Lancer les tests (52 tests).**
-
+**Tests :**
 ```bash
 npm test
 npm run test:coverage
 ```
 
-5️⃣︲**Packager (Windows).**
-
+**Packager (Windows) :**
 ```bash
-npm run package          # NSIS + dir
-npm run package:portable # identique à package (toujours portable, dossier data/ local)
+npm run package          # installeur NSIS + dossier
+npm run package:portable # dossier portable (data/ local)
+npm run verify:asar      # vérifie la lecture ESM dans l'archive packagée (gate)
 ```
 
 > [!NOTE]
-> Alerte Defender possible sur l'exécutable non signé — application non signée, distribution via Releases.
+> Un avertissement Windows Defender est possible sur l'exécutable non signé (application non signée).
 
 ---
 
 <a id="utilisation"></a>
-# `▶️`︲Utilisation.
+# 10. Utilisation pas à pas
 
----
-
-> [!CAUTION]
-> **Avant un traitement de masse (suppression de messages / réactions), faites une copie de sauvegarde de votre compte côté Discord si l'opération est critique.** Les suppressions sont **irréversibles**. Les confirmations destructives sont systématiques, mais aucune application ne peut annuler une suppression déjà envoyée à l'API.
-
-1️⃣︲**Se connecter.** Collez votre token utilisateur (bouton œil pour afficher). Le token peut être enregistré localement (chiffré `safeStorage`) pour un usage ultérieur.
-
-2️⃣︲**Naviguer.** Les onglets **Friends / Servers / DMs / Groups** chargent les listes en **vue Bento Grid** (cartes) par défaut (cache 30 s, refetch en arrière-plan) ; bascule **Liste compacte** via le toggle d'en-tête (persisté par page).
-
-3️⃣︲**Opérations par serveur** (onglet Servers, boutons de ligne) :
-
-| Bouton | Action |
-|---|---|
-| `[ID]` | Copie l'ID du serveur dans le presse-papiers (toast de confirmation) |
-| `🔕 Mute` | Mute / unmute le serveur |
-| `🗑️ Delete Msgs` | Supprime tous vos messages du serveur — scan + suppression, **reprise par checkpoint** si interrompu |
-| `💥 Rm Reactions` | Retire vos réactions — scan complet, suppression, **re-scan de vérification** (jamais de « supprimé » non confirmé) |
-| `🚪 Leave` | Quitte le serveur |
-| `Read All` | Marque tout comme lu — **progression `Read All (12/200)`** sur le bouton |
-
-4️⃣︲**Lire la progression.** Chaque opération affiche un panneau : phase, compteur, **ETA**, barre de progression, bouton **Stop**.
+1. **Se connecter** — « Connexion avec Discord » (recommandé) ou jeton manuel (voir [Connexion](#connexion)).
+2. **Naviguer** — onglets **Amis / Serveurs / MP / Groupes** en **grille Bento** (ou vue liste).
+3. **Agir** — sur chaque carte : boutons d'action (Mute, Supprimer les messages, Retirer les réactions, Quitter…) ou **Nettoyer** pour tout faire d'un coup.
+4. **En lot** — cochez plusieurs cartes → le **dock** du bas s'active (compteur, Tout sélectionner / Tout désélectionner, Nettoyer ▾).
+5. **Data Package** — glissez votre export `.zip`, puis explorez **Messages** et **Galerie** (voir [Data Package](#data-package)).
+6. **Miroir** — dans la galerie, « Télécharger les médias » pour tout avoir en local.
 
 > [!IMPORTANT]
-> En cas d'interruption (Stop, perte réseau, fermeture) : la prochaine exécution de la même opération sur le même serveur propose **« Reprendre / Repartir à zéro »**. La reprise continue **à l'élément près**, sans re-scanner les canaux déjà analysés.
+> En cas d'interruption (Stop, perte réseau, fermeture), relancer la même opération propose **« Reprendre / Repartir à zéro »** : la reprise continue **à l'élément près**, sans re-scanner les canaux déjà analysés.
+
+> [!CAUTION]
+> **Les suppressions sont irréversibles.** Les confirmations destructives sont systématiques, mais aucune application ne peut annuler une suppression déjà envoyée. Faites une sauvegarde si l'opération est critique.
 
 ---
 
 <a id="configuration"></a>
-# `⚙️`︲Configuration.
+# 11. Configuration
+
+- **Débits nominaux** (`electron/rateLimiter.cjs`) : lecture **25 r/s** (burst 16, 12 concurrents), suppression **4 r/s** (burst 2, 4 concurrents). Ce sont des **planchers de sûreté** ; les en-têtes gouvernent ensuite les bursts réels. **Ne pas les augmenter sans preuve empirique.**
+- **TTL** : watermark serveur 24 h · ledger réactions 24 h · cache serveurs 30 s · cache canaux 60 s · checkpoints nettoyés après 7 jours.
+- **Jetons** : chiffrés `safeStorage` (préfixe `enc:`), enveloppe `schemaVersion`, migration de l'ancien format, entrées corrompues marquées. Où : `data/userData/saved_tokens.json`.
+- **Portable** : `data/` à côté de l'exécutable (`userData`, `sessionData`, `cache`, `crashDumps`, `logs`, `media`). Variable `ELECTRON_DEV=1` force les DevTools.
+- **Thème** : bouton dans le rail (Sombre → Clair → Discord), persisté en `localStorage`.
 
 ---
 
-> [!NOTE]
-> Pas de fichier de configuration externe : les réglages sont dans le code, documentés ci-dessous.
+<a id="gardefous"></a>
+# 12. Garde-fous (Do Not Break)
 
-* ` 🚦 `︲**Débits nominaux** (`electron/rateLimiter.cjs`) : lecture **25 r/s** (burst 16, 12 concurrents), suppression **4 r/s** (burst 2, 4 concurrents). Ces valeurs sont des **planchers de sécurité** — les en-têtes `X-RateLimit-*` gouvernent ensuite les bursts réels. Ne pas les augmenter sans preuve empirique (G3).
+> [!CAUTION]
+> Ces zones protègent la **garantie zéro-429** et **l'intégrité des données**. Les modifier sans comprendre peut provoquer des `429` en cascade, des jetons bloqués, des suppressions manquées ou des états corrompus.
 
-* ` 🪣 `︲**Filet renderer** (`src/utils/rateLimiter.js`) : scan 100 r/s, delete 30 r/s — ne contraint plus le débit (le main décide), ne sert que de protection contre un flood IPC.
+### Réseau / Rate-limit
+| # | Zone | Si modifiée |
+|---|---|---|
+| **G1** | Tout appel HTTP DOIT passer par `discordFetch()` | `429`, restrictions, suspension de jeton |
+| **G2** | Ne pas contourner `makeRouteScheduler` | Perte de la lecture des `X-RateLimit-*` |
+| **G3** | Ne pas dépasser 25 r/s lecture / 4 r/s suppression sans preuve | Buckets user-token plus stricts |
+| **G4** | Garder le retry `429` (3 tentatives) + `Retry-After` | Suppressions perdues, drapeaux d'abus |
+| **G5** | Ne pas dépasser 12 segments / concurrence > 8 | Pics locaux sans gain |
+| **G6** | Garder `humanDelay` sur les DELETE MP/groupe | Détection comportementale |
 
-* ` 🕰️ `︲**TTL** : watermark serveur 24 h · ledger réactions 24 h · cache serveurs 30 s · cache canaux 60 s · checkpoints nettoyés après 7 jours.
+### Sécurité
+| # | Zone | Si modifiée |
+|---|---|---|
+| **S1** | Garder `getTokens`/`connectDiscord`/`saveToken` dans `SENSITIVE_CALLS` | Jetons en clair dans la console |
+| **S2** | Jetons jamais en clair (`safeStorage` + mutex) | Fuite / perte de jeton |
+| **S3** | Ne pas élargir `openExternal` (liste blanche) ni `connect-src 'self'` | Exfiltration possible par XSS |
+| **S4** | Garder `script-src 'self'` (aucun script inline) | Réouverture d'une XSS |
+| **S5** | La fenêtre de connexion native reste en **session éphémère** (pas de `partition` persistante) | La fenêtre se rouvrirait déjà connectée |
 
-* ` 🔑 `︲**Tokens** : chiffrés `safeStorage` (préfixe `enc:`), enveloppe `schemaVersion: 1`, migration automatique de l'ancien format plat, entrées corrompues marquées (supprimables), écritures sérialisées par mutex.
+### Persistance
+| # | Zone | Si modifiée |
+|---|---|---|
+| **P1** | Toute écriture passe par `persist.cjs` (atomique) | Fichier tronqué = état corrompu |
+| **P2** | Bumper `schemaVersion` + migration si format changé | Reprise cassée |
+| **P3** | Ledger : ne consigner que sur `204`/`404`, TTL 24 h | Fantômes ou réactions masquées à tort |
+| **P4** | Garder le prompt « Reprendre / Repartir à zéro » | Progression perdue |
 
-* ` ⚙️ `︲**Environnement** : `ELECTRON_DEV=1` force l'ouverture des DevTools en build packagé. 100% portable : toutes les données (userData, session, cache, crashDumps, logs) vivent dans `data/` à côté de l'exécutable — aucun écrit dans `%APPDATA%` (migration automatique ponctuelle de l'ancien userData).
-
----
-
-<a id="maintenance"></a>
-# `🔧`︲Maintenance & débogage.
-
----
-
-* ` 🐞 `︲**Panneau de log** : ouvert via `window.toggleDebugLog()` dans la console DevTools (`Ctrl+Shift+I`) — draggable, redimensionnable, copie dans le presse-papiers, cap 500 lignes.
-
-* ` 🧪 `︲**Tests** : `npm test` (52 tests — rate limiter, ordonnanceur header-aware, persistance, tokens, réactions, escaping, structure `bentoCard`) ; `npm run test:coverage` pour la couverture.
-
-* ` 🧹 `︲**Cache local** : les fichiers de persistance vivent dans `data/userData/` à côté de l'exécutable — `checkpoints/`, `watermark-*.json`, `cleaned_reactions.json`, `saved_tokens.json`, `servers_cache.json`. Les supprimer = retour à un état « à froid » (sans perte de tokens si vous ne touchez pas `saved_tokens.json`).
-
-* ` ⚠️ `︲**Points ouverts** (tracés, à traiter par priorité) : scinder `electron/main.cjs` (monolithe restant) · remonter la couverture réelle (~36 %) vers le seuil de 80 % · création du `CHANGELOG.md` · icône d'application manquante (`src/icons/app-icon.png`) · validation `npm run package`.
-
----
-
-<a id="roadmap"></a>
-# `🗺️`︲Roadmap.
-
----
-
-> [!NOTE]
-> Pistes identifiées à partir du code et des rapports d'audit, à valider/prioriser :
-
-* ` 🧪 `︲Remonter la couverture réelle (~36 %) vers le seuil de 80 % : tester les deleters/removers et les flux IPC avec `safeStorage` mocké.
-* ` 📜 `︲Créer `CHANGELOG.md` (format Keep a Changelog) — version 1.6.0 candidate.
-* ` 📈 `︲Mesure runtime des Core Web Vitals (Lighthouse/DevTools) à l'occasion d'un lancement.
-* ` 🖥️ `︲Fusion des modules DM/serveur dupliqués (`messageDeleter` ↔ `serverMessageDeleter`, réactions idem) dans un cycle dédié.
+### UI / intégrité
+| # | Zone | Si modifiée |
+|---|---|---|
+| **U1** | Rendu chunké 50/frame | Frame bloquée sur gros comptes |
+| **U2** | `attachments`/`embeds`/`snapshots` sont des **nombres** (`(x \|\| 0) > 0`) | Messages à pièce jointe seule non supprimés |
+| **U3** | `reactions` reste mappé **complet** | Retrait de réactions cassé |
 
 ---
 
-<a id="contribution"></a>
-# `🤝`︲Contribution.
+<a id="depannage"></a>
+# 13. Dépannage / FAQ
+
+**La connexion Discord reste bloquée sur la page de connexion**
+Le captcha ou la 2FA sont gérés par Discord : complétez-les dans la fenêtre. Si besoin, utilisez le jeton manuel.
+
+**Les vidéos ne se lisent pas**
+Les formats `.mov`/`.mkv` ne sont pas décodables par le moteur : le lecteur propose **Enregistrer**. Les `.mp4`/`.webm` se lisent.
+
+**La galerie rame / les images sautent**
+Vérifiez votre connexion (les images viennent du CDN). Lancez « Télécharger les médias » pour un usage local hors ligne.
+
+**Où sont mes données ?**
+`data/` à côté de l'exécutable (mode portable). Les jetons : `data/userData/saved_tokens.json` (chiffrés).
+
+**Comment ouvrir le panneau de log ?**
+Ouvrez les DevTools (F12) puis tapez `window.toggleDebugLog()`.
+
+**Une erreur `429` ?**
+L'app les évite par construction. Si vous en voyez, un appel réseau ne passe pas par `discordFetch()` (voir G1).
+
+**Puis-je annuler une suppression ?**
+Non. Les suppressions sont définitives côté Discord.
 
 ---
 
-> [!NOTE]
-> Aucune convention formelle : marche à suivre standard ci-dessous.
+<a id="credits"></a>
+# 14. Crédits & licence
 
-1️⃣︲**Fork** du dépôt.
+- **Application originale** : créée par **Bherl1** (https://github.com/Bherl1/DiscordAccMgr).
+- **Fork & enrichissements** : **KataV8** (thèmes, design Bento, Data Package, galerie média, miroir local, connexion Discord native, logo…).
 
-2️⃣︲**Créer une branche dédiée :**
+**Licence MIT** — voir `LICENSE`. © 2024 Bherl1.
 
-```bash
-git checkout -b feature/ma-fonctionnalite
-```
-
-3️⃣︲**Committer** des changements clairs et atomiques.
-
-4️⃣︲**Ouvrir une Pull Request** en décrivant le contexte, le problème résolu et les effets de bord.
-
-> [!TIP]
-> Toute modification touchant au **réseau** (`discordFetch`, schedulers), à la **persistance** (formats checkpoint/watermark/ledger) ou aux **mappings de messages** doit être accompagnée des tests correspondants et d'une vérification des garde-fous (G1–G6, S1–S4, P1–P4, U1–U4).
-
----
-
-<a id="licence"></a>
-# `📜`︲Licence.
-
----
-
-> [!IMPORTANT]
-> Projet distribué sous licence **MIT** — voir le fichier `LICENSE` à la racine du dépôt. Outil non officiel : l'utilisation d'un jeton utilisateur avec l'API Discord est contraire aux conditions d'utilisation de Discord et peut entraîner le bannissement du compte concerné.
+> [!CAUTION]
+> Outil non officiel : l'usage d'un jeton utilisateur avec l'API Discord contredit les conditions d'utilisation de Discord et peut entraîner le bannissement du compte. Vous êtes seul responsable de l'usage que vous en faites.

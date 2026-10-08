@@ -19,7 +19,8 @@ export class FriendsManager {
     delegate(contentArea, this.actions);
 
     this.selectionDock = new FloatingSelectionDock({
-      onSelectAll: () => this.toggleSelectAll(),
+      onSelectAll: () => this.selectAllFriends(),
+      onDeselectAll: () => this.deselectAllFriends(),
       actions: [
         { label: '🚫 Supprimer', className: 'btn-danger', onClick: () => this.removeSelected() },
       ],
@@ -47,9 +48,9 @@ export class FriendsManager {
             icon: friend.avatar,
             iconAlt: friend.displayName,
             checkboxClass: 'friend-checkbox',
-            badge: { label: 'Friend' },
+            badge: { label: 'Ami' },
             quick: [
-              { action: 'remove', label: 'Remove', theme: 'crimson', emoji: '🚫' },
+              { action: 'remove', label: "Retirer l'ami", theme: 'crimson', emoji: '🚫' },
             ],
           })).join('')}
         </div>
@@ -62,10 +63,13 @@ export class FriendsManager {
     }
   }
 
-  toggleSelectAll() {
-    const checkboxes = [...this.contentArea.querySelectorAll('.friend-checkbox')];
-    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
-    checkboxes.forEach(cb => cb.checked = !allChecked);
+  selectAllFriends() {
+    this.contentArea.querySelectorAll('.friend-checkbox').forEach(cb => { cb.checked = true; });
+    this.updateSelectedCount();
+  }
+
+  deselectAllFriends() {
+    this.contentArea.querySelectorAll('.friend-checkbox').forEach(cb => { cb.checked = false; });
     this.updateSelectedCount();
   }
 

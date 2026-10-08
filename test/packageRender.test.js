@@ -1204,3 +1204,50 @@ test('le rendu est throttle : plusieurs ticks ne produisent qu un rendu differe'
   assert.equal(renders, 2, 'renderNow force et purge le rendu en attente');
   assert.equal(manager.renderTimer, null, 'plus de timer en vol');
 });
+
+test('le filtre masque les serveurs quittes quand on l active', () => {
+  const manager = new PackageManager(makeArea());
+  const pkg = filteredPackage();
+  pkg.channels.push({ id: 'quitte', name: 'salon-ancien', type: 'SERVER_TEXT', guildId: null, guildName: null, recipient: null, isLeft: true, messagesCount: 3 });
+  manager.package = pkg;
+  manager.channelKindFilter = 'all';
+  assert.ok(manager.filteredChannels().some(c => c.id === 'quitte'), 'serveurs quittes visibles par defaut');
+  manager.hideLeftServers = true;
+  assert.ok(!manager.filteredChannels().some(c => c.id === 'quitte'), 'serveurs quittes masques quand le filtre est actif');
+});
+
+test('la barre de filtres propose masquer les serveurs quittes', () => {
+  const manager = new PackageManager(makeArea());
+  manager.package = filteredPackage();
+  const html = manager.renderChannelFilterBar();
+  assert.match(html, /data-hide-left/, 'interrupteur present');
+  assert.doesNotMatch(html, /data-hide-left checked/, 'desactive par defaut');
+  assert.match(html, /Masquer les serveurs quittés/);
+});
+
+test('la barre du haut regroupe les actions secondaires en menus', () => {
+  const manager = new PackageManager(makeArea());
+  manager.package = samplePackage();
+  manager.render();
+  const html = manager.contentArea.innerHTML;
+  assert.match(html, /data-package-action="gallery"/);
+  assert.match(html, /data-package-action="delete"/);
+  assert.match(html, /data-package-action="close"/);
+  assert.match(html, /data-package-action="download-all"/);
+  assert.match(html, /data-package-action="purge-media"/);
+  assert.match(html, /data-package-action="export" data-export-format="zip"/);
+  assert.match(html, /data-package-action="export" data-export-format="json"/);
+  assert.match(html, /package-menu-trigger/, 'les actions secondaires vivent dans des menus');
+});
+
+test('le filtre masque les groupes vides quand on l active', () => {
+  const manager = new PackageManager(makeArea());
+  const pkg = filteredPackage();
+  pkg.channels.push({ id: 'grp-vide', name: 'groupe-vide', type: 'GROUP', guildId: null, guildName: null, recipient: null, isLeft: false, messagesCount: 0 });
+  manager.package = pkg;
+  manager.channelKindFilter = 'all';
+  assert.ok(manager.filteredChannels().some(c => c.id === 'grp-vide'), 'groupes vides visibles par defaut');
+  assert.match(manager.renderChannelFilterBar(), /data-hide-empty-groups/, 'interrupteur present');
+  manager.hideEmptyGroups = true;
+  assert.ok(!manager.filteredChannels().some(c => c.id === 'grp-vide'), 'groupes vides masques quand le filtre est actif');
+});

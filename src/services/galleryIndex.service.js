@@ -157,3 +157,45 @@ export function galleryWindow({ total = 0, columns = GALLERY_COLUMNS, scrollTop 
     padBottom: Math.max(0, (rows - endRow) * hauteur),
   };
 }
+
+// Plan de recyclage : la fenetre peinte et la suivante se recouvrent-elles assez
+// pour ne deplacer que les rangs entrants et sortants ? Les tuiles communes
+// gardent leur place ET leur index absolu ; seules les extremites bougent. Des
+// qu il n y a plus de recouvrement — ou que rien n est peint — la reconstruction
+// complete est la seule reponse sure, sinon une tuile laissee en place porterait
+// l index d un autre media et en ouvrirait le mauvais.
+//
+// LE RETRAIT EN QUEUE EST BORNE PAR totalTiles, PAS PAR LE NOMBRE DE RANGS. Le
+// dernier rang de la galerie peut etre partiel : le DOM vaut
+// min(totalTiles, paintedEnd * columns) et non paintedEnd * columns. Compter
+// (paintedEnd - nextEnd) * columns retirerait des tuiles inexistantes et
+// laisserait un trou permanent au-dessus du dernier rang. Le sommet, lui, est
+// toujours un rang plein : removeTopTiles n a pas besoin de ce bornage.
+export function galleryRepaintPlan({
+  paintedStart, paintedEnd, nextStart, nextEnd, columns = GALLERY_COLUMNS, totalTiles = Infinity,
+} = {}) {
+  const reconstruction = {
+    rebuild: true, removeTopTiles: 0, removeBottomTiles: 0, addTopRows: null, addBottomRows: null,
+  };
+  const debut = Number(paintedStart);
+  const fin = Number(paintedEnd);
+  const prochainDebut = Number(nextStart);
+  const prochainFin = Number(nextEnd);
+  // Rien de peint, ou une fenetre hors bornes : il n y a pas d ancrage commun.
+  if (!Number.isFinite(debut) || debut < 0) return reconstruction;
+  // `nextStart >= paintedEnd || nextEnd <= paintedStart` : les deux fenetres ne
+  // partagent aucun rang, donc aucune tuile ne peut rester en place.
+  if (!(prochainDebut < fin) || !(prochainFin > debut)) return reconstruction;
+  const colonnes = Math.max(1, Math.floor(Number(columns) || GALLERY_COLUMNS));
+  // Infinity laisse les fenetres non bornees inchangees ; un total fini borne le
+  // seul retrait en queue.
+  const total = Number(totalTiles);
+  const tuilesReelles = Number.isFinite(total) ? Math.max(0, Math.floor(total)) : Number.POSITIVE_INFINITY;
+  return {
+    rebuild: false,
+    removeTopTiles: Math.max(0, prochainDebut - debut) * colonnes,
+    removeBottomTiles: Math.max(0, Math.min(tuilesReelles, fin * colonnes) - Math.min(tuilesReelles, prochainFin * colonnes)),
+    addTopRows: prochainDebut < debut ? [prochainDebut, debut] : null,
+    addBottomRows: prochainFin > fin ? [fin, prochainFin] : null,
+  };
+}

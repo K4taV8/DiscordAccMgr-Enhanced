@@ -146,6 +146,9 @@ export interface ElectronAPI {
   getAppVersion(): Promise<string>;
   toggleDevTools(): Promise<boolean>;
 
+  // connexion Discord native : ouvre une fenetre de login, capture le token via CDP
+  loginNative(): Promise<{ ok: boolean; token?: string; cancelled?: boolean; error?: string }>;
+
   // import de paquet (ZIP) — le main process lit le fichier par tranches, les
   // octets ne traversent pas l'IPC
   importPackage(file: File): Promise<PackageImportResponse>;

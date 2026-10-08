@@ -105,54 +105,56 @@ export const showProgressModal = (title, total, options = {}) => {
 };
 
 export const showInfoModal = async () => {
+  // Liens des depots. Original : Bherl1. Fork : a renseigner (vide = pas de lien).
+  const ORIGINAL_REPO_URL = 'https://github.com/Bherl1/DiscordAccMgr';
+  const FORK_REPO_URL = '';
+
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
 
   const content = document.createElement('div');
   content.className = 'modal-content info-modal';
 
-  const icon = document.createElement('div');
-  icon.className = 'modal-icon';
-  icon.innerHTML = '<svg width="26" height="26" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>';
-
-  const title = document.createElement('h2');
-  title.textContent = 'Discord Account Manager - Enhanced Forked By KataV8';
-
   let versionText = '';
   try {
     versionText = await window.electronAPI.getAppVersion();
   } catch { /* fallback below */ }
 
-  const badge = document.createElement('span');
-  badge.className = 'version-badge';
-  badge.textContent = `Version ${versionText || '1.5.6'}`;
+  // Carte auteur : avatar rond (repli initiales si l image manque) + nom + role.
+  const authorCard = (name, role, initial, img, url) => {
+    const inner = `<span class="info-avatar"><span class="info-avatar-fallback" aria-hidden="true">${initial}</span><img src="${img}" alt="" loading="lazy" data-hide-on-error></span>
+        <span class="info-author-copy"><strong>${name}</strong><small>${role}</small></span>`;
+    return url
+      ? `<a class="info-author-card" href="#" data-url="${url}">${inner}</a>`
+      : `<div class="info-author-card info-author-card-static">${inner}</div>`;
+  };
 
-  const forkNote = document.createElement('p');
-  forkNote.className = 'info-author';
-  forkNote.textContent = 'Forked & Enhanced by KataV8';
+  const forkLink = FORK_REPO_URL ? `<a href="#" data-url="${FORK_REPO_URL}">Dépôt (fork)</a>` : '';
 
-  const author = document.createElement('p');
-  author.className = 'info-author';
-  author.textContent = 'Created by Bherl1';
-
-  const links = document.createElement('div');
-  links.className = 'info-links';
-
-  const githubLink = document.createElement('a');
-  githubLink.href = 'https://github.com/Bherl1/DiscordAccMgr';
-  githubLink.textContent = 'GitHub Repository';
-  githubLink.addEventListener('click', (e) => {
-    e.preventDefault();
-    window.electronAPI.openExternal(githubLink.href);
-  });
-  links.appendChild(githubLink);
-
-  const divider = document.createElement('div');
-  divider.className = 'info-divider';
-
-  const closeBtn = document.createElement('button');
-  closeBtn.className = 'btn btn-secondary';
-  closeBtn.textContent = 'Close';
+  content.innerHTML = `
+    <div class="info-head">
+      <div class="modal-icon"><img class="modal-logo" src="assets/logo.png" alt="" loading="lazy"></div>
+      <div class="info-head-copy">
+        <h2>Discord Account Manager</h2>
+        <span class="version-badge">Version ${versionText || '1.5.6'}</span>
+      </div>
+    </div>
+    <div class="info-authors">
+      ${authorCard('KataV8', 'Développement & enrichissement (fork)', 'K', 'assets/kataV8.jpg', FORK_REPO_URL)}
+      ${authorCard('Bherl1', 'Auteur original', 'B', 'assets/bherl1.jpg', ORIGINAL_REPO_URL)}
+    </div>
+    <div class="info-section">
+      <h3>Technologies</h3>
+      <div class="info-tags"><span>Electron</span><span>Node.js</span><span>JavaScript</span><span>discord.js</span><span>axios</span><span>fflate</span></div>
+    </div>
+    <div class="info-links">
+      ${forkLink}
+      <a href="#" data-url="${ORIGINAL_REPO_URL}">Dépôt original</a>
+    </div>
+    <p class="info-license">Licence MIT · © 2024 Bherl1</p>
+    <div class="info-divider"></div>
+    <button type="button" class="btn btn-secondary" id="infoCloseBtn">Fermer</button>
+  `;
 
   const close = () => {
     document.removeEventListener('keydown', escHandler);
@@ -161,20 +163,15 @@ export const showInfoModal = async () => {
   const escHandler = (e) => { if (e.key === 'Escape') close(); };
   document.addEventListener('keydown', escHandler);
   modal.addEventListener('click', (e) => { if (e.target === modal) close(); });
-  closeBtn.addEventListener('click', close);
+  content.addEventListener('click', (e) => {
+    const link = e.target.closest('a[data-url]');
+    if (link) { e.preventDefault(); window.electronAPI.openExternal(link.dataset.url); }
+  });
+  content.querySelector('#infoCloseBtn').addEventListener('click', close);
 
-  content.appendChild(icon);
-  content.appendChild(title);
-  content.appendChild(badge);
-  content.appendChild(forkNote);
-  content.appendChild(author);
-  content.appendChild(links);
-  content.appendChild(divider);
-  content.appendChild(closeBtn);
   modal.appendChild(content);
-
   document.body.appendChild(modal);
-  closeBtn.focus();
+  content.querySelector('#infoCloseBtn').focus();
 };
 
 export const showInputModal = (title, message) => {
@@ -198,7 +195,7 @@ export const showInputModal = (title, message) => {
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'modal-input';
-    input.placeholder = 'e.g. Main Account, Alt-1...';
+    input.placeholder = 'ex. Compte principal, Alt-1...';
 
     const buttonGroup = document.createElement('div');
     buttonGroup.className = 'button-group';
@@ -215,7 +212,7 @@ export const showInputModal = (title, message) => {
 
     const saveBtn = document.createElement('button');
     saveBtn.className = 'btn btn-primary';
-    saveBtn.textContent = 'Save';
+    saveBtn.textContent = 'Enregistrer';
     saveBtn.addEventListener('click', () => {
       const value = input.value.trim();
       if (value) close(value);
@@ -223,7 +220,7 @@ export const showInputModal = (title, message) => {
 
     const cancelBtn = document.createElement('button');
     cancelBtn.className = 'btn btn-secondary';
-    cancelBtn.textContent = 'Cancel';
+    cancelBtn.textContent = 'Annuler';
     cancelBtn.addEventListener('click', () => close(null));
 
     buttonGroup.appendChild(saveBtn);

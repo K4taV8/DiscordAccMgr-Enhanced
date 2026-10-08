@@ -28,14 +28,14 @@ export class ServerManager {
     delegate(contentArea, this.actions);
 
     this.selectionDock = new FloatingSelectionDock({
-      onSelectAll: () => this.toggleSelectAllServers(),
+      onSelectAll: () => this.selectAllServers(),
       onDeselectAll: () => this.deselectAllServers(),
       actions: [
         { label: '👁️ Marquer comme lu', tip: 'Marque tous les serveurs sélectionnés comme lus (aucune suppression).', className: 'btn-primary', onClick: () => this.readSelectedServers() },
-        { label: '🔕 Muter', tip: 'Coupe les notifications des serveurs sélectionnés.', onClick: () => this.muteSelectedServers() },
+        { label: '🔕 Mettre en sourdine', tip: 'Coupe les notifications des serveurs sélectionnés.', onClick: () => this.muteSelectedServers() },
         // Les 3 doublons (messages / réactions / quitter) sont couverts par les
         // 4 modes de « Nettoyer » : on ne les garde pas deux fois dans la barre.
-        { label: '🧹 Nettoyer', tip: 'Ouvrir les 4 modes : messages, réactions, les deux, ou tout + quitter le serveur.', className: 'dock-combo', onClick: (btn) => this.openCleaningMode(btn) },
+        { label: '🧹 Nettoyer', tip: 'Ouvrir les 4 modes : messages, réactions, les deux, ou tout + quitter le serveur.', className: 'dock-combo', menu: true, onClick: (btn) => this.openCleaningMode(btn) },
       ],
     });
   }
@@ -106,12 +106,12 @@ export class ServerManager {
           fallbackIcon: 'https://cdn.discordapp.com/embed/avatars/0.png',
           iconAlt: server.name,
           checkboxClass: 'server-checkbox',
-          badge: server.owner ? { label: '👑 Owner', className: 'is-owner' } : null,
+          badge: server.owner ? { label: '👑 Propriétaire', className: 'is-owner' } : null,
           quick: [
-            { action: 'mute', label: 'Mute', emoji: '🔕' },
-            { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️' },
-            { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
-            { action: 'leave', label: 'Leave', theme: 'crimson', emoji: '🚪' },
+            { action: 'mute', label: 'Mettre en sourdine', emoji: '🔕' },
+            { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
+            { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
+            { action: 'leave', label: 'Quitter le serveur', theme: 'crimson', emoji: '🚪' },
           ],
         });
         let i = 0;
@@ -178,15 +178,12 @@ export class ServerManager {
     showNotification(failed ? `Marked ${ids.length - failed}/${ids.length} as read` : 'Marked selected as read');
   }
 
-  toggleSelectAllServers() {
-    const checkboxes = [...document.querySelectorAll('.server-checkbox')];
-    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
-    checkboxes.forEach(cb => cb.checked = !allChecked);
+  selectAllServers() {
+    document.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = true; });
     this.updateSelectedServersCount();
   }
 
-  // Vide la sélection quoi qu'il reste de coché — le toggle « Tout sélectionner »
-  // ne décoche que si TOUT était coché, sinon il rebranche tout.
+  // Vide la sélection quoi qu'il reste de coché.
   deselectAllServers() {
     document.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = false; });
     this.updateSelectedServersCount();

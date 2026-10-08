@@ -74,11 +74,11 @@ export class FloatingSelectionDock {
     el.innerHTML = `
       <div class="dock-left">
         <span class="dock-count"><strong class="dock-count-num">0</strong> <span class="dock-count-label">sélectionné(s)</span></span>
-        <button class="btn btn-secondary btn-xs dock-btn dock-select-all" data-tip="Cocher ou décocher tous les éléments affichés">Tout sélectionner</button>
-        <button class="btn btn-secondary btn-xs dock-btn dock-deselect-all" data-tip="Décocher tout, y compris une sélection partielle">Tout décocher</button>
+        <button class="btn btn-secondary btn-xs dock-btn dock-select-all" data-tip="Sélectionner tous les éléments de la liste affichée">Tout sélectionner</button>
+        <button class="btn btn-secondary btn-xs dock-btn dock-deselect-all" data-tip="Vider la sélection">Tout désélectionner</button>
       </div>
       <div class="dock-right">
-        ${this.cfg.actions.map(a => `<button class="btn ${a.className || 'btn-secondary'} btn-xs dock-btn" data-i="${a.label}"${a.tip ? ` data-tip="${escHtml(a.tip)}"` : ''}>${escHtml(a.label)}</button>`).join('')}
+        ${this.cfg.actions.map(a => `<button class="btn ${a.className || 'btn-secondary'} btn-xs dock-btn" data-i="${a.label}"${a.tip ? ` data-tip="${escHtml(a.tip)}"` : ''}>${escHtml(a.label)}${a.menu ? ' ▾' : ''}</button>`).join('')}
       </div>
     `;
     el.querySelectorAll('.dock-btn[data-i]').forEach((btn, i) => {
@@ -98,7 +98,6 @@ export class FloatingSelectionDock {
     this.ensure();
     this.el.classList.toggle('show', selected > 0);
     this.countEl.textContent = selected;
-    this.selectAllBtn.textContent = selected > 0 && selected === total ? 'Tout désélectionner' : 'Tout sélectionner';
   }
 
   hide() {

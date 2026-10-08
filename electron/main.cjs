@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, protocol } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, protocol, session } = require('electron');
 
 // Switches Chromium pour accélérer le cold boot et limiter la VRAM.
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
@@ -18,6 +18,7 @@ const { routeKeyFor, isSnowflake, isOp, isMessageBearingChannel } = require('./h
 const { createTokenStore } = require('./tokenStore.cjs');
 const { importArchiveDepuisChemin } = require('./packageImporter.service.cjs');
 const { mediaRequestPath, mediaUrlFor, mediaRelPath, mediaMirrorKey, readManifest, downloadMirror, MIRROR_DIR_NAME, isMediaPathInside } = require('./mediaMirror.service.cjs');
+const { extraireToken, estUrlAuth, MOTIF_TOKEN } = require('./discordLogin.service.cjs');
 
 // Le miroir media est servi par un protocole maison : la CSP interdit `file://`,
 // une copie locale serait donc refusee au chargement sous `img-src`/`media-src`.
@@ -125,7 +126,8 @@ function createWindow() {
       spellcheck: false,
       paintingWhenInitiallyHidden: true,
     },
-    backgroundColor: '#0f1117'
+    backgroundColor: '#0f1117',
+    icon: path.join(__dirname, '..', 'assets', 'logo.png')
   });
 
   mainWindow.loadFile('./index.html');
@@ -680,6 +682,131 @@ ipcMain.handle('discord:disconnect', async () => {
   return { success: true };
 });
 
+// Connexion Discord native : ouvre discord.com/login dans une BrowserWindow
+// jetable et capte le user token, d'abord en lisant le corps des reponses
+// /api/v9/auth/* via le debugger CDP, puis en repli en fouillant le stockage
+// de la page. Une seule fenetre a la fois : un deuxieme appel rejoue la meme
+// promesse. Nettoyage/detachement garantis avant resolution, resolution unique.
+let loginWindowEnCours = null;
+
+function ouvrirLoginDiscord() {
+  if (loginWindowEnCours) return loginWindowEnCours;
+
+  loginWindowEnCours = new Promise((resolve) => {
+    let fini = false;
+    let intervalle = null;
+    let minuteur = null;
+
+    // SESSION EPHEMERE ET UNIQUE. Sans `partition`, la fenetre partage la session
+    // par defaut (persistante) : les cookies Discord d une connexion precedente
+    // restent, et la fenetre s ouvrirait deja connectee. Un nom SANS prefixe
+    // `persist:` cree une session EN MEMOIRE, jamais ecrite sur disque ; le nom
+    // unique garantit une session vierge a CHAQUE tentative, meme dans la meme
+    // execution de l app.
+    const partition = 'discord-login-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+
+    const win = new BrowserWindow({
+      parent: mainWindow,
+      modal: false,
+      width: 500,
+      height: 760,
+      alwaysOnTop: true,
+      title: 'Connexion Discord',
+      webPreferences: {
+        partition,
+        contextIsolation: false,
+        sandbox: false,
+        nodeIntegration: false,
+        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
+      },
+    });
+
+    // Detache le debugger, coupe les timers, detruit la fenetre et libere le
+    // singleton. Appele dans TOUS les chemins de sortie, une seule fois grace a
+    // `fini` ; les operations sont idempotentes (try/catch, isDestroyed).
+    const nettoyer = () => {
+      if (intervalle) { clearInterval(intervalle); intervalle = null; }
+      if (minuteur) { clearTimeout(minuteur); minuteur = null; }
+      try { win.webContents.debugger.detach(); } catch {}
+      try { if (!win.isDestroyed()) win.destroy(); } catch {}
+      // Purge la session ephemere (cookies, stockage) : rien ne subsiste.
+      try { session.fromPartition(partition).clearStorageData(); } catch {}
+      loginWindowEnCours = null;
+    };
+
+    // Resolution unique : le premier evenement gagne, les suivants sont ignores.
+    const finir = (resultat) => {
+      if (fini) return;
+      fini = true;
+      nettoyer();
+      resolve(resultat);
+    };
+
+    minuteur = setTimeout(() => finir({ ok: false, error: 'delai' }), 240000);
+
+    win.on('closed', () => finir({ ok: false, cancelled: true }));
+
+    // Repli periodique : le token peut etre ecrit dans localStorage/
+    // sessionStorage sans passer par une reponse d'auth observable.
+    const scannerStockage = async () => {
+      if (fini) return;
+      try {
+        const token = await win.webContents.executeJavaScript(`(() => {
+          const motif = new RegExp(${JSON.stringify(MOTIF_TOKEN.source)});
+          const chercher = (store) => {
+            try {
+              for (let i = 0; i < store.length; i++) {
+                const valeur = store.getItem(store.key(i)) || '';
+                const m = valeur.match(motif);
+                if (m) return m[0];
+              }
+            } catch {}
+            return null;
+          };
+          try { return chercher(localStorage); } catch {}
+          try { return chercher(sessionStorage); } catch {}
+          return null;
+        })()`);
+        if (typeof token === 'string' && token) finir({ ok: true, token });
+      } catch {}
+    };
+    intervalle = setInterval(scannerStockage, 2000);
+
+    // Voie nominale : CDP lit le corps des reponses d'auth (le token y est en
+    // clair). Les requestId d'auth sont memorises a responseReceived, puis
+    // relus a loadingFinished, quand le corps est disponible.
+    const requetesAuth = new Set();
+    win.webContents.once('did-finish-load', () => {
+      if (fini) return;
+      try {
+        win.webContents.debugger.attach('1.3');
+        win.webContents.debugger.sendCommand('Network.enable').catch(() => {});
+        win.webContents.debugger.on('message', async (_event, methode, params) => {
+          if (fini) return;
+          if (methode === 'Network.responseReceived') {
+            const url = params?.response?.url || '';
+            if (estUrlAuth(url)) requetesAuth.add(params.requestId);
+          } else if (methode === 'Network.loadingFinished' && requetesAuth.has(params?.requestId)) {
+            requetesAuth.delete(params.requestId);
+            try {
+              const corps = await win.webContents.debugger.sendCommand('Network.getResponseBody', { requestId: params.requestId });
+              const texte = corps.base64Encoded ? Buffer.from(corps.body, 'base64').toString('utf8') : corps.body;
+              const token = extraireToken(texte);
+              if (token) finir({ ok: true, token });
+            } catch {}
+          }
+        });
+      } catch {}
+    });
+
+    win.loadURL('https://discord.com/login').catch(() => {});
+  });
+
+  return loginWindowEnCours;
+}
+
+ipcMain.handle('discord:loginNative', () => ouvrirLoginDiscord());
+
 ipcMain.handle('discord:getFriends', async () => {
   const r = await discordFetch('GET', '/users/@me/relationships');
   if (!r.success) return apiFailure(r);
@@ -948,6 +1075,14 @@ app.whenReady().then(() => {
   protocol.handle('media', servirMedia);
   createWindow();
   cleanupCheckpoints();
+  // Les anciennes connexions natives laissaient des cookies Discord dans la
+  // session par defaut (persistante). La fenetre de login utilise desormais une
+  // session ephemere : ces cookies n ont plus d usage, on les retire une fois.
+  try {
+    session.defaultSession.cookies.get({ domain: 'discord.com' })
+      .then((liste) => Promise.all(liste.map((c) => session.defaultSession.cookies.remove('https://discord.com', c.name).catch(() => {}))))
+      .catch(() => {});
+  } catch {}
 });
 
 app.on('window-all-closed', () => {

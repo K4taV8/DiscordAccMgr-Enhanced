@@ -26,12 +26,12 @@ export class GroupManager {
     delegate(contentArea, this.actions);
 
     this.selectionDock = new FloatingSelectionDock({
-      onSelectAll: () => this.toggleSelectAll(),
+      onSelectAll: () => this.selectAll(),
       onDeselectAll: () => this.deselectAll(),
       actions: [
         // Un seul bouton : les 4 modes de « Nettoyer » couvrent messages,
         // réactions, les deux, et sortie du groupe. Pas de doublon dans la barre.
-        { label: '🧹 Nettoyer', tip: 'Ouvrir les 4 modes : messages, réactions, les deux, ou tout + quitter le groupe.', className: 'dock-combo', onClick: (btn) => this.openCleaningMode(btn) },
+        { label: '🧹 Nettoyer', tip: 'Ouvrir les 4 modes : messages, réactions, les deux, ou tout + quitter le groupe.', className: 'dock-combo', menu: true, onClick: (btn) => this.openCleaningMode(btn) },
       ],
     });
   }
@@ -40,7 +40,7 @@ export class GroupManager {
     try {
       const render = (result) => {
         if (!result.success) {
-          this.contentArea.innerHTML = '<p class="error">Failed to load groups</p>';
+          this.contentArea.innerHTML = '<p class="error">Échec du chargement des groupes</p>';
           return;
         }
         const listMode = listView.isOn('groups');
@@ -50,23 +50,15 @@ export class GroupManager {
           const total = (count || 0) + 1;
           return total === 1 ? '1 membre (Seul)' : `${total} membres`;
         };
-        // Avatar natif Discord : icône CDN si présente, sinon stack des 2 premiers membres.
+        // Avatar : icone de groupe si l'export en fournit une (rendue par
+        // bentoCard), sinon l'avatar Discord par defaut — jamais du vide.
         const avatarFor = (g) => {
           if (g.icon) return null; // image CDN standard (rendue par bentoCard)
-          const members = g.members || [];
-          const av1 = members[0]?.avatar || GROUP_DEFAULT_AVATAR;
-          if (members.length < 2) {
-            return `<img src="${escHtml(av1)}" alt="${escHtml(g.name)}" loading="lazy">`;
-          }
-          const av2 = members[1]?.avatar || GROUP_DEFAULT_AVATAR;
-          return `<span class="group-avatar-stack">
-            <img class="group-avatar-stack-back" src="${escHtml(av1)}" alt="" loading="lazy">
-            <img class="group-avatar-stack-front" src="${escHtml(av2)}" alt="" loading="lazy">
-          </span>`;
+          return `<img src="${escHtml(GROUP_DEFAULT_AVATAR)}" alt="${escHtml(g.name)}" loading="lazy">`;
         };
         preservePageScroll(this.contentArea, () => `
         <div class="list-toolbar">
-          <h2 class="page-title">Groups List <span class="list-count">${result.groups.length}</span></h2>
+          <h2 class="page-title">Liste des groupes <span class="list-count">${result.groups.length}</span></h2>
           <div class="toolbar-actions">${listView.button('groups')}</div>
         </div>
         <div id="groupsList" class="bento-grid${listMode ? ' list-view' : ''}">
@@ -80,11 +72,11 @@ export class GroupManager {
             iconAlt: group.name,
             avatarHtml: avatarFor(group),
             checkboxClass: 'group-checkbox',
-            badge: { label: 'Group' },
+            badge: { label: 'Groupe' },
             quick: [
-              { action: 'deleteMessages', label: 'Delete Msgs', theme: 'danger', emoji: '🗑️' },
-              { action: 'removeReactions', label: 'Rm Reactions', theme: 'amber', emoji: '💥' },
-              { action: 'leave', label: 'Leave', theme: 'crimson', emoji: '🚪' },
+              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
+              { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
+              { action: 'leave', label: 'Quitter le groupe', theme: 'crimson', emoji: '🚪' },
             ],
           })).join('')}
         </div>
@@ -97,15 +89,12 @@ export class GroupManager {
     }
   }
 
-  toggleSelectAll() {
-    const checkboxes = [...this.contentArea.querySelectorAll('.group-checkbox')];
-    const allChecked = checkboxes.length > 0 && checkboxes.every(cb => cb.checked);
-    checkboxes.forEach(cb => cb.checked = !allChecked);
+  selectAll() {
+    this.contentArea.querySelectorAll('.group-checkbox').forEach(cb => { cb.checked = true; });
     this.updateSelectedCount();
   }
 
-  // Vide la sélection quoi qu'il reste de coché — le toggle « Tout sélectionner »
-  // ne décoche que si TOUT était coché, sinon il rebranche tout.
+  // Vide la sélection quoi qu'il reste de coché.
   deselectAll() {
     this.contentArea.querySelectorAll('.group-checkbox').forEach(cb => { cb.checked = false; });
     this.updateSelectedCount();
@@ -123,7 +112,7 @@ export class GroupManager {
 
   async deleteMessages(groupId, groupName, oldestFirst = false, skipRefresh = false) {
     if (this.isDeleting) return;
-    if (!skipRefresh && !(await confirmAction('Delete Messages', `Delete ALL your messages in ${groupName}? This cannot be undone.`))) return;
+    if (!skipRefresh && !(await confirmAction('Supprimer les messages', `Supprimer TOUS vos messages dans ${groupName} ? Cette action est irréversible.`))) return;
     this.isDeleting = true;
 
     try {
@@ -148,7 +137,7 @@ export class GroupManager {
   }
 
   async leaveGroup(btn, groupId) {
-    if (!(await confirmAction('Leave Group', 'Leave this group? This cannot be undone.'))) return;
+    if (!(await confirmAction('Quitter le groupe', 'Quitter ce groupe ? Cette action est irréversible.'))) return;
     btn.disabled = true;
     try {
       const result = await window.electronAPI.leaveGroup(groupId);

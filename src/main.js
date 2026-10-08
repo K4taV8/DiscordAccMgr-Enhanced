@@ -306,7 +306,7 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
   const eyeClosed = document.getElementById('eyeClosedIcon');
   if (eyeOpen) eyeOpen.style.display = 'inline';
   if (eyeClosed) eyeClosed.style.display = 'none';
-  document.getElementById('toggleTokenBtn').title = 'Show';
+  document.getElementById('toggleTokenBtn').title = 'Afficher';
   status.textContent = '';
   status.className = '';
 });
@@ -326,7 +326,7 @@ async function performConnect(connectPromise) {
   try {
     const result = await connectPromise;
     if (result.success) {
-      status.textContent = `Connected as ${result.username}`;
+      status.textContent = `Connecté en tant que ${result.username}`;
       status.className = 'success';
       window.currentUser = result.user;
       showUserProfile(result.username, result.avatar);
@@ -344,9 +344,11 @@ async function performConnect(connectPromise) {
       status.textContent = result.error;
       status.className = 'error';
     }
+    return result;
   } catch (error) {
-    status.textContent = 'Connection failed';
+    status.textContent = 'Échec de la connexion';
     status.className = 'error';
+    return null;
   } finally {
     btnText.style.display = 'inline-block';
     loader.style.display = 'none';
@@ -357,11 +359,25 @@ async function performConnect(connectPromise) {
 connectBtn.addEventListener('click', async () => {
   const token = tokenInput.value;
   if (!token) {
-    status.textContent = 'Please enter a token';
+    status.textContent = 'Veuillez saisir un token';
     status.className = 'error';
     return;
   }
   await performConnect(window.electronAPI.connectDiscord(token));
+});
+
+// Connexion Discord native : la fenetre de login ouvre Discord, capture le
+// token via CDP (tache 2), puis on rejoue le flux de connexion existant.
+document.getElementById('discordLoginBtn').addEventListener('click', async () => {
+  const r = await window.electronAPI.loginNative();
+  if (r && r.ok && r.token) {
+    tokenInput.value = r.token;
+    const res = await performConnect(window.electronAPI.connectDiscord(r.token));
+    if (res && res.success) await saveToken(r.token, status);
+  } else if (r && !r.cancelled) {
+    status.textContent = 'Connexion Discord impossible : ' + (r.error || 'erreur inconnue');
+    status.className = 'error';
+  }
 });
 
 // SEC-03 : connexion depuis un token sauvegardé — seul le nom circule,
@@ -376,11 +392,11 @@ document.getElementById('toggleTokenBtn').addEventListener('click', () => {
     tokenInput.type = 'text';
     if (eyeOpenIcon) eyeOpenIcon.style.display = 'none';
     if (eyeClosedIcon) eyeClosedIcon.style.display = 'inline';
-    document.getElementById('toggleTokenBtn').title = 'Hide';
+    document.getElementById('toggleTokenBtn').title = 'Masquer';
   } else {
     tokenInput.type = 'password';
     if (eyeOpenIcon) eyeOpenIcon.style.display = 'inline';
     if (eyeClosedIcon) eyeClosedIcon.style.display = 'none';
-    document.getElementById('toggleTokenBtn').title = 'Show';
+    document.getElementById('toggleTokenBtn').title = 'Afficher';
   }
 });
