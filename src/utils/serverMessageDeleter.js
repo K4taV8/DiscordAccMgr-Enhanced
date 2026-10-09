@@ -124,6 +124,13 @@ export async function scanChannelMessages(channel, knownUserId, electronAPI, log
     return { channelId: channel.id, messages: [], currentUserId: uid, newestId: null, skipped: false, cancelled: false };
   }
 
+  // Aucun identifiant de compte : on ne peut PAS distinguer « vos » messages.
+  // Filtrer sur null ne matcherait rien et marquerait le canal « scanné » à tort
+  // (no-op silencieux). On rend `skipped` pour que le canal soit repris et signalé.
+  if (!uid) {
+    return { channelId: channel.id, messages: [], currentUserId: null, newestId: null, skipped: true, cancelled: false };
+  }
+
   const oldestId = oldestResult.messages[0].id;
   const ts = snowflakeTs(oldestId);
   const ageDays = (Date.now() - ts) / 86400000;
@@ -211,7 +218,7 @@ export async function deleteServerMessages({
     if (checkpoint.phase === 'scan') {
       const allMessages = [];
       let partialChannels = 0;
-      let uid = chRes.currentUserId || null;
+      let uid = chRes.currentUserId || globalThis.window?.currentUser?.id || null;
       let scanned = 0;
       let channelIdx = 0;
 

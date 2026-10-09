@@ -62,7 +62,7 @@ export async function scanChannelReactions(channel, electronAPI, log, isCancelle
         await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 1) * 1000) + 500));
         continue;
       }
-      if (result.error === 'No access') return { reactions, skipped: false, cancelled: isCancelled(), newestId };
+      if (result.error === 'No access') return { reactions, skipped: true, cancelled: isCancelled(), newestId };
       return { reactions, skipped: true, cancelled: isCancelled(), newestId };
     }
     if (!result.messages || !result.messages.length) break;

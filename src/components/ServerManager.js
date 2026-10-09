@@ -116,6 +116,9 @@ export class ServerManager {
         });
         let i = 0;
         const flush = () => {
+          // La page a pu changer pendant le rendu : le conteneur est détaché,
+          // on arrête d'écrire dedans (travail inutile).
+          if (!list.isConnected) return;
           const end = Math.min(i + CHUNK, servers.length);
           list.insertAdjacentHTML('beforeend', servers.slice(i, end).map(row).join(''));
           i = end;

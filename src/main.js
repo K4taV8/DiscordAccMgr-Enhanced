@@ -20,7 +20,13 @@ window.__logs = [];
 ['log', 'warn', 'error'].forEach(m => {
   const orig = console[m];
   console[m] = (...args) => {
-    const line = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 1) : String(a)).join(' ');
+    let line;
+    try {
+      line = args.map(a => typeof a === 'object' ? JSON.stringify(a, null, 1) : String(a)).join(' ');
+    } catch {
+      // Objet circulaire : JSON.stringify lève. Repli sûr, sans perdre la trace.
+      line = args.map(a => String(a)).join(' ');
+    }
     window.__logs.push(`[${new Date().toLocaleTimeString()}] ${line}`);
     window.__logs.splice(0, window.__logs.length - 5000);
     orig.apply(console, args);
