@@ -16,10 +16,6 @@ const BOTTOM_MARGIN = 28;
 
 let open = null;
 
-export function isCleaningModeSelectorOpen(anchor) {
-  return !!open && open.anchor === anchor;
-}
-
 export function closeCleaningModeSelector() {
   open?.close();
 }
@@ -106,12 +102,4 @@ export function openCleaningModeSelector(anchor, cfg = {}) {
   open = { anchor, close };
   cfg.onOpen?.();
   return { close, element: pop };
-}
-
-export function toggleCleaningModeSelector(anchor, cfg = {}) {
-  if (isCleaningModeSelectorOpen(anchor)) {
-    closeCleaningModeSelector();
-    return null;
-  }
-  return openCleaningModeSelector(anchor, cfg);
 }

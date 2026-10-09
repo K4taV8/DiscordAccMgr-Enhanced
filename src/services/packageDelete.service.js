@@ -5,8 +5,6 @@
 // regle G6 du projet impose aussi un delai entre deux DELETE, et le retry 429
 // etait cassee (sa condition sortait de boucle au premier essai).
 
-export const DELETE_OUTCOMES = ['deleted', 'missing', 'forbidden', 'retry', 'failed'];
-
 const STATUS_IN_ERROR = /HTTP\s+(\d{3})/i;
 
 export function classifyDeleteResult(result) {

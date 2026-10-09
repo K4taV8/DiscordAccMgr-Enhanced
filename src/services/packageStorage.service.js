@@ -78,14 +78,6 @@ export function selectPackageArchivesToPrune(archives, { maxArchives = DEFAULT_M
   return { keep, remove };
 }
 
-export async function getPackageMessagePage(archiveId, channelId, { offset = 0, limit = 100 } = {}) {
-  const archives = await listPackageArchives();
-  const archive = archives.find(item => item.id === archiveId);
-  if (!archive) return { messages: [], total: 0, offset, limit };
-  const messages = archive.packageData.messages.get(String(channelId)) || [];
-  return { messages: messages.slice(offset, offset + limit), total: messages.length, offset, limit };
-}
-
 // L'id `${name}:${size}:${lastModified}` peut entrer en collision : deux
 // fichiers DIFFERENTS (exports d'un meme compte) partageant ces trois valeurs
 // s'ecrasaient en base. On ajoute un discriminant stable par objet `file` (donc
@@ -120,4 +112,3 @@ export const PACKAGE_SCHEMA_VERSION = 2;
 export function isCurrentPackageArchive(archive) {
   return Number(archive?.packageData?.schemaVersion) === PACKAGE_SCHEMA_VERSION;
 }
-export const PACKAGE_STORAGE_LIMITS = { maxArchives: DEFAULT_MAX_ARCHIVES, maxBytes: DEFAULT_MAX_BYTES };

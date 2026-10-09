@@ -1,5 +1,6 @@
 node_modules/
 dist/
+DAME-VERSION-PORTABLE/
 data/
 discorch/
 *.log
