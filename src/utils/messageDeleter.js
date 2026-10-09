@@ -109,6 +109,14 @@ export async function deleteDMMessages({
         currentUserId = result.currentUserId;
       }
 
+      // BUG-011 : dans un groupe, sans l'identifiant du compte on ne peut pas
+      // savoir quels messages sont les notres ; filtrer avec un uid vide
+      // ecarterait toute la page a tort. On refuse plutot que de perdre des
+      // messages en silence.
+      if (isGroup && !currentUserId) {
+        throw new Error('Identifiant de compte indisponible : suppression annulee, aucun message touche.');
+      }
+
       const messages = result.messages;
       const newDeletableMessages = messages.filter(msg => {
         // BUG-014 : jamais un message système (appels, arrivées...) — Discord

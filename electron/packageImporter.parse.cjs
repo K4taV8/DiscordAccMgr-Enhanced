@@ -61,7 +61,7 @@ const CHANNEL_NAME = 'channel.json';
 // Discord (ID, ChannelID) echappaient a la protection : elle ne s'appliquait
 // qu aux noms minuscules de nos propres fixtures.
 const SNOWFLAKE_FIELDS = 'id|channel_?id|guild_?id|user_?id|message_?id|owner_?id|recipient_?id';
-const SNOWFLAKE_JSON_RE = new RegExp(`([{,]\\s*)"(${SNOWFLAKE_FIELDS})":\\s*(\\d+)`, 'gi');
+const SNOWFLAKE_JSON_RE = new RegExp(`([{,]\\s*)"(${SNOWFLAKE_FIELDS})":\\s*(\\d+)(?=\\s*[,}\\]])`, 'gi');
 
 // Sections localisées par motif, quelle que soit la langue de l'archive.
 const CHANNEL_ENTRY = /(?:^|\/)(c?\d+)\/channel\.json$/i;

@@ -241,7 +241,7 @@ export class GroupManager {
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
-            await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, onComplete: () => {} });
+            await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, quiet: true, onComplete: () => {} });
           } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
           done += 1;
         }

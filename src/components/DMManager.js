@@ -247,7 +247,7 @@ export class DMManager {
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
-            await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, onComplete: () => {} });
+            await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, quiet: true, onComplete: () => {} });
           } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
           done += 1;
         }

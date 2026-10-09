@@ -1345,7 +1345,7 @@ applyImportProgress(item, info) {
       const archiveId = createPackageArchiveId(item.file);
       try {
         await savePackageArchive(archiveId, parsed, { name: item.file.name, size: item.file.size, type: item.file.type, lastModified: item.file.lastModified });
-        this.savedArchives = (await listPackageArchives());
+        this.savedArchives = (await listPackageArchives()).filter(isCurrentPackageArchive);
       } catch (storageError) {
         console.warn('Unable to persist package archive:', storageError);
       }

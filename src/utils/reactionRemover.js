@@ -134,7 +134,8 @@ export async function removeReactionsFromChannel({
   electronAPI,
   onComplete = () => {},
   skipRefresh = false,
-  isGroup = false
+  isGroup = false,
+  quiet = false
 }) {
   const modalOverlay = document.createElement('div');
   modalOverlay.className = 'modal-overlay';
@@ -150,13 +151,17 @@ export async function removeReactionsFromChannel({
       </div>
     </div>
   `;
-  document.body.appendChild(modalOverlay);
-
   const progressBar = new ProgressBar('progressContainer', {
     showCancelButton: true
   });
   progressBar.create();
-  progressBar.show();
+  // BUG-006 : en mode lot (`quiet`), on ne rattache PAS la modale au document :
+  // chaque appel de executeCleaningMode creait sinon une modale z-index 9999
+  // empilee, invisible mais jamais retiree avant la fin de la boucle.
+  if (!quiet) {
+    document.body.appendChild(modalOverlay);
+    progressBar.show();
+  }
 
   let shouldStop = false;
   const isCancelled = () => shouldStop;
@@ -181,11 +186,12 @@ export async function removeReactionsFromChannel({
     console.log(`[RmReactions] ${msg}`);
   };
 
-  const $ = (id) => document.getElementById(id);
+  const $ = (id) => (quiet ? null : document.getElementById(id));
+  const setText = (id, value) => { const el = $(id); if (el) el.textContent = value; };
   const refreshCounters = (processed, removed, failed) => {
-    $('processedCount').textContent = processed.toString();
-    $('removedCount').textContent = removed.toString();
-    $('failedCount').textContent = failed.toString();
+    setText('processedCount', processed.toString());
+    setText('removedCount', removed.toString());
+    setText('failedCount', failed.toString());
   };
 
   try {
@@ -207,7 +213,7 @@ export async function removeReactionsFromChannel({
     if (shouldStop) throw new Error('Operation cancelled');
 
     const totalReactions = messages.reduce((acc, msg) => acc + msg.reactions.length, 0);
-    $('totalCount').textContent = totalReactions.toString();
+    setText('totalCount', totalReactions.toString());
 
     if (totalReactions === 0) {
       progressBar.update(100);
@@ -254,6 +260,7 @@ export async function removeReactionsFromChannel({
     refreshCounters(totalReactions, removed, failed);
   } catch (error) {
     console.error('Remove reactions error:', error);
+    if (quiet) showNotification(`Reactions : ${error?.message || String(error)}`);
     const progressContainer = document.getElementById('progressContainer');
     if (progressContainer) progressContainer.innerHTML = `<p class="error">${escHtml(error?.message || String(error))}</p>`;
   } finally {

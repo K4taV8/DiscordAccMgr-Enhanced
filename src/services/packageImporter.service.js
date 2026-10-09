@@ -46,7 +46,7 @@ const CHANNEL_NAME = 'channel.json';
 // sans comparaison directe un champ retire d un seul cote cesserait d etre
 // protege sans rougir aucun test. Export pur, aucun changement de comportement.
 export const SNOWFLAKE_FIELDS = 'id|channel_?id|guild_?id|user_?id|message_?id|owner_?id|recipient_?id';
-const SNOWFLAKE_JSON_RE = new RegExp(`([{,]\\s*)"(${SNOWFLAKE_FIELDS})":\\s*(\\d+)`, 'gi');
+const SNOWFLAKE_JSON_RE = new RegExp(`([{,]\\s*)"(${SNOWFLAKE_FIELDS})":\\s*(\\d+)(?=\\s*[,}\\]])`, 'gi');
 
 // Sections localisées par motif, quelle que soit la langue de l'archive.
 // Les trois motifs sont exportes pour le test de parite des parseurs : le chemin
@@ -84,11 +84,12 @@ export function isNoisePath(path) {
   const lower = path.toLowerCase();
   const name = lower.split('/').pop() || '';
   if (lower.startsWith('__macosx/') || name.startsWith('._') || name === '.ds_store') return true;
-  return lower.split('/').some(segment => {
-    if (!segment) return false;
-    const norm = normalizeSegment(segment);
-    return norm !== '' && NOISE_PREFIXES.some(prefix => norm.startsWith(prefix));
-  });
+  // BUG-009 : le bruit de l'export est TOUJOURS un dossier de premier niveau
+  // (Activite, Publicites, Demandes de soutien...). En ne testant que le premier
+  // segment, un fichier legitime comme Comptes/activation.json n'est plus ecarte
+  // a tort parce que son nom commence par un prefixe de bruit (« activit »).
+  const first = normalizeSegment(lower.split('/')[0] || '');
+  return first !== '' && NOISE_PREFIXES.some(prefix => first.startsWith(prefix));
 }
 
 // « c123456 » et « 123456 » désignent le même salon.
