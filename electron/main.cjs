@@ -9,6 +9,7 @@ const path = require('path');
 const axios = require('axios');
 const fs = require('fs');
 const fsp = require('fs/promises');
+const { Readable } = require('stream');
 
 // SEC-03 : timeout global — aucun appel HTTP ne doit pendre indéfiniment
 axios.defaults.timeout = 15000;
@@ -17,7 +18,7 @@ const { readJson, writeJson } = require('./persist.cjs');
 const { routeKeyFor, isSnowflake, isOp, isMessageBearingChannel } = require('./helpers.cjs');
 const { createTokenStore } = require('./tokenStore.cjs');
 const { importArchiveDepuisChemin } = require('./packageImporter.service.cjs');
-const { mediaRequestPath, mediaUrlFor, mediaRelPath, mediaMirrorKey, readManifest, downloadMirror, MIRROR_DIR_NAME, isMediaPathInside } = require('./mediaMirror.service.cjs');
+const { mediaRequestPath, mediaUrlFor, mediaRelPath, mediaMirrorKey, readManifest, downloadMirror, MIRROR_DIR_NAME, isMediaPathInside, parseByteRange } = require('./mediaMirror.service.cjs');
 const { extraireToken, estUrlAuth, MOTIF_TOKEN } = require('./discordLogin.service.cjs');
 
 // Le miroir media est servi par un protocole maison : la CSP interdit `file://`,
@@ -84,6 +85,15 @@ migrateLegacyUserData(portablePaths.userData);
 let mainWindow;
 let discordClient = null;
 let connecting = false;
+
+// BUG-001 : identifiant du compte connecte, utilise pour scoper TOUT stockage
+// local par compte (watermark, ledger, checkpoints, cache canaux). Sans compte
+// connecte, `unknown` : les fichiers historiques NON scopes sont ignores.
+const currentUid = () => {
+  const id = discordClient?.user?.id;
+  return id ? String(id) : 'unknown';
+};
+
 const tokensPath = path.join(app.getPath('userData'), 'saved_tokens.json');
 
 if (!fs.existsSync(tokensPath)) {
@@ -339,7 +349,11 @@ ipcMain.handle('discord:getChannel', async (_, channelId) => {
   if (!isSnowflake(channelId)) return { success: false, status: 400, error: 'identifiant invalide' };
   const r = await discordFetch('GET', `/channels/${channelId}`);
   if (!r.success) return apiFailure(r);
-  return { success: true, channel: { id: String(r.data?.id || channelId), name: r.data?.name || null, type: r.data?.type ?? null } };
+  // `thread_metadata.archived` est transmis tel quel (champ optionnel) : le
+  // renderer doit savoir si un fil etait deja archive AVANT de le desarchiver
+  // pour le nettoyer, afin de ne pas rearchiver un fil actif. Ajout additif :
+  // les appelants qui ignoraient ce champ continuent de fonctionner.
+  return { success: true, channel: { id: String(r.data?.id || channelId), name: r.data?.name || null, type: r.data?.type ?? null, thread_metadata: r.data?.thread_metadata ?? null } };
 });
 
 // Un fil archive refuse toute suppression (erreur 50083). Le reactiver puis le
@@ -533,6 +547,11 @@ ipcMain.handle('discord:saveAttachment', async (event, attachment) => {
 // consulte AVANT chaque fichier : une annulation ne laisse donc aucun partiel.
 let mirrorStop = false;
 
+// BUG-011 : verrou mono-lot. Deux `mirrorStart` simultanes partageaient le meme
+// drapeau `mirrorStop` global : l'annulation de l'un arretait l'autre, et deux
+// ecritures pouvaient melanger leurs manifestes. Un seul lot a la fois.
+let mirrorRunning = false;
+
 // S2 : seules les URL servies par le CDN Discord sont acceptees en telechargement.
 // Bloque le SSRF : une URL arbitraire vendeur du renderer ne doit jamais faire
 // sortir le main process vers le reseau interne.
@@ -579,13 +598,20 @@ const mirrorTransport = {
   },
   get: url => {
     if (!estUrlDiscordCdn(url)) return Promise.reject(new Error('URL média non autorisée'));
-    return axios.get(url, { responseType: 'arraybuffer', timeout: 15000, maxContentLength: MAX_MEDIA_CONTENT_LENGTH }).then(r => Buffer.from(r.data));
+    // BUG-012 : axios (Node) rend deja un Buffer pour `arraybuffer` ; on evite la
+    // copie inutile de `Buffer.from`. Le streaming complet du corps est reporte
+    // (voir rapport) : la borne `maxContentLength` garde la memoire plafonnee.
+    return axios.get(url, { responseType: 'arraybuffer', timeout: 15000, maxContentLength: MAX_MEDIA_CONTENT_LENGTH })
+      .then(r => (Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data)));
   },
 };
 
 const mirrorRootDir = () => path.join(dataDir, MIRROR_DIR_NAME);
 
 ipcMain.handle('media:mirrorStart', async (event, demande) => {
+  // BUG-011 : un seul lot a la fois — sinon deux boucles partagent `mirrorStop`.
+  if (mirrorRunning) return { ok: false, error: 'Telechargement deja en cours' };
+  mirrorRunning = true;
   // Tout est enveloppe : un echec d'ecriture du manifeste (mineur T2) ne doit
   // pas rejeter l'IPC, il se dit `{ ok: false, error }`.
   try {
@@ -604,6 +630,8 @@ ipcMain.handle('media:mirrorStart', async (event, demande) => {
     return { ok: true, key, ...resultat };
   } catch (error) {
     return { ok: false, error: error.message || 'Échec du téléchargement des médias' };
+  } finally {
+    mirrorRunning = false;
   }
 });
 
@@ -700,29 +728,42 @@ function connectPayload(u) {
   };
 }
 
+// SEC-03 : borne d'attente du login — sans elle, un `login()` qui pend laissait
+// `connecting` vrai pour toujours, et toute tentative suivante repondait
+// « Already connecting ».
+const LOGIN_TIMEOUT_MS = 30000;
+
 async function connectDiscord(token) {
   if (connecting) return { success: false, error: 'Already connecting' };
   connecting = true;
+  let suivant = null;
+  let minuteur = null;
   try {
-    // BUG-04 : ne détruit l'ancien client qu'après le succès du login —
-    // un échec de connexion laisse l'utilisateur connecté au client précédent.
-    // Perf : fermer la session courante AVANT d'ouvrir la suivante. Deux
-    // websockets simultanes sur le meme token font plafonner/backoffer le
-    // nouveau login chez Discord (pics de latence). Comportement : switch de
-    // compte -- si le nouveau login echoue, on retombe sur l'ecran login.
-    if (discordClient) { try { const p = discordClient.destroy(); if (p?.catch) p.catch(() => {}); } catch {} discordClient = null; }
     const { Client } = require('discord.js-selfbot-v13');
-    const next = new Client({ checkUpdate: false, fetchAllMembers: false });
-    await next.login(token);
-    discordClient = next;
+    suivant = new Client({ checkUpdate: false, fetchAllMembers: false });
+    // BUG-008 : on N'ECRASE l'ancien client qu'APRES un login reussi. En cas
+    // d'echec (ou de timeout), l'utilisateur reste connecte au compte precedent
+    // (UI, navigation, caches intacts) au lieu de basculer sur « Not connected ».
+    await Promise.race([
+      suivant.login(token),
+      new Promise((_, rejeter) => {
+        minuteur = setTimeout(() => rejeter(new Error('Delai de connexion depasse (30 s)')), LOGIN_TIMEOUT_MS);
+      }),
+    ]);
+    const ancien = discordClient;
+    discordClient = suivant;
+    if (ancien) { try { const p = ancien.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
     // R05#4 : l'objet user (id, global_name, avatar) part avec le résultat de
     // connexion → la modale profil l'a sans API call.
-    const u = next.user;
+    const u = suivant.user;
     return { success: true, ...connectPayload(u) };
   } catch (error) {
+    // Echec : le client candidat est detruit, l'ancien (s'il existe) reste en place.
+    if (suivant) { try { const p = suivant.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
     console.error('Connect error:', error.message);
     return { success: false, error: error.message || 'Connection failed' };
   } finally {
+    if (minuteur) clearTimeout(minuteur);
     connecting = false;
   }
 }
@@ -775,20 +816,28 @@ function ouvrirLoginDiscord() {
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
-        userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36',
       },
     });
+
+    // BUG-020(a) : `webPreferences.userAgent` n'existe pas (Electron l'ignore) ;
+    // l'UA se fixe sur le webContents AVANT la navigation.
+    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36');
 
     // C1a : la fenetre de connexion ne doit naviguer que vers discord.com, en
     // HTTPS. Ni popup, ni redirection externe (phishing / exfiltration de la
     // saisie) ; exiger le protocole ferme aussi `file://` et les schemas custom.
+    // BUG-020(b) : une redirection 302 ne passe PAS par `will-navigate` : la
+    // meme garde est posee sur `will-redirect`.
+    const estNavigationDiscord = (url) => {
+      try {
+        const u = new URL(url);
+        const hote = u.hostname.toLowerCase();
+        return u.protocol === 'https:' && (hote === 'discord.com' || hote.endsWith('.discord.com'));
+      } catch { return false; }
+    };
     win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
-    win.webContents.on('will-navigate', (event, url) => {
-      let hote = '';
-      let protocole = '';
-      try { const u = new URL(url); hote = u.hostname.toLowerCase(); protocole = u.protocol; } catch {}
-      if (protocole !== 'https:' || (hote !== 'discord.com' && !hote.endsWith('.discord.com'))) event.preventDefault();
-    });
+    win.webContents.on('will-navigate', (event, url) => { if (!estNavigationDiscord(url)) event.preventDefault(); });
+    win.webContents.on('will-redirect', (event, url) => { if (!estNavigationDiscord(url)) event.preventDefault(); });
 
     // Detache le debugger, coupe les timers, detruit la fenetre et libere le
     // singleton. Appele dans TOUS les chemins de sortie, une seule fois grace a
@@ -1001,12 +1050,13 @@ ipcMain.handle('discord:getServers', async (_, force = false) => {
 
 // Phase D : cache canaux par serveur (mémoire, TTL 60 s) — évite de re-fetch
 // quand delete-msgs + rm-reactions s'enchaînent sur le même serveur.
-const channelsCache = new Map(); // serverId -> { at, channels }
+const channelsCache = new Map(); // `${uid}:${serverId}` -> { at, channels }
 const CHANNELS_TTL = 60000;
 
 ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
   if (!isSnowflake(serverId)) return { success: false, error: 'identifiant invalide' };
-  const hit = channelsCache.get(serverId);
+  const cle = `${currentUid()}:${serverId}`;
+  const hit = channelsCache.get(cle);
   if (hit && Date.now() - hit.at < CHANNELS_TTL) {
     return { success: true, channels: hit.channels, currentUserId: discordClient?.user?.id };
   }
@@ -1019,7 +1069,7 @@ ipcMain.handle('discord:getServerChannels', async (_, serverId) => {
   const channels = r.data
     .filter(ch => isMessageBearingChannel(ch.type))
     .map(ch => ({ id: ch.id, name: ch.name, type: ch.type }));
-  channelsCache.set(serverId, { at: Date.now(), channels });
+  channelsCache.set(cle, { at: Date.now(), channels });
   return { success: true, channels, currentUserId: discordClient?.user?.id };
 });
 
@@ -1038,22 +1088,36 @@ ipcMain.handle('discord:readServer', async (_, serverId) => {
 // Persistance locale (checkpoints, watermarks, ledger anti-fantômes)
 // ============================================================
 const cpDir = () => path.join(app.getPath('userData'), 'checkpoints');
-const wmFile = (serverId) => path.join(app.getPath('userData'), `watermark-${serverId}.json`);
-const LEDGER_FILE = () => path.join(app.getPath('userData'), 'cleaned_reactions.json');
+// BUG-001 : watermark, ledger et checkpoints sont prefixes par l'identifiant du
+// compte connecte (`currentUid()`). Deux comptes ne partagent plus le meme
+// fichier : l'un ne saute plus des canaux « deja nettoyes » par l'autre. Les
+// anciens fichiers NON scopes sont simplement ignores.
+const wmFile = (serverId) => path.join(app.getPath('userData'), `watermark-${currentUid()}-${serverId}.json`);
+const LEDGER_FILE = () => path.join(app.getPath('userData'), `cleaned_reactions.${currentUid()}.json`);
+const checkpointFile = (op, serverId) => path.join(cpDir(), `${op}-${currentUid()}-${serverId}.json`);
 const LEDGER_TTL = 24 * 3600 * 1000;
 
+// BUG-022 : la lecture-modification-ecriture du ledger est serialisee (une seule
+// operation a la fois) pour ne pas perdre de cles quand plusieurs `ledgerAdd`
+// arrivent en parallele. Motif identique au mutex de tokenStore.cjs.
+let ledgerOp = Promise.resolve();
+const withLedgerLock = (fn) => {
+  const p = ledgerOp.then(fn);
+  ledgerOp = p.then(() => {}, () => {});
+  return p;
+};
 
 ipcMain.handle('persist:checkpointLoad', async (_, op, serverId) => {
   if (!isOp(op) || !isSnowflake(serverId)) return null;
-  return readJson(path.join(cpDir(), `${op}-${serverId}.json`));
+  return readJson(checkpointFile(op, serverId));
 });
 ipcMain.handle('persist:checkpointSave', async (_, op, serverId, cp) => {
   if (!isOp(op) || !isSnowflake(serverId) || !cp || typeof cp !== 'object') return;
-  await writeJson(path.join(cpDir(), `${op}-${serverId}.json`), cp);
+  await writeJson(checkpointFile(op, serverId), cp);
 });
 ipcMain.handle('persist:checkpointClear', async (_, op, serverId) => {
   if (!isOp(op) || !isSnowflake(serverId)) return;
-  try { await fsp.unlink(path.join(cpDir(), `${op}-${serverId}.json`)); } catch {}
+  try { await fsp.unlink(checkpointFile(op, serverId)); } catch {}
 });
 ipcMain.handle('persist:watermarkGet', async (_, serverId) => {
   if (!isSnowflake(serverId)) return {};
@@ -1068,13 +1132,20 @@ ipcMain.handle('persist:ledgerGet', async () => {
   const s = await readJson(LEDGER_FILE());
   return (s && typeof s === 'object' && !Array.isArray(s)) ? s : {};
 });
-ipcMain.handle('persist:ledgerAdd', async (_, keys) => {
+// BUG-022 : purge des entrees perimees A L'ECRITURE (le fichier ne grossit plus
+// sans fin) ET serialisation : sans le verrou, deux `ledgerAdd` concurrents
+// perdaient l'ajout de l'un des deux.
+ipcMain.handle('persist:ledgerAdd', (_, keys) => withLedgerLock(async () => {
   if (!Array.isArray(keys) || !keys.length) return;
-  const s = (await readJson(LEDGER_FILE())) || {};
+  const lus = (await readJson(LEDGER_FILE())) || {};
   const now = Date.now();
-  for (const k of keys) if (typeof k === 'string' && k.length <= 200) s[k] = now;
-  await writeJson(LEDGER_FILE(), s);
-});
+  const vivants = {};
+  for (const [k, ts] of Object.entries(lus)) {
+    if (typeof ts === 'number' && now - ts < LEDGER_TTL) vivants[k] = ts;
+  }
+  for (const k of keys) if (typeof k === 'string' && k.length <= 200) vivants[k] = now;
+  await writeJson(LEDGER_FILE(), vivants);
+}));
 // Nettoyage des checkpoints obsolètes (au démarrage)
 async function cleanupCheckpoints() {
   const cutoff = Date.now() - 7 * 24 * 3600 * 1000;
@@ -1136,6 +1207,10 @@ function mediaContentType(chemin) {
 // suit le lien avec `fs.promises.realpath` puis confirme, via `isMediaPathInside`,
 // que la cible REELLE est bien sous `data/media`. Un fichier absent fait jeter
 // `realpath`, capte plus bas -> 404. Toute lecture impossible repond 404 aussi.
+// BUG-013 : les medias sont servis en FLUX (`createReadStream`), avec support
+// de l'en-tete `Range` et reponse 206 — indispensable aux seeks des videos
+// locales. `fsp.readFile` chargeait tout le fichier en memoire et ne repondait
+// jamais 206 / `Accept-Ranges`. Une plage hors fichier repond 416.
 async function servirMedia(request) {
   try {
     const racine = path.join(dataDir, MIRROR_DIR_NAME);
@@ -1143,8 +1218,34 @@ async function servirMedia(request) {
     if (!cible) return new Response('Introuvable', { status: 404 });
     const reelle = await fsp.realpath(cible);
     if (!isMediaPathInside(racine, reelle)) return new Response('Introuvable', { status: 404 });
-    const corps = await fsp.readFile(reelle);
-    return new Response(corps, { headers: { 'Content-Type': mediaContentType(reelle), 'X-Content-Type-Options': 'nosniff' } });
+    const taille = (await fsp.stat(reelle)).size;
+    const entetes = {
+      'Content-Type': mediaContentType(reelle),
+      'X-Content-Type-Options': 'nosniff',
+      'Accept-Ranges': 'bytes',
+    };
+    const plage = parseByteRange(request.headers.get('range'), taille);
+    if (plage === 'invalid') {
+      return new Response('Plage invalide', {
+        status: 416,
+        headers: { ...entetes, 'Content-Range': `bytes */${taille}` },
+      });
+    }
+    if (plage) {
+      const flux = fs.createReadStream(reelle, { start: plage.start, end: plage.end });
+      return new Response(Readable.toWeb(flux), {
+        status: 206,
+        headers: {
+          ...entetes,
+          'Content-Range': `bytes ${plage.start}-${plage.end}/${taille}`,
+          'Content-Length': String(plage.end - plage.start + 1),
+        },
+      });
+    }
+    const flux = fs.createReadStream(reelle);
+    return new Response(Readable.toWeb(flux), {
+      headers: { ...entetes, 'Content-Length': String(taille) },
+    });
   } catch {
     return new Response('Introuvable', { status: 404 });
   }

@@ -22,6 +22,7 @@ import type {
   WriteResult,
 } from '../../shared/types';
 import type { Checkpoint, CheckpointOperation } from '../../shared/types';
+import type { WatermarkEntry } from '../utils/persist.types';
 
 export interface ReactionSummaryPayload {
   currentUserId: string;

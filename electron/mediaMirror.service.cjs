@@ -207,6 +207,42 @@ function isMediaPathInside(rootDir, candidate) {
   return relatif !== '' && !relatif.startsWith('..') && !path.isAbsolute(relatif);
 }
 
+// Analyse d'un en-tete HTTP `Range` (forme simple `bytes=a-b`, `bytes=a-`,
+// `bytes=-n`). PURE et testable sans disque ni Electron.
+//
+// Retourne :
+//   - `null`       : en-tete absent ou illisible (l'appelant sert tout le fichier) ;
+//   - `'invalid'`  : plage syntaxiquement lisible mais hors fichier -> 416 (l'API
+//     `Response` ne permet pas de distinguer « pas de plage » de « plage
+//     invalide » par un objet, d'ou la sentinelle) ;
+//   - `{ start, end }` : bornes INCLUSIVES, `end` borne a `size - 1`.
+function parseByteRange(header, size) {
+  if (typeof header !== 'string' || header.trim() === '') return null;
+  const correspondance = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
+  if (!correspondance) return null;
+  const [, debutBrut, finBrut] = correspondance;
+  if (debutBrut === '' && finBrut === '') return null;
+  const taille = Number(size);
+  if (!Number.isFinite(taille) || taille <= 0) return 'invalid';
+
+  let debut;
+  let fin;
+  if (debutBrut === '') {
+    // Forme suffixe : les `n` derniers octets.
+    const n = Number(finBrut);
+    if (!Number.isFinite(n) || n <= 0) return 'invalid';
+    debut = Math.max(0, taille - n);
+    fin = taille - 1;
+  } else {
+    debut = Number(debutBrut);
+    fin = finBrut === '' ? taille - 1 : Number(finBrut);
+    if (!Number.isFinite(debut) || !Number.isFinite(fin)) return 'invalid';
+    if (fin > taille - 1) fin = taille - 1;
+  }
+  if (debut >= taille || debut > fin) return 'invalid';
+  return { start: debut, end: fin };
+}
+
 // Le manifeste d'un dossier de miroir, ou `{}` s'il est absent ou illisible.
 //
 // Une tache ulterieure s'en sert pour savoir ce qui a deja ete telecharge : un
@@ -351,6 +387,14 @@ async function downloadMirror(options) {
   const resultat = { done: 0, failed: 0, cancelled: false, bytesDownloaded: 0, bytesTotal: 0 };
   let suivant = 0;
 
+  // BUG-012 : la progression compte les fichiers TRAITES (reussis + echoues).
+  // Sans cela, une piece jointe en echec ne faisait jamais avancer la barre
+  // jusqu'au total. Le resume final garde, lui, `done` = seuls les succes.
+  const publierProgression = url => {
+    if (!onProgress) return;
+    onProgress({ ...resultat, done: resultat.done + resultat.failed, current: url });
+  };
+
   // Supprime un partiel sans jamais jeter : s'il n'existe pas, il n'y a rien a
   // faire, et un echec de suppression ne doit pas masquer l'echec d'origine.
   const retirer = chemin => {
@@ -370,7 +414,7 @@ async function downloadMirror(options) {
       resultat.failed += 1;
       manifest[url] = { state: 'error', error: 'chemin refuse' };
       writeManifest(dir, manifest);
-      if (onProgress) onProgress({ ...resultat, current: url });
+      publierProgression(url);
       return;
     }
 
@@ -381,7 +425,7 @@ async function downloadMirror(options) {
       resultat.failed += 1;
       manifest[url] = { state: 'error', error: messageErreur(error) };
       writeManifest(dir, manifest);
-      if (onProgress) onProgress({ ...resultat, current: url });
+      publierProgression(url);
       return;
     }
     const attenduOctets = Number(attendu) || 0;
@@ -395,7 +439,7 @@ async function downloadMirror(options) {
       resultat.failed += 1;
       manifest[url] = { state: 'error', error: messageErreur(error) };
       writeManifest(dir, manifest);
-      if (onProgress) onProgress({ ...resultat, current: url });
+      publierProgression(url);
       return;
     }
 
@@ -403,7 +447,10 @@ async function downloadMirror(options) {
       fs.mkdirSync(path.dirname(cible), { recursive: true });
       fs.writeFileSync(cible, contenu);
       const ecrits = fs.statSync(cible).size;
-      if (ecrits !== attenduOctets) {
+      // BUG-012 : on ne compare la taille que si `head` a annonce une longueur
+      // (> 0). Sans en-tete `content-length`, `attendu` valait 0 et TOUT fichier
+      // non vide etait marque en erreur a tort.
+      if (attenduOctets > 0 && ecrits !== attenduOctets) {
         throw new Error(`taille inattendue : ${ecrits} octets ecrits, ${attenduOctets} attendus`);
       }
       // `done` SEULEMENT ici : ecriture terminee ET taille verifiee.
@@ -416,7 +463,7 @@ async function downloadMirror(options) {
       manifest[url] = { state: 'error', error: messageErreur(error) };
     }
     writeManifest(dir, manifest);
-    if (onProgress) onProgress({ ...resultat, current: url });
+    publierProgression(url);
   };
 
   const worker = async () => {
@@ -455,6 +502,7 @@ module.exports = {
   mediaRequestPath,
   resolveMediaPath,
   isMediaPathInside,
+  parseByteRange,
   readManifest,
   writeManifest,
   mirrorCategory,

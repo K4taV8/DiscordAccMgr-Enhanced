@@ -239,10 +239,18 @@ export class ServerManager {
     if (!(await confirmAction('Leave Server', 'Leave this server? This cannot be undone.'))) { this.isDeleting = false; return; }
     btn.disabled = true;
     try {
-      await window.electronAPI.leaveServer(serverId);
-      this.refreshServersList(true);
+      const result = await window.electronAPI.leaveServer(serverId);
+      // BUG-009 : {success:false} ignoré — ne pas rafraîchir comme si le serveur
+      // avait été quitté.
+      if (result?.success) {
+        this.refreshServersList(true);
+      } else {
+        showNotification(result?.error || 'Échec : serveur non quitté');
+        btn.disabled = false;
+      }
     } catch (error) {
       console.error('Failed to leave server:', error);
+      showNotification('Échec : serveur non quitté');
       btn.disabled = false;
     } finally {
       this.isDeleting = false;
@@ -275,8 +283,11 @@ export class ServerManager {
 
     // Le meme panneau que pour les DM et les groupes : la suppression d un
     // serveur parcourt tous ses salons et peut durer tres longtemps.
-    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);
+    // BUG-023c : `both` exécute 2 étapes — l'ancienne formule les ignorait.
+    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0)
+      + (mode === 'both' ? 2 : 0) + (mode === 'full' ? 3 : 0);
     let done = 0;
+    let failures = 0;
     showProgressPanel({ title: 'Nettoyage des serveurs', total: items.length * Math.max(1, steps), detail: 'démarrage' });
     try {
       for (const item of items) {
@@ -285,23 +296,32 @@ export class ServerManager {
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
           try {
             await deleteServerMessages({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning delete failed:', e); }
+          } catch (e) { console.error('Cleaning delete failed:', e); failures++; }
           done += 1;
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeServerReactions({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning reactions failed:', e); }
+          } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
           done += 1;
         }
         if (mode === 'full') {
-          try { await window.electronAPI.leaveServer(serverId); } catch (e) { console.error('Cleaning leave failed:', e); }
+          // BUG-009 : vérifier le retour de leaveServer.
+          let ok = false;
+          try { const r = await window.electronAPI.leaveServer(serverId); ok = !!r?.success; }
+          catch (e) { console.error('Cleaning leave failed:', e); }
+          if (!ok) failures++;
           done += 1;
         }
         updateProgressPanel({ done, detail: serverName });
       }
       this.refreshServersList(true);
-      finishProgressPanel({ detail: `${items.length} serveur(s) traité(s)` });
+      if (failures > 0) {
+        finishProgressPanel({ detail: `${items.length} serveur(s) traité(s) — ${failures} étape(s) en échec`, status: 'failed' });
+        showNotification(`${failures} opération(s) en échec lors du nettoyage`);
+      } else {
+        finishProgressPanel({ detail: `${items.length} serveur(s) traité(s)` });
+      }
     } finally {
       this.isDeleting = false;
     }

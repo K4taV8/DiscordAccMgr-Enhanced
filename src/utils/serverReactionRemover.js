@@ -2,6 +2,7 @@ import { formatEmojiForApi } from './emojiUtils.js';
 import { autoConcurrency, createTaskPanel } from './serverTaskUtils.js';
 import { scanLimiter, deleteLimiter } from './rateLimiter.js';
 import { confirmAction } from './ui.js';
+import { countPartialChannels } from './serverMessageDeleter.js';
 import {
   OP_REACTIONS, loadCheckpoint, saveCheckpoint, clearCheckpoint, newCheckpoint, touch,
   loadLedger, addLedger, ledgerKey, ledgerFilter,
@@ -10,6 +11,27 @@ import {
 export function decodeQueue(str) {
   const [cid, mid, ...rest] = str.split(':');
   return { channelId: cid, messageId: mid, emojiStr: rest.join(':') };
+}
+
+// BUG-022b : ne retirer les clés en attente qu'APRÈS une écriture réussie.
+// Un `splice` préalable les effaçait de la mémoire alors que `write` pouvait
+// échouer (disque plein, IPC) → réactions supprimées mais non journalisées,
+// donc re-signalées comme fantômes au run suivant.
+export async function drainLedger(pending, write) {
+  if (!pending.length) return [];
+  const keys = pending.slice();
+  await write(keys);
+  pending.splice(0, keys.length);
+  return keys;
+}
+
+// BUG-023b : à la reprise, `progress.done` compte TOUT ce qui a été traité
+// (succès ET échecs). Le nombre réellement supprimé est donc `done - failed` ;
+// réutiliser `done` tel quel gonflait `removed` et donc `removed + failed`.
+export function resumeCounts(progress) {
+  const done = (progress && progress.done) || 0;
+  const failed = (progress && progress.failed) || 0;
+  return { removed: Math.max(0, done - failed), failed };
 }
 
 // Scan COMPLET d'un canal (paginé), sans borne de watermark.
@@ -32,7 +54,7 @@ export async function scanChannelReactions(channel, electronAPI, log, isCancelle
     let result;
     const release = await scanLimiter.acquire();
     try { result = await electronAPI.getChannelMessages(channel.id, lastId); }
-    catch { release(); return { reactions, skipped: true, newestId }; }
+    catch { release(); return { reactions, skipped: true, cancelled: isCancelled(), newestId }; }
     release();
 
     if (!result.success) {
@@ -40,8 +62,8 @@ export async function scanChannelReactions(channel, electronAPI, log, isCancelle
         await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 1) * 1000) + 500));
         continue;
       }
-      if (result.error === 'No access') return { reactions, skipped: false, newestId };
-      return { reactions, skipped: true, newestId };
+      if (result.error === 'No access') return { reactions, skipped: false, cancelled: isCancelled(), newestId };
+      return { reactions, skipped: true, cancelled: isCancelled(), newestId };
     }
     if (!result.messages || !result.messages.length) break;
     if (newestId === null) newestId = result.messages[0].id;
@@ -63,7 +85,10 @@ export async function scanChannelReactions(channel, electronAPI, log, isCancelle
     if (result.messages.length < 100) break;
     lastId = lastMsg.id;
   }
-  return { reactions, skipped: false, newestId };
+  // BUG-002 : sortie de boucle par annulation → le canal n'est PAS « scanné ».
+  // `cancelled` le distingue de la fin naturelle pour que l'appelant le marque
+  // « partial » (repris au prochain run) au lieu de le sauter.
+  return { reactions, skipped: false, cancelled: isCancelled(), newestId };
 }
 
 export async function removeServerReactions({
@@ -80,11 +105,11 @@ export async function removeServerReactions({
   const ledgerPending = [];
 
   const flushLedger = async () => {
-    if (!ledgerPending.length) return;
-    const keys = ledgerPending.splice(0, ledgerPending.length);
+    const keys = await drainLedger(ledgerPending, addLedger);
     for (const k of keys) suppressed.set(k, Date.now());
-    await addLedger(keys);
   };
+
+  const partialChannelCount = () => countPartialChannels(checkpoint.channels);
 
   const t = createTaskPanel(serverName, '[RmReactions]');
   const { phase, status, details, progressNum, totalNum, actionBtn, updateBar, cleanExit, log, safeTimeout, shouldStop } = t;
@@ -134,13 +159,15 @@ export async function removeServerReactions({
             // change → le watermark sautait des canaux et affichait « 0 réaction »
             // alors qu'il en restait. Scan complet à chaque run.
             state.status = 'scanning';
-            const { reactions, skipped, newestId } = await scanChannelReactions(ch, electronAPI, log, shouldStop, p => {
+            const { reactions, skipped, cancelled, newestId } = await scanChannelReactions(ch, electronAPI, log, shouldStop, p => {
               if (details) details.textContent = `#${ch.name}: page ${p}`;
             }, { suppressed });
             state.newestId = newestId || state.newestId;
-            state.status = skipped ? 'partial' : 'scanned';
+            // BUG-002 : une annulation pendant le scan → canal « partial » (repris),
+            // jamais « scanned » (sinon sauté à la reprise).
+            state.status = (skipped || cancelled) ? 'partial' : 'scanned';
             state.found = reactions.length;
-            if (skipped) partialChannels++;
+            if (skipped || cancelled) partialChannels++;
             for (const r of reactions) {
               const k = `${r.channelId}:${r.messageId}:${r.emojiStr}`;
               if (!seenKeys.has(k)) { seenKeys.add(k); checkpoint.queue.push(k); }
@@ -171,6 +198,22 @@ export async function removeServerReactions({
       if (partialChannels > 0) log(`WARNING: ${partialChannels} channel(s) scanned partially — some reactions may be missing`);
 
       if (total === 0) {
+        const partialCount = partialChannelCount();
+        // BUG-006 : canaux non scannés → ne pas effacer le checkpoint (reprise).
+        if (partialCount > 0) {
+          if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
+          if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+          updateBar(100);
+          if (details) details.textContent = 'Relancez pour scanner les canaux restants';
+          actionBtn.textContent = 'Close';
+          actionBtn.style.background = '#faa81a';
+          actionBtn.disabled = false;
+          actionBtn.onclick = () => cleanExit(onComplete);
+          checkpoint = touch(checkpoint);
+          await saveCheckpoint(OP_REACTIONS, serverId, checkpoint);
+          safeTimeout(() => cleanExit(onComplete), 3000);
+          return;
+        }
         if (status) status.textContent = 'No reactions found';
         if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
         updateBar(100);
@@ -200,8 +243,8 @@ export async function removeServerReactions({
     actionBtn.disabled = false;
     updateBar(total ? (checkpoint.progress.done / total) * 100 : 0);
 
-    let removed = checkpoint.progress.done;
-    let failed = checkpoint.progress.failed;
+    // BUG-023b : à la reprise, `done` inclut les échecs → removed = done - failed.
+    let { removed, failed } = resumeCounts(checkpoint.progress);
 
     for (let i = checkpoint.progress.done; i < total && !shouldStop(); i++) {
       const item = queue[i];
@@ -311,6 +354,28 @@ export async function removeServerReactions({
     }
 
     log(`fin: removed=${removed} failed=${failed}`);
+
+    // BUG-006 : des canaux n'ont pas pu être scannés (partial) → statut final
+    // explicite et checkpoint CONSERVÉ (phase remise à « scan » pour les
+    // reprendre), au lieu d'un « Done » trompeur suivi d'un effacement.
+    const partialCount = partialChannelCount();
+    if (partialCount > 0) {
+      checkpoint.phase = 'scan';
+      checkpoint = touch(checkpoint);
+      await saveCheckpoint(OP_REACTIONS, serverId, checkpoint);
+      log(`fin partielle: ${removed} supprimées, ${partialCount} canal(aux) non scanné(s)`);
+      updateBar(100);
+      if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+      if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
+      if (details) details.textContent = `${removed} supprimées — relancez pour scanner les canaux restants`;
+      actionBtn.textContent = 'Close';
+      actionBtn.style.background = '#faa81a';
+      actionBtn.disabled = false;
+      actionBtn.onclick = () => cleanExit(onComplete);
+      safeTimeout(() => cleanExit(onComplete), 5000);
+      return;
+    }
+
     updateBar(100);
     if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
     if (status) status.textContent = `Removed ${removed} / ${removed + failed}${failed > 0 ? ` (${failed} failed)` : ''}`;

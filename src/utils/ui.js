@@ -36,7 +36,7 @@ export const confirmAction = (title, message, confirmLabel = 'Confirm') => new P
   modal.appendChild(content);
 
   document.body.appendChild(modal);
-  okBtn.focus();
+  cancelBtn.focus();
 });
 
 // Modale de progression. `options.onCancel` est OPTIONNEL : fourni, il rend un

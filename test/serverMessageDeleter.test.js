@@ -5,7 +5,13 @@
 // et le watermark ne doit être finalisé que si TOUT a été supprimé.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { nextDeleteCursor, deletionsComplete, isAlreadyDeleted } from '../src/utils/serverMessageDeleter.js';
+import fs from 'node:fs';
+import {
+  nextDeleteCursor, deletionsComplete, isAlreadyDeleted,
+  scanChannelMessages, countPartialChannels, snowflakeForDate,
+} from '../src/utils/serverMessageDeleter.js';
+
+const neverStop = () => false;
 
 test('nextDeleteCursor avance le curseur uniquement sur un succès', () => {
   assert.equal(nextDeleteCursor(0, true), 1);
@@ -75,4 +81,75 @@ test('échec réel au milieu : le reste de la file est traité et la reprise rep
   assert.equal(done, firstFail);
   assert.equal(queue[done], 'c:2:emoji');
   assert.equal(deletionsComplete(deleted, queue.length, failed), false);
+});
+
+// ─── BUG-002 : annulation de scan ────────────────────────────────────────────
+test('BUG-002 : scanChannelMessages remonte cancelled quand annulé en vol', async () => {
+  const recent = snowflakeForDate(new Date());
+  const api = {
+    getChannelMessages: async (_ch, _before, oldest) => oldest === '0'
+      ? { success: true, messages: [{ id: recent }] }
+      : { success: true, messages: [] },
+  };
+  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, () => true, undefined, null);
+  assert.equal(res.cancelled, true, 'annulation ≠ scan terminé');
+  assert.equal(res.skipped, false);
+  assert.deepEqual(res.messages, []);
+});
+
+// ─── BUG-003 : sonde initiale ────────────────────────────────────────────────
+test('BUG-003 : une sonde initiale en échec marque le canal skipped (pas « scanné vide »)', async () => {
+  let calls = 0;
+  const api = { getChannelMessages: async () => { calls++; return { success: false, error: 'No access' }; } };
+  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
+  assert.equal(res.skipped, true, 'no access ⇒ repris au prochain run');
+  assert.deepEqual(res.messages, []);
+  assert.equal(calls, 1, 'no access : pas de retry inutile');
+});
+
+test('BUG-003 : une exception réseau sur la sonde marque aussi skipped', async () => {
+  const api = { getChannelMessages: async () => { throw new Error('timeout'); } };
+  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
+  assert.equal(res.skipped, true);
+});
+
+test('BUG-003 : succès + liste vide = canal réellement vide (scanned, skipped false)', async () => {
+  const api = {
+    getChannelMessages: async (_ch, _before, oldest) => ({ success: true, messages: [] }),
+  };
+  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
+  assert.equal(res.skipped, false);
+  assert.equal(res.cancelled, false);
+  assert.deepEqual(res.messages, []);
+});
+
+test('BUG-003 : un 429 sur la sonde est retenté (retryAfter) avant abandon', async () => {
+  const recent = snowflakeForDate(new Date());
+  let probes = 0;
+  const api = {
+    getChannelMessages: async (_ch, _before, oldest) => {
+      if (oldest !== '0') return { success: true, messages: [] };
+      probes++;
+      return probes < 3
+        ? { success: false, error: 'Rate limited', retryAfter: 0.001 }
+        : { success: true, messages: [{ id: recent }] };
+    },
+  };
+  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
+  assert.equal(probes, 3, '2 échecs 429 puis succès');
+  assert.equal(res.skipped, false);
+});
+
+// ─── BUG-006 : canaux partiels ───────────────────────────────────────────────
+test('BUG-006 : countPartialChannels ne compte que les canaux « partial »', () => {
+  assert.equal(countPartialChannels({ a: { status: 'scanned' }, b: { status: 'partial' }, c: { status: 'pending' } }), 1);
+  assert.equal(countPartialChannels({}), 0);
+  assert.equal(countPartialChannels(null), 0);
+});
+
+test('BUG-006 : le statut final signale les canaux non scannés et garde le checkpoint', () => {
+  const src = fs.readFileSync(new URL('../src/utils/serverMessageDeleter.js', import.meta.url), 'utf8');
+  assert.ok(src.includes('canal(aux) non scanné(s)'), 'statut final explicite');
+  assert.ok(src.includes('const partialChannelCount = () => countPartialChannels('), 'compte réutilisé');
+  assert.ok(src.includes("checkpoint.phase = 'scan';"), 'reprise des canaux partiels');
 });

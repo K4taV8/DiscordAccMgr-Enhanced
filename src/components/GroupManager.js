@@ -1,4 +1,4 @@
-import { confirmAction } from '../utils/ui.js';
+import { confirmAction, showNotification } from '../utils/ui.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { deleteDMMessages } from '../utils/messageDeleter.js';
 import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
@@ -84,6 +84,8 @@ export class GroupManager {
         this.selectionDock.sync(0, 0);
       };
       await cachedListRefresh(this, () => window.electronAPI.getGroups(), render, force);
+      // BUG-010 : un échec ne doit pas rester en cache 30 s.
+      if (this._cache?.data?.success === false) this._cache = null;
     } catch (error) {
       this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
@@ -143,11 +145,17 @@ export class GroupManager {
     btn.disabled = true;
     try {
       const result = await window.electronAPI.leaveGroup(groupId);
-      if (result.success) {
+      // BUG-009 : {success:false} ignoré avant — bouton laissé désactivé sans
+      // explication. On notifie et on réactive.
+      if (result?.success) {
         this.refreshGroupsList(true);
+      } else {
+        showNotification(result?.error || 'Échec : groupe non quitté');
+        btn.disabled = false;
       }
     } catch (error) {
       console.error('Failed to leave group:', error);
+      showNotification('Échec : groupe non quitté');
       btn.disabled = false;
     } finally {
       this.isDeleting = false;
@@ -204,14 +212,19 @@ export class GroupManager {
 
     // Comme pour les DM : le debit de Discord impose des attentes, le panneau
     // donne le sentiment d avance et nomme le groupe traite.
-    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);
+    // BUG-023c : `both` exécute 2 étapes (messages + réactions) — l'ancienne
+    // formule ne comptait rien pour ce mode, et la barre s'arrêtait à 50 %.
+    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0)
+      + (mode === 'both' ? 2 : 0) + (mode === 'full' ? 3 : 0);
     let done = 0;
+    let failures = 0;
     showProgressPanel({ title: 'Nettoyage des groupes', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
     try {
       for (const g of selected) {
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
+          let status = 'failed';
           try {
-            await deleteDMMessages({
+            status = await deleteDMMessages({
               channelId: g.groupId,
               username: g.name,
               electronAPI: window.electronAPI,
@@ -221,22 +234,34 @@ export class GroupManager {
               onComplete: () => {},
             });
           } catch (e) { console.error('Cleaning delete failed:', e); }
+          // BUG-014 : agréger le statut — `partial`/`cancelled`/`undefined`
+          // n'est pas un succès et ne doit pas passer pour « traité ».
+          if (status !== 'done') failures++;
           done += 1;
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning reactions failed:', e); }
+          } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
           done += 1;
         }
         if (mode === 'full') {
-          try { await window.electronAPI.leaveGroup(g.groupId); } catch (e) { console.error('Cleaning leave failed:', e); }
+          // BUG-009 : vérifier `success` au lieu de compter un échec comme traité.
+          let ok = false;
+          try { const r = await window.electronAPI.leaveGroup(g.groupId); ok = !!r?.success; }
+          catch (e) { console.error('Cleaning leave failed:', e); }
+          if (!ok) failures++;
           done += 1;
         }
         updateProgressPanel({ done, detail: g.name });
       }
       this.refreshGroupsList(true);
-      finishProgressPanel({ detail: `${selected.length} groupe(s) traité(s)` });
+      if (failures > 0) {
+        finishProgressPanel({ detail: `${selected.length} groupe(s) traité(s) — ${failures} étape(s) en échec`, status: 'failed' });
+        showNotification(`${failures} opération(s) en échec lors du nettoyage`);
+      } else {
+        finishProgressPanel({ detail: `${selected.length} groupe(s) traité(s)` });
+      }
     } finally {
       this.isDeleting = false;
     }

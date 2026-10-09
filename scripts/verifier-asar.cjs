@@ -10,8 +10,8 @@
 // doit rester jouable partout, donc cette porte se franchit explicitement — et
 // son resultat doit etre consigne, sinon elle n'est jamais franchie.
 //
-// LE RISQUE, EN UNE PHRASE. `electron` est en `^43.4.0` dans package.json, donc
-// un `npm i` peut passer a 44.x et CASSER CETTE PROPRIETE SILENCIEUSEMENT : le
+// LE RISQUE, EN UNE PHRASE. `electron` est epingle en `43.4.0` dans package.json :
+// une montee a 44.x, meme volontaire, peut CASSER CETTE PROPRIETE SILENCIEUSEMENT : le
 // symptome ne serait pas une erreur, ce serait « les imports redeviennent lents »,
 // parce que le filet `fallbackToRenderer` ferait refaire le travail par le
 // renderer. Aucun test du depot ne verrait rien. Lancer ce script apres tout

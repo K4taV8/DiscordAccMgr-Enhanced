@@ -10,8 +10,9 @@
 //      clés du ledger (anti-fantômes) — pas de réaction re-signalée à tort.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { scanOwnReactions, deleteReactionList } from '../src/utils/reactionRemover.js';
-import { scanChannelReactions } from '../src/utils/serverReactionRemover.js';
+import { scanChannelReactions, drainLedger, resumeCounts } from '../src/utils/serverReactionRemover.js';
 import { formatEmojiForApi } from '../src/utils/emojiUtils.js';
 
 const neverStop = () => false;
@@ -138,3 +139,94 @@ test('scanChannelReactions filtre le ledger (anti-fantômes) et conserve U+FE0F'
   assert.equal(reactions[0].emojiStr, formatEmojiForApi({ name: '😊' }));
   assert.equal(reactions[0].messageId, 'm1');
 });
+
+// ─── BUG-002 : annulation de scan ────────────────────────────────────────────
+test('BUG-002 : scanChannelReactions remonte cancelled quand annulé en vol', async () => {
+  let cancel = false;
+  const page = Array.from({ length: 100 }, (_, i) => ({ id: `m${i}`, reactions: [{ emoji: { name: '👍' }, me: true }] }));
+  const api = { getChannelMessages: async () => { cancel = true; return { success: true, messages: page }; } };
+  const { reactions, cancelled, skipped } = await scanChannelReactions(
+    { id: 'c1' }, api, () => {}, () => cancel, undefined, {}
+  );
+  assert.equal(cancelled, true, 'annulation ≠ scan terminé');
+  assert.equal(skipped, false);
+  assert.equal(reactions.length, 100, 'les réactions déjà vues sont conservées');
+});
+
+// ─── BUG-022b : flush du ledger ──────────────────────────────────────────────
+test('BUG-022b : drainLedger conserve les clés si l écriture échoue', async () => {
+  const pending = ['a', 'b'];
+  await assert.rejects(() => drainLedger(pending, async () => { throw new Error('disk full'); }));
+  assert.deepEqual(pending, ['a', 'b'], 'aucune clé perdue');
+});
+
+test('BUG-022b : drainLedger vide la file après écriture réussie', async () => {
+  const pending = ['a', 'b'];
+  const written = [];
+  const out = await drainLedger(pending, async keys => { written.push(...keys); });
+  assert.deepEqual(written, ['a', 'b']);
+  assert.deepEqual(out, ['a', 'b']);
+  assert.deepEqual(pending, []);
+});
+
+// ─── BUG-023b : comptes à la reprise ─────────────────────────────────────────
+test('BUG-023b : resumeCounts retire les échecs de progress.done', () => {
+  assert.deepEqual(resumeCounts({ done: 10, failed: 3 }), { removed: 7, failed: 3 });
+  assert.deepEqual(resumeCounts({ done: 2, failed: 5 }), { removed: 0, failed: 5 });
+  assert.deepEqual(resumeCounts({ done: 0, failed: 0 }), { removed: 0, failed: 0 });
+  assert.deepEqual(resumeCounts(undefined), { removed: 0, failed: 0 });
+});
+
+// ─── BUG-006 : canaux partiels ───────────────────────────────────────────────
+test('BUG-006 : le statut final signale les canaux non scannés et garde le checkpoint', () => {
+  const src = fs.readFileSync(new URL('../src/utils/serverReactionRemover.js', import.meta.url), 'utf8');
+  assert.ok(src.includes('canal(aux) non scanné(s)'), 'statut final explicite');
+  assert.ok(src.includes('const partialChannelCount = () => countPartialChannels('), 'compte réutilisé');
+  assert.ok(src.includes("checkpoint.phase = 'scan';"), 'reprise des canaux partiels');
+});
+
+// ─── BUG-004 : scan complet vs incomplet (DM / groupe) ───────────────────────
+test('BUG-004 : scanOwnReactions signale complete:true quand tout est parcouru', async () => {
+  const api = {
+    getDMMessages: async () => ({
+      success: true,
+      messages: [{ id: 'm1', reactions: [{ emoji: { name: '👍' }, me: true }] }],
+    }),
+  };
+  const { messages, complete } = await scanOwnReactions('c1', false, api, neverStop);
+  assert.equal(complete, true);
+  assert.equal(messages.length, 1);
+});
+
+test('BUG-004 : une erreur réseau persistante donne complete:false (pas une fin d’historique)', async () => {
+  let calls = 0;
+  const api = { getDMMessages: async () => { calls++; return { success: false, error: 'HTTP 500' }; } };
+  const { messages, complete } = await scanOwnReactions('c1', false, api, neverStop);
+  assert.equal(complete, false, 'scanner incomplet ne doit jamais valoir « terminé »');
+  assert.deepEqual(messages, []);
+  assert.equal(calls, 3, 'les erreurs sont retentées avant de conclure');
+});
+
+test('BUG-004 : un 429 au scan est retenté (Retry-After) puis le scan continue', async () => {
+  let calls = 0;
+  const api = {
+    getDMMessages: async () => {
+      calls++;
+      if (calls === 1) return { success: false, error: 'Rate limited', retryAfter: -0.999 };
+      return { success: true, messages: [{ id: 'm1', reactions: [{ emoji: { name: '👍' }, me: true }] }] };
+    },
+  };
+  const { messages, complete } = await scanOwnReactions('c1', false, api, neverStop);
+  assert.equal(calls, 2);
+  assert.equal(complete, true);
+  assert.equal(messages.length, 1);
+});
+
+test('BUG-004 : atteindre le plafond MAX_MESSAGES marque complete:false', async () => {
+  const page = Array.from({ length: 100 }, (_, i) => ({ id: `m${i}`, reactions: [{ emoji: { name: '👍' }, me: true }] }));
+  const api = { getDMMessages: async () => ({ success: true, messages: page }) };
+  const { messages, complete } = await scanOwnReactions('c1', false, api, neverStop);
+  assert.equal(messages.length, 2000);
+  assert.equal(complete, false, 'le plafond doit être signalé, pas silencieux');
+});
+

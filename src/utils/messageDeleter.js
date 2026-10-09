@@ -4,6 +4,21 @@ import { humanDelay, sleep } from './delay.js';
 import { scanLimiter, deleteLimiter } from './rateLimiter.js';
 import { showNotification } from './ui.js';
 
+// BUG-014 : les messages système (dont les APPELS, type 3) sont refusés à la
+// suppression par Discord. `isDeletable` (côté main) ne regarde que l'auteur :
+// un appel initié par l'utilisateur y passait donc à tort et polluait les
+// échecs. On exclut les types système connus, sans jamais écarter un message
+// normal (type absent = non filtré, pour rester compatible).
+const SYSTEM_MESSAGE_TYPES = new Set([
+  1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 14, 15, 16, 17, 18, 21, 22,
+  24, 25, 26, 27, 28, 29, 30, 31, 32, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46
+]);
+
+export function isDeletableMessageType(type) {
+  if (type === undefined || type === null) return true;
+  return !SYSTEM_MESSAGE_TYPES.has(Number(type));
+}
+
 export async function deleteDMMessages({
   channelId,
   username,
@@ -61,14 +76,24 @@ export async function deleteDMMessages({
     let deletableMessages = [];
 
     while (hasMore && !shouldStop && !(isStopSignal?.())) {
-      const release = await scanLimiter.acquire();
-      let result;
-      try {
-        result = isGroup 
-          ? await electronAPI.getChannelMessages(channelId, lastMessageId)
-          : await electronAPI.getDMMessages(channelId, lastMessageId);
-      } finally {
-        release();
+      // BUG-014 : un 429 au scan n'abandonne plus la suppression — on respecte
+      // Retry-After et on retente (borné), comme pour les suppressions.
+      let result = null;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const release = await scanLimiter.acquire();
+        try {
+          result = isGroup
+            ? await electronAPI.getChannelMessages(channelId, lastMessageId)
+            : await electronAPI.getDMMessages(channelId, lastMessageId);
+        } finally {
+          release();
+        }
+        if (result.success) break;
+        if (result.error === 'Rate limited') {
+          await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 5) * 1000) + 1000));
+        } else {
+          break;
+        }
       }
 
       if (!result.success) {
@@ -86,6 +111,9 @@ export async function deleteDMMessages({
 
       const messages = result.messages;
       const newDeletableMessages = messages.filter(msg => {
+        // BUG-014 : jamais un message système (appels, arrivées...) — Discord
+        // refuse sa suppression, il ne doit pas être compté « à supprimer ».
+        if (!isDeletableMessageType(msg.type)) return false;
         if (isGroup) {
           if (!msg.author || msg.author.id !== currentUserId) return false;
           // BUG-01 : msg.type est un entier Discord, pas une chaîne — la
@@ -198,9 +226,13 @@ export async function deleteDMMessages({
     return 'done';
   } catch (error) {
     console.error('Delete messages error:', error);
-    const progressContainer = document.getElementById('progressContainer');
+    // BUG-014 : en mode `quiet` il n'y a pas de modale — l'échec ne doit pas
+    // disparaître pour autant : on notifie l'utilisateur.
+    const progressContainer = quiet ? null : document.getElementById('progressContainer');
     if (progressContainer) {
       progressContainer.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
+    } else {
+      showNotification(error?.message || 'Échec de la suppression des messages');
     }
   } finally {
     clearTimers();

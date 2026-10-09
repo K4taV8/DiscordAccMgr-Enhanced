@@ -30,6 +30,12 @@ export function deletionsComplete(deleted, total, failed = 0) {
   return failed === 0 && deleted === total;
 }
 
+// BUG-006 : nombre de canaux restés « partial » (non scannés) dans un checkpoint.
+// Pur/testable — sert à décider de conserver le checkpoint et à l'afficher.
+export function countPartialChannels(channels) {
+  return Object.values(channels || {}).filter(s => s && s.status === 'partial').length;
+}
+
 // Un message déjà absent (404 « Unknown Message » / « not found ») est un
 // SUCCÈS : il n'existe plus, le curseur doit avancer. Un 404 « Unknown Channel »
 // désigne un MAUVAIS identifiant de salon — ce n'est pas un succès. Les deux
@@ -42,7 +48,7 @@ export function isAlreadyDeleted(result) {
   return /not found|unknown message/i.test(String(result?.error || ''));
 }
 
-async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, stopBeforeId) {
+export async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, stopBeforeId) {
   const found = [];
   let lastId = beforeId;
   let newestId = null;
@@ -50,7 +56,7 @@ async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, sto
     let result;
     const release = await scanLimiter.acquire();
     try { result = await electronAPI.getChannelMessages(channel.id, lastId); }
-    catch { release(); return { found, skipped: true, newestId }; }
+    catch { release(); return { found, skipped: true, cancelled: isCancelled(), newestId }; }
     release();
 
     // ponytail: 3 tentatives réseau avant d'abandonner le segment (résilience scan)
@@ -62,10 +68,10 @@ async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, sto
       }
       const release2 = await scanLimiter.acquire();
       try { result = await electronAPI.getChannelMessages(channel.id, lastId); }
-      catch { release2(); return { found, skipped: true, newestId }; }
+      catch { release2(); return { found, skipped: true, cancelled: isCancelled(), newestId }; }
       release2();
     }
-    if (!result?.success) return { found, skipped: true, newestId };
+    if (!result?.success) return { found, skipped: true, cancelled: isCancelled(), newestId };
     if (!result.messages?.length) break;
 
     if (newestId === null && beforeId === null) newestId = result.messages[0].id;
@@ -87,16 +93,36 @@ async function scanSegment(channel, uid, electronAPI, isCancelled, beforeId, sto
     if (stopBeforeId && BigInt(oldestInPage.id) <= BigInt(stopBeforeId)) break;
     lastId = oldestInPage.id;
   }
-  return { found, skipped: false, newestId };
+  // BUG-002 : sortie par annulation → segment NON terminé (`cancelled`).
+  return { found, skipped: false, cancelled: isCancelled(), newestId };
 }
 
-async function scanChannelMessages(channel, knownUserId, electronAPI, log, isCancelled, onProgress, stopAtId) {
+export async function scanChannelMessages(channel, knownUserId, electronAPI, log, isCancelled, onProgress, stopAtId) {
   const uid = knownUserId;
 
-  // Get the earliest message to determine channel timespan (1 API call)
+  // Sonde initiale : plus ancien message (1 appel), sert à déduire l'âge du canal.
+  // BUG-003 : un échec de cette sonde (429, timeout, « no access ») ne signifie
+  // PAS « canal vide ». On retente le 429 (retryAfter), et tout échec résiduel
+  // est remonté `skipped:true` pour que le canal soit repris — jamais marqué
+  // `scanned` avec 0 message.
   let oldestResult;
-  try { oldestResult = await electronAPI.getChannelMessages(channel.id, null, '0'); } catch {}
-  if (!oldestResult?.success || !oldestResult.messages?.length) return { channelId: channel.id, messages: [], currentUserId: uid, newestId: null };
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try { oldestResult = await electronAPI.getChannelMessages(channel.id, null, '0'); }
+    catch { oldestResult = null; }
+    if (oldestResult?.success) break;
+    if (oldestResult?.error === 'Rate limited') {
+      await new Promise(r => setTimeout(r, ((oldestResult.retryAfter || 1) * 1000) + 500));
+      continue;
+    }
+    break; // « No access » / autre erreur : inutile d'insister
+  }
+  if (!oldestResult?.success) {
+    return { channelId: channel.id, messages: [], currentUserId: uid, newestId: null, skipped: true, cancelled: false };
+  }
+  // Succès + liste vide = canal réellement vide (scanné, rien à faire).
+  if (!oldestResult.messages?.length) {
+    return { channelId: channel.id, messages: [], currentUserId: uid, newestId: null, skipped: false, cancelled: false };
+  }
 
   const oldestId = oldestResult.messages[0].id;
   const ts = snowflakeTs(oldestId);
@@ -104,9 +130,9 @@ async function scanChannelMessages(channel, knownUserId, electronAPI, log, isCan
 
   // Sequential scan for channels under 1 day old (borné par le watermark si delta)
   if (ageDays < 1) {
-    const { found, skipped, newestId } = await scanSegment(channel, uid, electronAPI, isCancelled, null, stopAtId || null);
+    const { found, skipped, cancelled, newestId } = await scanSegment(channel, uid, electronAPI, isCancelled, null, stopAtId || null);
     log(`#${channel.name}: ${found.length}m seq${skipped ? ' (partial)' : ''}`);
-    return { channelId: channel.id, messages: found, currentUserId: uid, skipped, newestId };
+    return { channelId: channel.id, messages: found, currentUserId: uid, skipped, cancelled, newestId };
   }
 
   // Parallel time-segmented scan — the global scanLimiter caps the combined request rate
@@ -125,9 +151,10 @@ async function scanChannelMessages(channel, knownUserId, electronAPI, log, isCan
 
   const messages = results.flatMap(r => r.found);
   const skipped = results.some(r => r.skipped);
+  const cancelled = results.some(r => r.cancelled);
   const newestId = results[0]?.newestId || null; // segment 0 scanne depuis le plus récent
   log(`#${channel.name}: ${messages.length}m (${segments}x${skipped ? ', partial' : ''})`);
-  return { channelId: channel.id, messages, currentUserId: uid, skipped, newestId };
+  return { channelId: channel.id, messages, currentUserId: uid, skipped, cancelled, newestId };
 }
 
 export async function deleteServerMessages({
@@ -150,6 +177,8 @@ export async function deleteServerMessages({
     }
     if (changed) await saveWatermark(serverId, wm);
   };
+
+  const partialChannelCount = () => countPartialChannels(checkpoint.channels);
 
   const t = createTaskPanel(serverName, '[DelMessages]');
   const { phase, status, details, progressNum, totalNum, actionBtn, updateBar, cleanExit, log, safeTimeout, shouldStop } = t;
@@ -223,9 +252,11 @@ export async function deleteServerMessages({
             }, stopAtId);
             uid = uid || result.currentUserId;
             state.newestId = result.newestId || state.newestId;
-            state.status = result.skipped ? 'partial' : 'scanned';
+            // BUG-002 : annulation en cours de scan → canal « partial » (repris),
+            // surtout pas « scanned » (sinon sauté à la reprise).
+            state.status = (result.skipped || result.cancelled) ? 'partial' : 'scanned';
             state.found = result.messages.length;
-            if (result.skipped) partialChannels++;
+            if (result.skipped || result.cancelled) partialChannels++;
             for (const item of result.messages) {
               const k = `${item.channelId}:${item.msg.id}`;
               if (!seenKeys.has(k)) { seenKeys.add(k); checkpoint.queue.push(k); }
@@ -259,6 +290,23 @@ export async function deleteServerMessages({
       }
 
       if (total === 0) {
+        // BUG-006 : des canaux n'ont pas pu être scannés → ne pas effacer le
+        // checkpoint ni prétendre « Done » (phase reste « scan » pour les reprendre).
+        const partialCount = partialChannelCount();
+        if (partialCount > 0) {
+          if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
+          if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+          updateBar(100);
+          if (details) details.textContent = 'Relancez pour scanner les canaux restants';
+          actionBtn.textContent = 'Close';
+          actionBtn.style.background = '#faa81a';
+          actionBtn.disabled = false;
+          actionBtn.onclick = () => cleanExit(onComplete);
+          checkpoint = touch(checkpoint);
+          await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
+          safeTimeout(() => cleanExit(onComplete), 3000);
+          return;
+        }
         if (status) status.textContent = 'No messages to delete';
         if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
         updateBar(100);
@@ -376,6 +424,30 @@ export async function deleteServerMessages({
     }
 
     log(`fin: ${deleted} ${fmt((Date.now() - delStart) / 1000)}`);
+
+    // BUG-006 : si des canaux sont restés « partial », ne PAS effacer le
+    // checkpoint. Le watermark ne doit PAS être finalisé pour ces canaux
+    // (finalizeWatermark ne traite déjà que les canaux « scanned ») ; on
+    // revient à la phase « scan » pour reprendre les canaux manquants.
+    const partialCount = partialChannelCount();
+    if (partialCount > 0) {
+      await finalizeWatermark();
+      checkpoint.phase = 'scan';
+      checkpoint = touch(checkpoint);
+      await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
+      log(`fin partielle: ${deleted} supprimés, ${partialCount} canal(aux) non scanné(s)`);
+      updateBar(100);
+      if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+      if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
+      if (details) details.textContent = `${deleted} supprimés — relancez pour scanner les canaux restants`;
+      actionBtn.textContent = 'Close';
+      actionBtn.style.background = '#faa81a';
+      actionBtn.disabled = false;
+      actionBtn.onclick = () => cleanExit(onComplete);
+      safeTimeout(() => cleanExit(onComplete), 5000);
+      return;
+    }
+
     updateBar(100);
     if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
     if (status) status.textContent = `Deleted ${deleted} messages`;

@@ -1,8 +1,13 @@
 import { ProgressBar } from '../components/ProgressBar.js';
 import { formatEmojiForApi, escHtml } from './emojiUtils.js';
 import { scanLimiter, deleteLimiter } from './rateLimiter.js';
+import { showNotification } from './ui.js';
 
 const MAX_MESSAGES = 2000;
+// BUG-004 : une erreur réseau n'est pas une fin d'historique. On retente les
+// erreurs transitoires avant de conclure, et on borne les tentatives pour ne
+// jamais boucler à l'infini sur une panne persistante.
+const SCAN_MAX_ATTEMPTS = 3;
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MODÈLE DE FIABILITÉ (DM / groupes) — ne pas casser :
@@ -16,28 +21,42 @@ const MAX_MESSAGES = 2000;
 
 // Scan paginé : collecte les réactions de l'utilisateur (r.me === true) sur le
 // canal. `shouldStop` est un getter pour re-lire l'annulation après chaque await.
+// Retourne `{ messages, complete }`. `complete === false` signifie que
+// l'historique n'a PAS été parcouru en entier (erreur réseau persistante ou
+// plafond MAX_MESSAGES atteint) : l'appelant doit le signaler, jamais le
+// présenter comme un succès complet.
 export async function scanOwnReactions(channelId, isGroup, electronAPI, shouldStop) {
   const messages = [];
   let lastMessageId = null;
   let hasMore = true;
   let totalFetched = 0;
+  let complete = true;
 
   while (hasMore && !shouldStop() && totalFetched < MAX_MESSAGES) {
-    const release = await scanLimiter.acquire();
-    let result;
-    try {
-      result = isGroup
-        ? await electronAPI.getChannelMessages(channelId, lastMessageId)
-        : await electronAPI.getDMMessages(channelId, lastMessageId);
-    } finally {
-      release();
+    let result = null;
+    let fetched = false;
+    for (let attempt = 0; attempt < SCAN_MAX_ATTEMPTS && !shouldStop(); attempt++) {
+      const release = await scanLimiter.acquire();
+      try {
+        result = isGroup
+          ? await electronAPI.getChannelMessages(channelId, lastMessageId)
+          : await electronAPI.getDMMessages(channelId, lastMessageId);
+      } finally {
+        release();
+      }
+
+      if (result.success) { fetched = true; break; }
+      if (result.error === 'Rate limited') {
+        // 429 : respecter Retry-After avant la tentative suivante.
+        await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 5) * 1000) + 1000));
+      }
+      // Autres erreurs : retentées immédiatement (bornées par le compteur).
     }
 
-    if (!result.success) {
-      if (result.error === 'Rate limited') {
-        await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 5) * 1000) + 1000));
-        continue;
-      }
+    // BUG-004 : après épuisement des tentatives, on s'arrête MAIS on note que
+    // le scan est incomplet — ne pas traiter un échec comme une fin de page.
+    if (!fetched) {
+      complete = false;
       hasMore = false;
       continue;
     }
@@ -59,7 +78,11 @@ export async function scanOwnReactions(channelId, isGroup, electronAPI, shouldSt
     else lastMessageId = result.messages[result.messages.length - 1].id;
   }
 
-  return { messages };
+  // BUG-004 : sortie de boucle avec `hasMore` encore vrai = plafond atteint
+  // (ou annulation) → le scan ne couvre pas tout l'historique.
+  if (hasMore && !shouldStop()) complete = false;
+
+  return { messages, complete };
 }
 
 // Supprime les réactions d'une liste.
@@ -123,6 +146,7 @@ export async function removeReactionsFromChannel({
           <span id="processedCount">0</span> / <span id="totalCount">0</span> processed
           — <span id="removedCount">0</span> removed, <span id="failedCount">0</span> failed
         </div>
+        <div id="scanWarning" class="scan-warning"></div>
       </div>
     </div>
   `;
@@ -165,8 +189,20 @@ export async function removeReactionsFromChannel({
   };
 
   try {
+    // BUG-004 : `complete === false` = scan partiel → il DOIT être signalé, il
+    // ne doit jamais passer pour un « tout est supprimé ».
+    let scanComplete = true;
+    const markScanIncomplete = () => {
+      scanComplete = false;
+      const warning = $('scanWarning');
+      if (warning) warning.textContent = '⚠ scan incomplet — certaines réactions peuvent ne pas avoir été traitées';
+      showNotification('Scan incomplet : l’historique n’a pas pu être parcouru en entier');
+    };
+
     // ---- Phase SCAN ----
-    const { messages } = await scanOwnReactions(channelId, isGroup, electronAPI, isCancelled);
+    const firstScan = await scanOwnReactions(channelId, isGroup, electronAPI, isCancelled);
+    const messages = firstScan.messages;
+    if (!firstScan.complete) markScanIncomplete();
 
     if (shouldStop) throw new Error('Operation cancelled');
 
@@ -194,7 +230,9 @@ export async function removeReactionsFromChannel({
     // passe "ghost" du chemin serveur).
     if (!shouldStop) {
       log(`first pass done: removed=${first.removed}, failed=${first.failed} — verifying`);
-      const { messages: ghosts } = await scanOwnReactions(channelId, isGroup, electronAPI, isCancelled);
+      const verifyScan = await scanOwnReactions(channelId, isGroup, electronAPI, isCancelled);
+      if (!verifyScan.complete) markScanIncomplete();
+      const ghosts = verifyScan.messages;
       const ghostTotal = ghosts.reduce((acc, msg) => acc + msg.reactions.length, 0);
 
       if (ghostTotal > 0 && !shouldStop) {
@@ -211,7 +249,7 @@ export async function removeReactionsFromChannel({
       }
     }
 
-    log(`Completed: removed=${removed}, failed=${failed}, total=${totalReactions}`);
+    log(`Completed: removed=${removed}, failed=${failed}, total=${totalReactions}, scanComplete=${scanComplete}`);
     progressBar.update(100);
     refreshCounters(totalReactions, removed, failed);
   } catch (error) {

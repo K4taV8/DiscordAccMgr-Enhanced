@@ -1,4 +1,4 @@
-import { showProgressModal, confirmAction } from '../utils/ui.js';
+import { showProgressModal, confirmAction, showNotification } from '../utils/ui.js';
 import { copyToClipboard } from '../utils/clipboard.js';
 import { escHtml } from '../utils/emojiUtils.js';
 import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
@@ -59,6 +59,10 @@ export class FriendsManager {
         this.selectionDock.sync(0, 0);
       };
       await cachedListRefresh(this, () => window.electronAPI.getFriends(), render, force);
+      // BUG-010 : ne pas conserver 30 s un échec en cache (sinon la liste reste
+      // en erreur malgré un réseau revenu). `domManager` est hors périmètre :
+      // on invalide le cache côté appelant.
+      if (this._cache?.data?.success === false) this._cache = null;
     } catch (error) {
       this.contentArea.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     }
@@ -90,10 +94,18 @@ export class FriendsManager {
     if (!(await confirmAction('Remove Friend', 'Remove this friend?'))) { this.isDeleting = false; return; }
     btn.disabled = true;
     try {
-      await window.electronAPI.deleteFriend(friendId);
-      this.refreshFriendsList(true);
+      const result = await window.electronAPI.deleteFriend(friendId);
+      // BUG-009 : un {success:false} n'est pas un succès — ne pas rafraîchir
+      // comme si l'ami avait disparu, et rendre le bouton utilisable.
+      if (result?.success) {
+        this.refreshFriendsList(true);
+      } else {
+        showNotification(result?.error || 'Échec : ami non retiré');
+        btn.disabled = false;
+      }
     } catch (error) {
       console.error('Failed to remove friend:', error);
+      showNotification('Échec : ami non retiré');
       btn.disabled = false;
     } finally {
       this.isDeleting = false;
@@ -113,20 +125,25 @@ export class FriendsManager {
 
       const { updateProgress, closeModal } = showProgressModal('Removing Friends', total);
       let completed = 0;
+      let failed = 0;
 
       for (const checkbox of selectedFriends) {
         const friendId = checkbox.closest('.bento-card').dataset.id;
         try {
-          await window.electronAPI.deleteFriend(friendId);
-          completed++;
-          updateProgress(completed);
+          const result = await window.electronAPI.deleteFriend(friendId);
+          // BUG-009 : tester `success` — un {success:false} ne compte pas.
+          if (result?.success) completed++;
+          else failed++;
         } catch (error) {
           console.error('Failed to remove friend:', error);
+          failed++;
         }
+        updateProgress(completed + failed);
       }
 
       setTimeout(() => {
         closeModal();
+        if (failed > 0) showNotification(`${failed} ami(s) non supprimé(s)`);
         this.refreshFriendsList(true);
       }, 1000);
     } finally {

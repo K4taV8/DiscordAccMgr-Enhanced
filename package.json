@@ -21,6 +21,7 @@
     "fflate": "^0.8.3"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@types/node": "^26.6.3",
     "electron": "43.4.0",
     "electron-builder": "^26.15.3",
@@ -29,6 +30,17 @@
   "build": {
     "appId": "com.discord.accoun.tmanager",
     "productName": "Discord Account Manager",
+    "files": [
+      "electron/**",
+      "src/**",
+      "assets/**",
+      "resources/**",
+      "shared/**",
+      "index.html",
+      "package.json",
+      "!data/**",
+      "!**/*.map"
+    ],
     "win": {
       "target": [
         "nsis",

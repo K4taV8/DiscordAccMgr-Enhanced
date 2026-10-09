@@ -102,6 +102,14 @@ export class PackageManager {
     this.gallerySafeBottom = 0;
     this.galleryHtml = '';
     this.galleryRefs = null;
+    // Changer de paquet remet aussi la vue et le filtre de galerie a zero : un
+    // channelId reste sur l archive precedente viderait la galerie du nouveau
+    // paquet, et une cle de miroir perimee ferait purger les copies du mauvais
+    // paquet. Le manifeste local est lie a cette cle, il repart vide avec elle.
+    this.view = 'messages';
+    this.galleryFilter.channelId = '';
+    this.mediaMirrorKey = '';
+    this.mediaManifest = new Map();
   }
 
   constructor(contentArea) {
@@ -265,6 +273,21 @@ filteredChannels() {
     return count;
   }
 
+  // Le nombre de messages reellement affichables depend de la recherche et du
+  // masquage des notifications. Un filtre qui change ce total doit recaler la
+  // page courante, sinon l offset pointe au dela de la liste et le salon parait
+  // vide alors qu il ne l est pas.
+  clampMessagePageOffset() {
+    const channel = this.package?.channels?.find(candidate => candidate.id === this.selectedChannelId);
+    if (!channel) { this.messagePageOffset = 0; return; }
+    const shown = this.visibleMessages(channel);
+    const query = this.messageQuery.trim().toLowerCase();
+    const total = query ? shown.filter(message => `${message.content || ''} ${message.id}`.toLowerCase().includes(query)).length : shown.length;
+    const maxOffset = total > 0 ? Math.floor((total - 1) / this.messagePageSize) * this.messagePageSize : 0;
+    if (this.messagePageOffset < 0) this.messagePageOffset = 0;
+    else if (this.messagePageOffset > maxOffset) this.messagePageOffset = maxOffset;
+  }
+
   renderChannelFilterBar() {
     const kindButton = kind => `<button type="button" class="package-filter-chip${this.channelKindFilter === kind ? ' is-active' : ''}" data-channel-filter="${kind}" aria-pressed="${this.channelKindFilter === kind}">${{ all: 'Tous', dm: 'MP', group: 'Groupes', server: 'Serveurs' }[kind]}</button>`;
     return `<div class="package-filter-bar">
@@ -301,6 +324,10 @@ filteredChannels() {
     }
 
     const channels = this.package.channels;
+    // Un filtre qui change la liste des messages du salon courant (masquage des
+    // notifications systeme) ou la recherche vieillit la page courante : sans
+    // recalage, la pagination pointerait dans le vide (offset au dela du total).
+    this.clampMessagePageOffset();
     if (this.selectedChannelId && !this.messageSearchIndex.has(this.selectedChannelId)) this.messageSearchIndex.set(this.selectedChannelId, buildMessageSearchIndex(this.package.messages.get(this.selectedChannelId) || []));
     this.contentArea.innerHTML = `
       <div class="list-toolbar package-toolbar">
@@ -538,7 +565,10 @@ filteredChannels() {
           if (this.mediaManifest.get(url) !== localUrl) { change = true; break; }
         }
       }
-      if (change) { this.mediaManifest = prochain; this.render(); }
+      // Le cache de peinture decrit des sources qui viennent de changer : il est
+      // invalide AVANT le rendu, sinon renderGallery resservirait le HTML mis en
+      // cache (media:// perimes) tant que le scroll reste dans la zone peinte.
+      if (change) { this.mediaManifest = prochain; this.resetGalleryPaint(true); this.render(); }
     } catch (error) {
       console.warn('Media mirror status unavailable:', error);
     }
@@ -594,6 +624,9 @@ filteredChannels() {
       if (resultat?.ok === false) { showNotification(`Purge impossible : ${resultat.error || 'erreur inconnue'}`); return; }
       this.mediaManifest = new Map();
       this.mediaMirrorKey = '';
+      // Meme raison que dans syncMediaManifest : le cache pointait sur les
+      // copies locales qui viennent d etre purgees.
+      this.resetGalleryPaint(true);
       this.render();
     } catch (error) {
       showNotification(`Purge impossible : ${error.message}`);
@@ -1333,6 +1366,10 @@ applyImportProgress(item, info) {
   handleDrop(event) { event.preventDefault(); this.isDragging = false; this.addFiles(event.dataTransfer.files); }
 
   async handleClick(event) {
+    // Un menu deroulant (Medias / Exporter) restait ouvert apres avoir lance son
+    // action. Il est referme des le clic sur une entree, qu un rendu suive ou non.
+    const menuItem = event.target.closest?.('.package-menu-item');
+    if (menuItem) menuItem.closest('details.package-menu')?.removeAttribute('open');
     const attachmentLink = event.target.closest('a.package-attachment-link');
     if (attachmentLink) { event.preventDefault(); return; }
     const retry = event.target.closest('[data-retry-index]');
@@ -1515,12 +1552,12 @@ handleKeydown(event) {
     const channelBox = event.target.closest('[data-select-channel]');
     if (channelBox) {
       this.toggleChannelSelection(channelBox.dataset.selectChannel, channelBox.checked);
-      this.render();
+      this.renderKeepingMessageScroll();
       return;
     }
     if (event.target.matches('[data-select-page]') && this.selectedChannelId) {
       this.renderedMessageKeys().forEach(key => this.setMessageSelected(key, event.target.checked));
-      this.render();
+      this.renderKeepingMessageScroll();
       return;
     }
     const checkbox = event.target.closest('[data-message-key]');
@@ -1539,7 +1576,7 @@ handleKeydown(event) {
         this.setMessageSelected(key, checkbox.checked);
       }
       this.lastMessageKey = key;
-      this.render();
+      this.renderKeepingMessageScroll();
     }
   }
 
@@ -1552,6 +1589,17 @@ handleKeydown(event) {
     this.render();
     const nextInput = this.contentArea.querySelector(selector);
     if (nextInput) { nextInput.focus(); nextInput.setSelectionRange(position ?? nextInput.value.length, position ?? nextInput.value.length); }
+  }
+
+  // Cocher une case reconstruit le panneau de messages : sans restauration, le
+  // scroll repart en haut a chaque clic, ce qui rend la selection en serie d un
+  // long salon inutilisable. selectChannel fait deja ce sauvetage.
+  renderKeepingMessageScroll() {
+    const scroller = this.contentArea.querySelector('.package-message-list');
+    const scrollTop = scroller?.scrollTop || 0;
+    this.render();
+    const nextScroller = this.contentArea.querySelector('.package-message-list');
+    if (nextScroller) nextScroller.scrollTop = scrollTop;
   }
 
   handleMessageSearch(event) {
@@ -1617,6 +1665,24 @@ async confirmMessageStillExists(channelId, messageId) {
     }
   }
 
+  // Retire un message supprime du paquet en memoire : sinon il restait affiche
+  // et selectionnable, et relancer une suppression sur une selection ancienne
+  // renverrait un 404 trompeur. L index de recherche du salon est invalide et
+  // les compteurs suivent, pour que les filtres « vide » restent justes.
+  removePackageMessage(channelId, messageId) {
+    const messages = this.package?.messages;
+    if (!messages || typeof messages.get !== 'function') return;
+    const list = messages.get(channelId);
+    if (!Array.isArray(list)) return;
+    const index = list.findIndex(message => String(message.id) === String(messageId));
+    if (index === -1) return;
+    list.splice(index, 1);
+    this.messageSearchIndex.delete(channelId);
+    const channel = this.package.channels?.find(candidate => String(candidate.id) === String(channelId));
+    if (channel && typeof channel.messagesCount === 'number') channel.messagesCount = Math.max(0, channel.messagesCount - 1);
+    if (typeof this.package.totalMessages === 'number') this.package.totalMessages = Math.max(0, this.package.totalMessages - 1);
+  }
+
   async deleteOnePackageMessage(target, counts) {
     let result = null;
     for (let attempt = 0; attempt < 4; attempt += 1) {
@@ -1625,6 +1691,12 @@ async confirmMessageStillExists(channelId, messageId) {
       await new Promise(resolve => setTimeout(resolve, ((Number(result.retryAfter) || 5) * 1000) + 500));
     }
     let outcome = classifyDeleteResult(result);
+    // Un 429 qui survit aux quatre essais n a plus rien d un sursis : il est
+    // agrege comme un echec (« rate limit persistant »). Sans cela, le compteur
+    // « retry » etait purement ignore par summarizeDelete et le total annonce
+    // etait faux.
+    const persistentRateLimit = outcome === 'retry';
+    if (persistentRateLimit) outcome = 'failed';
     // Ni 404 ni 400 ne prouvent que le message a disparu : un 400 peut venir
     // d un message systeme non supprimable, d un corps de requete refuse. On
     // demande au serveur, une fois, si le message existe encore.
@@ -1651,12 +1723,15 @@ async confirmMessageStillExists(channelId, messageId) {
     if (outcome === 'failed') {
       // Sans la raison, « echec » ne dit rien. Elle est comptee par motif pour
       // apparaitre dans le resume, et tracee pour la console.
-      const reason = describeDeleteFailure(result);
+      const reason = persistentRateLimit ? 'rate limit persistant' : describeDeleteFailure(result);
       counts.reasons = counts.reasons || {};
       counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
       console.warn('Package message deletion failed:', reason);
     }
-    if (outcome === 'deleted') this.selectedMessages.delete(`${target.channelId}:${target.messageId}`);
+    if (outcome === 'deleted') {
+      this.selectedMessages.delete(`${target.channelId}:${target.messageId}`);
+      this.removePackageMessage(target.channelId, target.messageId);
+    }
     return outcome;
   }
 
@@ -1676,19 +1751,38 @@ async channelIsAccessible(channelId) {
     }
   }
 
-  // Un fil archive refuse toute suppression (Discord, erreur 50083). On le
-// reactive, on supprime, puis on le reassigne : le fil est laisse dans l etat
-// ou l utilisateur l avait. Impossible de le reactiver, c est soit le compte,
-// soit les permissions qui bloquent, et l outil ne pretend pas le contraire.
-async unarchiveThread(threadId) {
+  // Etat initial d un fil, lu aupres du main : true (archive), false (actif),
+  // null (inconnu : API absente ou reponse sans thread_metadata). C est le champ
+  // `thread_metadata.archived` ajoute a discord:getChannel.
+  async threadWasArchived(threadId) {
     const api = globalThis.window?.electronAPI;
-    if (!api?.setThreadArchived) return false;
+    if (!api?.getChannel) return null;
+    try {
+      const result = await api.getChannel(threadId);
+      if (!result?.success) return null;
+      const archived = result.channel?.thread_metadata?.archived;
+      return typeof archived === 'boolean' ? archived : null;
+    } catch (error) {
+      console.warn('Package thread state read failed:', error);
+      return null;
+    }
+  }
+
+  // Un fil archive refuse toute suppression (Discord, erreur 50083). On ne le
+  // reactive QUE s il etait archive au depart, puis on le reassigne : un fil
+  // actif est laisse tel quel, sinon le `finally` l aurait archive pour rien.
+  // Retour : 'reactivated' (desarchive), 'active' (rien a faire), 'failed'.
+  async unarchiveThread(threadId) {
+    const api = globalThis.window?.electronAPI;
+    if (!api?.setThreadArchived) return 'failed';
+    const wasArchived = await this.threadWasArchived(threadId);
+    if (wasArchived === false) return 'active';
     try {
       const result = await api.setThreadArchived(threadId, false);
-      return Boolean(result?.success);
+      return result?.success ? 'reactivated' : 'failed';
     } catch (error) {
       console.warn('Package thread unarchive failed:', error);
-      return false;
+      return 'failed';
     }
   }
 
@@ -1708,7 +1802,8 @@ async unarchiveThread(threadId) {
 // modifiait l etat du serveur sans que l utilisateur l ait demande.
 async deleteChannelGroup(channel, group, counts, onProgress) {
     const channelId = String(channel.id);
-    const reactivated = channel.type === 'THREAD' ? await this.unarchiveThread(channelId) : false;
+    const threadState = channel.type === 'THREAD' ? await this.unarchiveThread(channelId) : '';
+    const reactivated = threadState === 'reactivated';
     try {
       for (const target of group) {
         try {
@@ -1722,7 +1817,7 @@ async deleteChannelGroup(channel, group, counts, onProgress) {
     } finally {
       if (reactivated) await this.rearchiveThread(channelId);
     }
-    return { reactivated };
+    return { reactivated, threadState };
   }
 
   async deleteSelectedMessages() {
@@ -1776,7 +1871,9 @@ async deleteChannelGroup(channel, group, counts, onProgress) {
         };
         const outcome = await this.deleteChannelGroup(channel, group, counts, onProgress);
         if (outcome.reactivated) reactived += 1;
-        else if (channel.type === 'THREAD') {
+        // Un fil ACTIF (threadState 'active') n a rien a reactiver : il ne doit
+        // pas etre annonce comme « non réactivable », qui est reserve a l echec.
+        else if (outcome.threadState === 'failed') {
           counts.reasons = counts.reasons || {};
           const reason = 'fil de discussion non réactivable';
           counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;

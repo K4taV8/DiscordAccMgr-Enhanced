@@ -568,7 +568,7 @@
   margin-top: auto; /* colle la ligne d'usage en bas de la carte, toutes égalisées */
   font-size: 11px;
   font-style: italic;
-  color: #a78bfa;
+  color: var(--brand);
 }
 
 .modal-content.help-modal #helpCloseBtn {
@@ -1932,7 +1932,7 @@ a.info-author-card:hover { border-color: var(--brand-border); background: var(--
 .package-lightbox-unreadable strong { color: var(--text-primary); font-size: 14px; word-break: break-all; }
 .package-lightbox-unreadable p { margin: 0; font-size: 12px; }
 .package-lightbox-save { border: 1px solid var(--brand); border-radius: 8px; padding: 8px 14px; background: var(--brand-dim); color: var(--text-primary); font-size: 12px; font-weight: 600; cursor: pointer; }
-.package-lightbox-save:hover { background: var(--brand); color: #fff; }
+.package-lightbox-save:hover { background: var(--brand); color: var(--brand-text); }
 .package-channel-list, .package-message-list { overflow-y: auto; height: calc(100% - 48px); scrollbar-gutter: stable; }
 .package-channel-section { display: block; }
 .package-channel-section + .package-channel-section { margin-top: 4px; }

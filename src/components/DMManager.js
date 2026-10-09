@@ -1,7 +1,7 @@
 import { getDMsList, copyToClipboard } from '../utils/discord.js';
 import { deleteDMMessages } from '../utils/messageDeleter.js';
 import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
-import { confirmAction } from '../utils/ui.js';
+import { confirmAction, showNotification } from '../utils/ui.js';
 import { escHtml } from '../utils/emojiUtils.js';
 import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
 import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
@@ -126,11 +126,17 @@ export class DMManager {
 
     try {
       const result = await window.electronAPI.closeDM(channelId);
-      if (result.success) {
+      // BUG-009 : {success:false} était ignoré → bouton désactivé à vie, sans
+      // message. On notifie et on réactive le bouton.
+      if (result?.success) {
         this.refreshDMsList(true);
+      } else {
+        showNotification(result?.error || 'Échec : DM non fermé');
+        btn.disabled = false;
       }
     } catch (error) {
       console.error('Failed to close DM:', error);
+      showNotification('Échec : DM non fermé');
       btn.disabled = false;
     } finally {
       this.isDeleting = false;
@@ -221,31 +227,47 @@ export class DMManager {
 
     // Le nettoyage respecte le debit de Discord : sans panneau, plusieurs DM
     // donnaient l impression que rien ne se passait.
-    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0) + (mode === 'full' ? 3 : 0);
+    // BUG-023c : `both` exécute 2 étapes (messages + réactions) — l'ancienne
+    // formule ne comptait rien pour ce mode, barre bloquée à 50 %.
+    const steps = (mode === 'messages' ? 1 : 0) + (mode === 'reactions' ? 1 : 0)
+      + (mode === 'both' ? 2 : 0) + (mode === 'full' ? 3 : 0);
     let done = 0;
+    let failures = 0;
     showProgressPanel({ title: 'Nettoyage des DM', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
     try {
       for (const dm of selected) {
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
+          let status = 'failed';
           try {
-            await deleteDMMessages({ channelId: dm.channelId, username: dm.username, electronAPI: window.electronAPI, onComplete: () => {}, skipRefresh: true, quiet: true });
+            status = await deleteDMMessages({ channelId: dm.channelId, username: dm.username, electronAPI: window.electronAPI, onComplete: () => {}, skipRefresh: true, quiet: true });
           } catch (e) { console.error('Cleaning delete failed:', e); }
+          // BUG-014 : agréger le statut (`partial` n'est pas un succès).
+          if (status !== 'done') failures++;
           done += 1;
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning reactions failed:', e); }
+          } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
           done += 1;
         }
         if (mode === 'full') {
-          try { await window.electronAPI.closeDM(dm.channelId); } catch (e) { console.error('Cleaning close failed:', e); }
+          // BUG-009 : vérifier le retour de closeDM.
+          let ok = false;
+          try { const r = await window.electronAPI.closeDM(dm.channelId); ok = !!r?.success; }
+          catch (e) { console.error('Cleaning close failed:', e); }
+          if (!ok) failures++;
           done += 1;
         }
         updateProgressPanel({ done, detail: dm.username });
       }
       this.refreshDMsList(true);
-      finishProgressPanel({ detail: `${selected.length} DM traité(s)` });
+      if (failures > 0) {
+        finishProgressPanel({ detail: `${selected.length} DM traité(s) — ${failures} étape(s) en échec`, status: 'failed' });
+        showNotification(`${failures} opération(s) en échec lors du nettoyage`);
+      } else {
+        finishProgressPanel({ detail: `${selected.length} DM traité(s)` });
+      }
     } finally {
       this.isDeleting = false;
     }
