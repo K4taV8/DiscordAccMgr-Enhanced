@@ -149,8 +149,6 @@ Ce que tu peux faire avec :
 > - ` 🔷 `︲**TypeScript :** types (aucune étape de build obligatoire).
 >
 > - ` 🧪 `︲**node:test (stdlib) :** **420 tests** (`npm test`), couverture via `npm run test:coverage`.
->
-> - ` 👤 `︲**Interface Chaise-Clavier fonctionnelle.** 🫵
 
 ---
 
