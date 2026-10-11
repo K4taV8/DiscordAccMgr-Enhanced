@@ -135,7 +135,7 @@ test('BUG-013 : servirMedia annonce 206 / Accept-Ranges et streame', () => {
 // ---------------------------------------------------------------------------
 test('BUG-020 : userAgent applique sur le webContents, pas via webPreferences', () => {
   const src = mainSrc();
-  assert.ok(src.includes("win.webContents.setUserAgent('Mozilla/5.0"), 'UA pose sur le webContents');
+  assert.ok(src.includes('win.webContents.setUserAgent('), 'UA pose sur le webContents');
   assert.ok(!src.includes("userAgent: 'Mozilla/5.0"), 'plus de webPreferences.userAgent (ignore par Electron)');
 });
 

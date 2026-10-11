@@ -788,6 +788,12 @@ ipcMain.handle('discord:disconnect', async () => {
 // promesse. Nettoyage/detachement garantis avant resolution, resolution unique.
 let loginWindowEnCours = null;
 
+// Partition PERSISTANTE : le cache HTTP de Discord doit survivre entre les
+// ouvertures (sinon rechargement froid ~40-70 s). L AUTH, elle, est purgee a
+// chaque ouverture/fermeture (voir ouvrirLoginDiscord).
+const LOGIN_PARTITION = 'persist:dam-discord-login';
+let prechauffageLogin = null;
+
 function ouvrirLoginDiscord() {
   if (loginWindowEnCours) return loginWindowEnCours;
 
@@ -796,19 +802,24 @@ function ouvrirLoginDiscord() {
     let intervalle = null;
     let minuteur = null;
 
-    // SESSION EPHEMERE ET UNIQUE. Sans `partition`, la fenetre partage la session
-    // par defaut (persistante) : les cookies Discord d une connexion precedente
-    // restent, et la fenetre s ouvrirait deja connectee. Un nom SANS prefixe
-    // `persist:` cree une session EN MEMOIRE, jamais ecrite sur disque ; le nom
-    // unique garantit une session vierge a CHAQUE tentative, meme dans la meme
-    // execution de l app.
-    const partition = 'discord-login-' + Date.now() + '-' + Math.random().toString(36).slice(2);
+    // CACHE PERSISTANT, AUTH PURGEE. Une session neuve a CHAQUE tentative rendait
+    // le chargement tres lent : Discord re-telechargeait ~5,8 Mo d assets a
+    // chaque ouverture (mesure : ~50 s a froid). Un nom avec prefixe `persist:`
+    // garde le cache HTTP sur disque -> ~2 s des la 2e ouverture, meme apres un
+    // redemarrage. En revanche l AUTH ne doit JAMAIS subsister : on purge
+    // cookies/stockage a l ouverture ET a la fermeture. `clearStorageData` ne
+    // vide PAS le cache HTTP (verifie) : il ne reste sur disque que des assets
+    // statiques PUBLICS de Discord, jamais un cookie de session.
+    const partition = LOGIN_PARTITION;
+    // Repart d une auth vierge meme si un lancement precedent a plante avant la
+    // purge de fermeture : sinon la fenetre s ouvrirait deja connectee.
+    try { session.fromPartition(partition).clearStorageData(); } catch {}
 
     const win = new BrowserWindow({
       parent: mainWindow,
       modal: false,
-      width: 500,
-      height: 760,
+      width: 1000,
+      height: 820,
       alwaysOnTop: true,
       title: 'Connexion Discord',
       webPreferences: {
@@ -821,7 +832,11 @@ function ouvrirLoginDiscord() {
 
     // BUG-020(a) : `webPreferences.userAgent` n'existe pas (Electron l'ignore) ;
     // l'UA se fixe sur le webContents AVANT la navigation.
-    win.webContents.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36');
+    // L'UA par defaut d'Electron porte la VRAIE version de Chrome du moteur
+    // (Electron 43.4.0 -> Chrome 150). On retire seulement le jeton `Electron/x`.
+    // Un UA FIGE plus ancien (ex. Chrome/130) fait servir par Discord une page
+    // qui ne demarre jamais : app-mount vide, fenetre blanche, aucun log.
+    win.webContents.setUserAgent(win.webContents.getUserAgent().replace(/\sElectron\/[^\s]+/, ''));
 
     // C1a : la fenetre de connexion ne doit naviguer que vers discord.com, en
     // HTTPS. Ni popup, ni redirection externe (phishing / exfiltration de la
@@ -847,7 +862,8 @@ function ouvrirLoginDiscord() {
       if (minuteur) { clearTimeout(minuteur); minuteur = null; }
       try { win.webContents.debugger.detach(); } catch {}
       try { if (!win.isDestroyed()) win.destroy(); } catch {}
-      // Purge la session ephemere (cookies, stockage) : rien ne subsiste.
+      // Purge l AUTH (cookies, stockage) mais PAS le cache HTTP : les assets
+      // Discord restent en cache pour accelerer la prochaine ouverture.
       try { session.fromPartition(partition).clearStorageData(); } catch {}
       loginWindowEnCours = null;
     };
@@ -912,6 +928,16 @@ function ouvrirLoginDiscord() {
               const token = extraireToken(texte);
               if (token) finir({ ok: true, token });
             } catch {}
+          } else if (methode === 'Network.webSocketFrameSent') {
+            // Voie QR (remote-auth) : le token n'arrive PAS dans une reponse
+            // /api/v9/auth/*. L'app web le renvoie en clair dans l'IDENTIFY du
+            // gateway (op 2). Sans ce cas, scanner le QR connecte Discord dans la
+            // fenetre mais ne fournit jamais de token a l'app.
+            const donnees = params?.response?.payloadData;
+            if (typeof donnees === 'string') {
+              const token = extraireToken(donnees);
+              if (token) finir({ ok: true, token });
+            }
           }
         });
       } catch {}
@@ -924,6 +950,43 @@ function ouvrirLoginDiscord() {
 }
 
 ipcMain.handle('discord:loginNative', () => ouvrirLoginDiscord());
+
+// Pre-chauffe le CACHE HTTP de la page de login, en tache de fond au demarrage.
+// Le chargement FROID de discord.com/login dans Electron est lent (beaucoup de
+// chunks ; mesure 40-70 s) alors que le reseau est rapide (~4,5 Mo/s, verifie
+// hors Electron). En chauffant le cache des le lancement, la fenetre de login
+// s ouvre en ~2 s quand l utilisateur la demande. Fenetre invisible, enfant de
+// la principale (donc detruite avec elle), auto-detruite des que la page est
+// prete (ou ~3 min max).
+function prechaufferLogin() {
+  try {
+    if (prechauffageLogin && !prechauffageLogin.isDestroyed()) return;
+    const w = new BrowserWindow({
+      parent: mainWindow,
+      show: false,
+      webPreferences: { partition: LOGIN_PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
+    });
+    w.webContents.setUserAgent(w.webContents.getUserAgent().replace(/\sElectron\/[^\s]+/, ''));
+    w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+    prechauffageLogin = w;
+    const arreter = () => {
+      if (prechauffageLogin === w) prechauffageLogin = null;
+      try { if (!w.isDestroyed()) w.destroy(); } catch {}
+    };
+    let essais = 0;
+    const iv = setInterval(async () => {
+      if (w.isDestroyed()) { clearInterval(iv); return; }
+      essais += 1;
+      try {
+        const pret = await w.webContents.executeJavaScript(`!!document.querySelector('canvas, [class*=qr i]')`);
+        if (pret) { clearInterval(iv); arreter(); return; }
+      } catch {}
+      if (essais >= 60) { clearInterval(iv); arreter(); }
+    }, 3000);
+    w.on('closed', () => clearInterval(iv));
+    w.loadURL('https://discord.com/login').catch(arreter);
+  } catch {}
+}
 
 ipcMain.handle('discord:getFriends', async () => {
   const r = await discordFetch('GET', '/users/@me/relationships');
@@ -1255,6 +1318,9 @@ app.whenReady().then(() => {
   protocol.handle('media', servirMedia);
   createWindow();
   cleanupCheckpoints();
+  // Pre-chauffe le cache de la page de login pour qu elle s ouvre instantanement
+  // (leger differe : laisse la fenetre principale s afficher d abord).
+  setTimeout(() => { try { prechaufferLogin(); } catch {} }, 1500);
   // Les anciennes connexions natives laissaient des cookies Discord dans la
   // session par defaut (persistante). La fenetre de login utilise desormais une
   // session ephemere : ces cookies n ont plus d usage, on les retire une fois.

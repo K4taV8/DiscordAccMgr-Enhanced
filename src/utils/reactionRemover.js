@@ -137,36 +137,41 @@ export async function removeReactionsFromChannel({
   isGroup = false,
   quiet = false
 }) {
-  const modalOverlay = document.createElement('div');
-  modalOverlay.className = 'modal-overlay';
-  modalOverlay.innerHTML = `
-    <div class="modal-content">
-      <h2>Removing your reactions ${isGroup ? 'in' : 'with'} ${escHtml(channelName)}</h2>
-      <div id="progressContainer">
-        <div class="message-counter">
-          <span id="processedCount">0</span> / <span id="totalCount">0</span> processed
-          — <span id="removedCount">0</span> removed, <span id="failedCount">0</span> failed
-        </div>
-        <div id="scanWarning" class="scan-warning"></div>
-      </div>
-    </div>
-  `;
-  const progressBar = new ProgressBar('progressContainer', {
-    showCancelButton: true
-  });
-  progressBar.create();
-  // BUG-006 : en mode lot (`quiet`), on ne rattache PAS la modale au document :
-  // chaque appel de executeCleaningMode creait sinon une modale z-index 9999
-  // empilee, invisible mais jamais retiree avant la fin de la boucle.
+  let modalOverlay = null;
+  let progressBar = null;
+
+  // BUG-006 : en mode lot (`quiet`) on ne crée AUCUNE modale — executeCleaningMode
+  // en empilait une par salon. ProgressBar lit `#progressContainer` au
+  // constructeur ET dans create() : il ne doit être construit qu'APRES que la
+  // modale soit rattachée au document, sinon `getElementById` rend null.
   if (!quiet) {
+    modalOverlay = document.createElement('div');
+    modalOverlay.className = 'modal-overlay';
+    modalOverlay.innerHTML = `
+      <div class="modal-content">
+        <h2>Removing your reactions ${isGroup ? 'in' : 'with'} ${escHtml(channelName)}</h2>
+        <div id="progressContainer">
+          <div class="message-counter">
+            <span id="processedCount">0</span> / <span id="totalCount">0</span> processed
+            — <span id="removedCount">0</span> removed, <span id="failedCount">0</span> failed
+          </div>
+          <div id="scanWarning" class="scan-warning"></div>
+        </div>
+      </div>
+    `;
     document.body.appendChild(modalOverlay);
+
+    progressBar = new ProgressBar('progressContainer', {
+      showCancelButton: true
+    });
+    progressBar.create();
     progressBar.show();
   }
 
   let shouldStop = false;
   const isCancelled = () => shouldStop;
 
-  progressBar.onCancel(() => {
+  progressBar?.onCancel(() => {
     shouldStop = true;
     progressBar.setCancelButtonText('Cancelling...');
     progressBar.disableCancelButton();
@@ -216,15 +221,15 @@ export async function removeReactionsFromChannel({
     setText('totalCount', totalReactions.toString());
 
     if (totalReactions === 0) {
-      progressBar.update(100);
-      safeTimeout(() => { modalOverlay.remove(); onComplete(); }, 1000);
+      progressBar?.update(100);
+      safeTimeout(() => { modalOverlay?.remove(); onComplete(); }, 1000);
       return;
     }
 
     // ---- Phase DELETE ----
     const first = await deleteReactionList(messages, channelId, electronAPI, isCancelled, (processed, removed, failed) => {
       refreshCounters(processed, removed, failed);
-      progressBar.update((processed / totalReactions) * 100);
+      progressBar?.update((processed / totalReactions) * 100);
     });
 
     let removed = first.removed;
@@ -245,7 +250,7 @@ export async function removeReactionsFromChannel({
         log(`verification: ${ghostTotal} reaction(s) still present — retrying`);
         const second = await deleteReactionList(ghosts, channelId, electronAPI, isCancelled, (processed, r, f) => {
           refreshCounters(first.processed + processed, removed + r, failed + f);
-          progressBar.update(Math.min(100, ((first.processed + processed) / totalReactions) * 100));
+          progressBar?.update(Math.min(100, ((first.processed + processed) / totalReactions) * 100));
         });
         removed += second.removed;
         failed += second.failed;
@@ -256,7 +261,7 @@ export async function removeReactionsFromChannel({
     }
 
     log(`Completed: removed=${removed}, failed=${failed}, total=${totalReactions}, scanComplete=${scanComplete}`);
-    progressBar.update(100);
+    progressBar?.update(100);
     refreshCounters(totalReactions, removed, failed);
   } catch (error) {
     console.error('Remove reactions error:', error);
@@ -265,6 +270,6 @@ export async function removeReactionsFromChannel({
     if (progressContainer) progressContainer.innerHTML = `<p class="error">${escHtml(error?.message || String(error))}</p>`;
   } finally {
     clearTimers();
-    safeTimeout(() => { modalOverlay.remove(); onComplete(); }, 1000);
+    safeTimeout(() => { modalOverlay?.remove(); onComplete(); }, 1000);
   }
 }

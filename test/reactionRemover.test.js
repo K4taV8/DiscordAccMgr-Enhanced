@@ -11,7 +11,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
-import { scanOwnReactions, deleteReactionList } from '../src/utils/reactionRemover.js';
+import { scanOwnReactions, deleteReactionList, removeReactionsFromChannel } from '../src/utils/reactionRemover.js';
 import { scanChannelReactions, drainLedger, resumeCounts } from '../src/utils/serverReactionRemover.js';
 import { formatEmojiForApi } from '../src/utils/emojiUtils.js';
 
@@ -228,5 +228,74 @@ test('BUG-004 : atteindre le plafond MAX_MESSAGES marque complete:false', async 
   const { messages, complete } = await scanOwnReactions('c1', false, api, neverStop);
   assert.equal(messages.length, 2000);
   assert.equal(complete, false, 'le plafond doit être signalé, pas silencieux');
+});
+
+// ─── BUG-006 : la modale doit exister AVANT la construction de ProgressBar ────
+//
+// `ProgressBar` lit `#progressContainer` au constructeur ET dans create() : si
+// la modale n'est pas encore rattachée au document, `getElementById` rend null
+// et create() lève. Ce stub ne résout un id QUE s'il est dans le document, ce
+// qui reproduit exactement la régression (builder la barre avant appendChild).
+function makeDom() {
+  const registry = new Map();
+  const bodyChildren = [];
+  const register = (el) => {
+    if (el.id) registry.set(el.id, el);
+    (el._children || []).forEach(register);
+  };
+  const unregister = (el) => {
+    if (el.id && registry.get(el.id) === el) registry.delete(el.id);
+    (el._children || []).forEach(unregister);
+  };
+  const makeEl = () => {
+    const el = {
+      id: '', className: '', textContent: '', disabled: false, style: {},
+      _children: [], _inDoc: false,
+      appendChild(c) { this._children.push(c); if (this._inDoc) register(c); return c; },
+      setAttribute() {}, addEventListener() {},
+      remove() { this._inDoc = false; unregister(this); },
+    };
+    Object.defineProperty(el, 'innerHTML', {
+      set(html) {
+        el._children = [];
+        for (const m of html.matchAll(/id="([^"]+)"/g)) { const c = makeEl(); c.id = m[1]; el._children.push(c); }
+        if (el._inDoc) register(el);
+      },
+      get() { return ''; },
+    });
+    return el;
+  };
+  const document = {
+    createElement: () => makeEl(),
+    getElementById: (id) => registry.get(id) || null,
+    body: { appendChild(el) { el._inDoc = true; bodyChildren.push(el); register(el); return el; } },
+    querySelector: () => null,
+    querySelectorAll: () => [],
+  };
+  return { document, bodyChildren, registry };
+}
+
+async function withDom(fn) {
+  const saved = globalThis.document;
+  const dom = makeDom();
+  globalThis.document = dom.document;
+  try { return await fn(dom); } finally { globalThis.document = saved; }
+}
+
+test('BUG-006 (régression) : hors quiet, la modale est rattachée AVANT create()', async () => {
+  const api = { getDMMessages: async () => ({ success: true, messages: [] }) };
+  await withDom(async ({ bodyChildren, registry }) => {
+    await removeReactionsFromChannel({ channelId: 'c1', channelName: 'x', electronAPI: api, onComplete: () => {} });
+    assert.equal(bodyChildren.length, 1, 'la modale est rattachée au document');
+    assert.ok(registry.get('progressContainer'), 'ProgressBar a bien trouvé #progressContainer');
+  });
+});
+
+test('BUG-006 : en mode quiet, aucune modale n est créée ni ajoutée', async () => {
+  const api = { getDMMessages: async () => ({ success: true, messages: [] }) };
+  await withDom(async ({ bodyChildren }) => {
+    await removeReactionsFromChannel({ channelId: 'c1', channelName: 'x', electronAPI: api, quiet: true, onComplete: () => {} });
+    assert.equal(bodyChildren.length, 0, 'aucune modale en mode lot');
+  });
 });
 
