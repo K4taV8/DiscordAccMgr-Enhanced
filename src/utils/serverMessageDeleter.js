@@ -71,7 +71,7 @@ export async function scanSegment(channel, uid, electronAPI, isCancelled, before
       catch { release2(); return { found, skipped: true, cancelled: isCancelled(), newestId }; }
       release2();
     }
-    if (!result?.success) return { found, skipped: true, cancelled: isCancelled(), newestId };
+    if (!result?.success) return { found, skipped: true, noAccess: result?.error === 'No access', cancelled: isCancelled(), newestId };
     if (!result.messages?.length) break;
 
     if (newestId === null && beforeId === null) newestId = result.messages[0].id;
@@ -94,7 +94,7 @@ export async function scanSegment(channel, uid, electronAPI, isCancelled, before
     lastId = oldestInPage.id;
   }
   // BUG-002 : sortie par annulation → segment NON terminé (`cancelled`).
-  return { found, skipped: false, cancelled: isCancelled(), newestId };
+  return { found, skipped: false, noAccess: false, cancelled: isCancelled(), newestId };
 }
 
 export async function scanChannelMessages(channel, knownUserId, electronAPI, log, isCancelled, onProgress, stopAtId) {
@@ -117,7 +117,7 @@ export async function scanChannelMessages(channel, knownUserId, electronAPI, log
     break; // « No access » / autre erreur : inutile d'insister
   }
   if (!oldestResult?.success) {
-    return { channelId: channel.id, messages: [], currentUserId: uid, newestId: null, skipped: true, cancelled: false };
+    return { channelId: channel.id, messages: [], currentUserId: uid, newestId: null, skipped: true, noAccess: oldestResult?.error === 'No access', cancelled: false };
   }
   // Succès + liste vide = canal réellement vide (scanné, rien à faire).
   if (!oldestResult.messages?.length) {
@@ -137,9 +137,9 @@ export async function scanChannelMessages(channel, knownUserId, electronAPI, log
 
   // Sequential scan for channels under 1 day old (borné par le watermark si delta)
   if (ageDays < 1) {
-    const { found, skipped, cancelled, newestId } = await scanSegment(channel, uid, electronAPI, isCancelled, null, stopAtId || null);
+    const { found, skipped, noAccess, cancelled, newestId } = await scanSegment(channel, uid, electronAPI, isCancelled, null, stopAtId || null);
     log(`#${channel.name}: ${found.length}m seq${skipped ? ' (partial)' : ''}`);
-    return { channelId: channel.id, messages: found, currentUserId: uid, skipped, cancelled, newestId };
+    return { channelId: channel.id, messages: found, currentUserId: uid, skipped, noAccess, cancelled, newestId };
   }
 
   // Parallel time-segmented scan — the global scanLimiter caps the combined request rate
@@ -159,9 +159,11 @@ export async function scanChannelMessages(channel, knownUserId, electronAPI, log
   const messages = results.flatMap(r => r.found);
   const skipped = results.some(r => r.skipped);
   const cancelled = results.some(r => r.cancelled);
+  // Canal entier inaccessible uniquement si TOUS les segments le sont.
+  const noAccess = skipped && results.every(r => r.noAccess);
   const newestId = results[0]?.newestId || null; // segment 0 scanne depuis le plus récent
   log(`#${channel.name}: ${messages.length}m (${segments}x${skipped ? ', partial' : ''})`);
-  return { channelId: channel.id, messages, currentUserId: uid, skipped, cancelled, newestId };
+  return { channelId: channel.id, messages, currentUserId: uid, skipped, noAccess, cancelled, newestId };
 }
 
 export async function deleteServerMessages({
@@ -227,7 +229,7 @@ export async function deleteServerMessages({
           const idx = channelIdx++;
           const ch = channels[idx];
           const state = checkpoint.channels[ch.id];
-          if (state.status === 'scanned') { scanned++; updateBar((scanned / channels.length) * 100); continue; }
+          if (state.status === 'scanned' || state.status === 'no-access') { scanned++; updateBar((scanned / channels.length) * 100); continue; }
           if (status) status.textContent = `#${ch.name} (${idx + 1}/${channels.length})`;
           if (progressNum) progressNum.textContent = (idx + 1).toString();
           try {
@@ -261,9 +263,10 @@ export async function deleteServerMessages({
             state.newestId = result.newestId || state.newestId;
             // BUG-002 : annulation en cours de scan → canal « partial » (repris),
             // surtout pas « scanned » (sinon sauté à la reprise).
-            state.status = (result.skipped || result.cancelled) ? 'partial' : 'scanned';
+            if (result.noAccess) state.status = 'no-access';
+            else state.status = (result.skipped || result.cancelled) ? 'partial' : 'scanned';
             state.found = result.messages.length;
-            if (result.skipped || result.cancelled) partialChannels++;
+            if (!result.noAccess && (result.skipped || result.cancelled)) partialChannels++;
             for (const item of result.messages) {
               const k = `${item.channelId}:${item.msg.id}`;
               if (!seenKeys.has(k)) { seenKeys.add(k); checkpoint.queue.push(k); }

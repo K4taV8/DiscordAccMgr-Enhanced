@@ -13,6 +13,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import { scanOwnReactions, deleteReactionList, removeReactionsFromChannel } from '../src/utils/reactionRemover.js';
 import { scanChannelReactions, drainLedger, resumeCounts } from '../src/utils/serverReactionRemover.js';
+import { countPartialChannels } from '../src/utils/serverMessageDeleter.js';
 import { formatEmojiForApi } from '../src/utils/emojiUtils.js';
 
 const neverStop = () => false;
@@ -175,6 +176,50 @@ test('BUG-023b : resumeCounts retire les échecs de progress.done', () => {
   assert.deepEqual(resumeCounts({ done: 2, failed: 5 }), { removed: 0, failed: 5 });
   assert.deepEqual(resumeCounts({ done: 0, failed: 0 }), { removed: 0, failed: 0 });
   assert.deepEqual(resumeCounts(undefined), { removed: 0, failed: 0 });
+});
+
+// ─── Salons serveur sans acces / erreurs transitoires ────────────────────────
+// Un salon que le compte ne peut PAS lire (403) ne doit PAS marquer tout le
+// serveur en « partial » : il n'y a rien a y supprimer. Il recoit un etat
+// distinct `noAccess`. Les erreurs transitoires (5xx/reseau), elles, sont
+// retentees avant d'abandonner — comme le chemin DM.
+test('scanChannelReactions : 403 No access marque noAccess, pas un echec de scan', async () => {
+  const api = { getChannelMessages: async () => ({ success: false, error: 'No access' }) };
+  const { skipped, noAccess } = await scanChannelReactions({ id: 'c1', name: 'prive' }, api, () => {}, neverStop, undefined, {});
+  assert.equal(skipped, true);
+  assert.equal(noAccess, true, 'salon inaccessible -> noAccess');
+});
+
+test('scanChannelReactions : une erreur transitoire est retentee avant abandon', async () => {
+  let calls = 0;
+  const api = {
+    getChannelMessages: async () => {
+      calls++;
+      if (calls === 1) return { success: false, error: 'HTTP 500' };
+      return { success: true, messages: [{ id: 'm1', reactions: [{ emoji: { name: '👍' }, me: true }] }] };
+    },
+  };
+  const { skipped, reactions } = await scanChannelReactions({ id: 'c1', name: 'x' }, api, () => {}, neverStop, undefined, {});
+  assert.equal(calls, 2, 'la 1re erreur est retentee');
+  assert.equal(skipped, false);
+  assert.equal(reactions.length, 1);
+});
+
+test('scanChannelReactions : erreurs transitoires persistantes -> skipped (pas noAccess)', async () => {
+  let calls = 0;
+  const api = { getChannelMessages: async () => { calls++; return { success: false, error: 'HTTP 502' }; } };
+  const { skipped, noAccess } = await scanChannelReactions({ id: 'c1', name: 'x' }, api, () => {}, neverStop, undefined, {});
+  assert.equal(skipped, true);
+  assert.equal(noAccess, false, 'une erreur reseau reste un vrai echec de scan');
+  assert.equal(calls, 3, 'trois tentatives puis abandon');
+});
+
+test('countPartialChannels ignore les salons sans acces (no-access)', () => {
+  assert.equal(
+    countPartialChannels({ a: { status: 'partial' }, b: { status: 'no-access' }, c: { status: 'scanned' } }),
+    1,
+    'seuls les vrais scans partiels comptent'
+  );
 });
 
 // ─── BUG-006 : canaux partiels ───────────────────────────────────────────────

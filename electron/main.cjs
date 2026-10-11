@@ -11,6 +11,13 @@ const fs = require('fs');
 const fsp = require('fs/promises');
 const { Readable } = require('stream');
 
+// Garde-fou : une exception NON capturee dans le main ne doit JAMAIS tuer l'app
+// entiere. Sans ca, Electron affiche « A JavaScript error occurred in the main
+// process » puis ferme tout — arrive en production sur un simple message recu.
+// On journalise et on CONTINUE, l'app reste utilisable.
+process.on('uncaughtException', (err) => { try { console.error('[main] uncaughtException:', err); } catch {} });
+process.on('unhandledRejection', (reason) => { try { console.error('[main] unhandledRejection:', reason); } catch {} });
+
 // SEC-03 : timeout global — aucun appel HTTP ne doit pendre indéfiniment
 axios.defaults.timeout = 15000;
 
@@ -739,6 +746,17 @@ async function connectDiscord(token) {
   let suivant = null;
   let minuteur = null;
   try {
+    // Correctif d'un bug AMONT de discord.js-selfbot-v13 3.4.6 : Application.js
+    // fait `const { ApplicationFlags } = require('../../util/ApplicationFlags')`
+    // alors que ce module exporte la CLASSE directement (`module.exports =
+    // ApplicationFlags`) -> `ApplicationFlags` est undefined -> « ApplicationFlags
+    // is not a constructor » des qu'un message porte un `application` (crash du
+    // main). On expose la classe sous la propriete attendue AVANT que la lib ne
+    // soit chargee.
+    try {
+      const af = require('discord.js-selfbot-v13/src/util/ApplicationFlags');
+      if (af && typeof af === 'function' && !af.ApplicationFlags) af.ApplicationFlags = af;
+    } catch {}
     const { Client } = require('discord.js-selfbot-v13');
     suivant = new Client({ checkUpdate: false, fetchAllMembers: false });
     // BUG-008 : on N'ECRASE l'ancien client qu'APRES un login reussi. En cas

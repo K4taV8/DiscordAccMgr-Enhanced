@@ -8,6 +8,10 @@ import {
   loadLedger, addLedger, ledgerKey, ledgerFilter,
 } from './persist.js';
 
+// Meme borne que le chemin DM : une erreur transitoire est retentee avant
+// d'abandonner, pour ne pas marquer un salon « partial » sur un simple hoquet.
+const SCAN_MAX_ATTEMPTS = 3;
+
 export function decodeQueue(str) {
   const [cid, mid, ...rest] = str.split(':');
   return { channelId: cid, messageId: mid, emojiStr: rest.join(':') };
@@ -50,11 +54,12 @@ export async function scanChannelReactions(channel, electronAPI, log, isCancelle
   let lastId = null;
   let pages = 0;
   let newestId = null;
+  let echecs = 0;
   while (!isCancelled()) {
     let result;
     const release = await scanLimiter.acquire();
     try { result = await electronAPI.getChannelMessages(channel.id, lastId); }
-    catch { release(); return { reactions, skipped: true, cancelled: isCancelled(), newestId }; }
+    catch { result = { success: false, error: 'exception' }; }
     release();
 
     if (!result.success) {
@@ -62,9 +67,24 @@ export async function scanChannelReactions(channel, electronAPI, log, isCancelle
         await new Promise(resolve => setTimeout(resolve, ((result.retryAfter || 1) * 1000) + 500));
         continue;
       }
-      if (result.error === 'No access') return { reactions, skipped: true, cancelled: isCancelled(), newestId };
-      return { reactions, skipped: true, cancelled: isCancelled(), newestId };
+      // Definitive : le compte ne peut PAS lire ce salon (403). Rien n'y est
+      // supprimable -> etat DISTINCT `noAccess`, jamais « partial » (sinon tout
+      // le serveur echoue a cause de salons prives que le compte ne voit pas).
+      if (result.error === 'No access') {
+        log?.(`#${channel.name} : sans acces (ignore)`);
+        return { reactions, skipped: true, noAccess: true, cancelled: isCancelled(), newestId };
+      }
+      // Erreur a priori transitoire (5xx, reseau) : on retente avant d'abandonner,
+      // comme le chemin DM. Sans ca, un simple hoquet reseau marquait « partial ».
+      if (echecs < SCAN_MAX_ATTEMPTS - 1 && !isCancelled()) {
+        echecs++;
+        await new Promise(resolve => setTimeout(resolve, 400 * echecs));
+        continue;
+      }
+      log?.(`#${channel.name} : scan interrompu (${result.error})`);
+      return { reactions, skipped: true, noAccess: false, cancelled: isCancelled(), newestId };
     }
+    echecs = 0;
     if (!result.messages || !result.messages.length) break;
     if (newestId === null) newestId = result.messages[0].id;
     for (const msg of result.messages) {
@@ -88,7 +108,7 @@ export async function scanChannelReactions(channel, electronAPI, log, isCancelle
   // BUG-002 : sortie de boucle par annulation → le canal n'est PAS « scanné ».
   // `cancelled` le distingue de la fin naturelle pour que l'appelant le marque
   // « partial » (repris au prochain run) au lieu de le sauter.
-  return { reactions, skipped: false, cancelled: isCancelled(), newestId };
+  return { reactions, skipped: false, noAccess: false, cancelled: isCancelled(), newestId };
 }
 
 export async function removeServerReactions({
@@ -150,7 +170,7 @@ export async function removeServerReactions({
           const idx = channelIdx++;
           const ch = channels[idx];
           const state = checkpoint.channels[ch.id];
-          if (state.status === 'scanned') { scanned++; updateBar((scanned / channels.length) * 100); continue; }
+          if (state.status === 'scanned' || state.status === 'no-access') { scanned++; updateBar((scanned / channels.length) * 100); continue; }
           if (status) status.textContent = `#${ch.name} (${idx + 1}/${channels.length})`;
           if (progressNum) progressNum.textContent = (idx + 1).toString();
           try {
@@ -159,15 +179,16 @@ export async function removeServerReactions({
             // change → le watermark sautait des canaux et affichait « 0 réaction »
             // alors qu'il en restait. Scan complet à chaque run.
             state.status = 'scanning';
-            const { reactions, skipped, cancelled, newestId } = await scanChannelReactions(ch, electronAPI, log, shouldStop, p => {
+            const { reactions, skipped, cancelled, noAccess, newestId } = await scanChannelReactions(ch, electronAPI, log, shouldStop, p => {
               if (details) details.textContent = `#${ch.name}: page ${p}`;
             }, { suppressed });
             state.newestId = newestId || state.newestId;
             // BUG-002 : une annulation pendant le scan → canal « partial » (repris),
             // jamais « scanned » (sinon sauté à la reprise).
-            state.status = (skipped || cancelled) ? 'partial' : 'scanned';
+            if (noAccess) state.status = 'no-access';
+            else state.status = (skipped || cancelled) ? 'partial' : 'scanned';
             state.found = reactions.length;
-            if (skipped || cancelled) partialChannels++;
+            if (!noAccess && (skipped || cancelled)) partialChannels++;
             for (const r of reactions) {
               const k = `${r.channelId}:${r.messageId}:${r.emojiStr}`;
               if (!seenKeys.has(k)) { seenKeys.add(k); checkpoint.queue.push(k); }
