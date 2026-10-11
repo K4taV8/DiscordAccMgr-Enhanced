@@ -3,7 +3,11 @@ import { formatEmojiForApi, escHtml } from './emojiUtils.js';
 import { scanLimiter, deleteLimiter } from './rateLimiter.js';
 import { showNotification } from './ui.js';
 
-const MAX_MESSAGES = 2000;
+// Plafond de SECURITE uniquement (garde-fou anti-boucle si l API renvoyait
+// toujours la meme page). Il ne doit JAMAIS tronquer un historique normal : a
+// 2000, un DM plus long n etait scanne qu en partie -> les reactions au-dela
+// restaient en place et l audit signalait « scan incomplet » a tort.
+const MAX_MESSAGES = 100000;
 // BUG-004 : une erreur réseau n'est pas une fin d'historique. On retente les
 // erreurs transitoires avant de conclure, et on borne les tentatives pour ne
 // jamais boucler à l'infini sur une panne persistante.
@@ -25,14 +29,14 @@ const SCAN_MAX_ATTEMPTS = 3;
 // l'historique n'a PAS été parcouru en entier (erreur réseau persistante ou
 // plafond MAX_MESSAGES atteint) : l'appelant doit le signaler, jamais le
 // présenter comme un succès complet.
-export async function scanOwnReactions(channelId, isGroup, electronAPI, shouldStop) {
+export async function scanOwnReactions(channelId, isGroup, electronAPI, shouldStop, { maxMessages = MAX_MESSAGES } = {}) {
   const messages = [];
   let lastMessageId = null;
   let hasMore = true;
   let totalFetched = 0;
   let complete = true;
 
-  while (hasMore && !shouldStop() && totalFetched < MAX_MESSAGES) {
+  while (hasMore && !shouldStop() && totalFetched < maxMessages) {
     let result = null;
     let fetched = false;
     for (let attempt = 0; attempt < SCAN_MAX_ATTEMPTS && !shouldStop(); attempt++) {
@@ -58,6 +62,9 @@ export async function scanOwnReactions(channelId, isGroup, electronAPI, shouldSt
     if (!fetched) {
       complete = false;
       hasMore = false;
+      // Diagnostic : la raison exacte (statut / erreur) de l arret, visible en
+      // console si l utilisateur signale encore un « scan incomplet ».
+      try { console.warn(`[RmReactions] scan interrompu apres ${SCAN_MAX_ATTEMPTS} echecs — dernier resultat :`, result); } catch {}
       continue;
     }
 
@@ -79,8 +86,11 @@ export async function scanOwnReactions(channelId, isGroup, electronAPI, shouldSt
   }
 
   // BUG-004 : sortie de boucle avec `hasMore` encore vrai = plafond atteint
-  // (ou annulation) → le scan ne couvre pas tout l'historique.
-  if (hasMore && !shouldStop()) complete = false;
+  // (ou annulation) -> le scan ne couvre pas tout l historique.
+  if (hasMore && !shouldStop()) {
+    complete = false;
+    try { console.warn(`[RmReactions] plafond de securite atteint (${maxMessages} messages) — historique NON couvert en entier`); } catch {}
+  }
 
   return { messages, complete };
 }

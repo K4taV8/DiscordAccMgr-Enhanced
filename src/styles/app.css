@@ -1155,6 +1155,14 @@ body.login-active .main-content {
   flex-wrap: wrap;
 }
 
+/* Recherche de liste (Friends / DMs / Servers) : meme ADN visuel que la
+   recherche de messages du Package, pour rester coherent dans toute l'app. */
+.list-search { flex: 1 1 240px; min-width: 180px; max-width: 420px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius-sm); background: var(--bg-input, var(--bg-body)); color: var(--text-primary); font-size: 13px; transition: border-color var(--transition-fast), box-shadow var(--transition-fast); }
+.list-search:focus { border-color: var(--brand); box-shadow: 0 0 0 3px var(--brand-dim); outline: none; }
+.list-search::placeholder { color: var(--text-muted, var(--text-secondary)); }
+.bento-card.search-hidden { display: none; }
+.list-empty { margin: 28px 0; text-align: center; color: var(--text-secondary); font-size: 13px; }
+
 .view-toggle {
   width: 32px;
   height: 32px;

@@ -4,7 +4,7 @@ import { deleteServerMessages } from '../utils/serverMessageDeleter.js';
 import { removeServerReactions } from '../utils/serverReactionRemover.js';
 import { escHtml } from '../utils/emojiUtils.js';
 import { cachedListRefresh, delegate } from '../utils/domManager.js';
-import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
+import { bentoCard, listView, FloatingSelectionDock, listSearchHtml, applySearchTo, bindListSearch, checkVisibleBoxes } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
 import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
 
@@ -26,6 +26,10 @@ export class ServerManager {
       leave: (el) => this.leaveServer(el, itemId(el)),
     };
     delegate(contentArea, this.actions);
+
+    this.searchQuery = '';
+    this.listTotal = 0;
+    bindListSearch(contentArea, this, () => this.applySearch());
 
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.selectAllServers(),
@@ -85,15 +89,18 @@ export class ServerManager {
         const scroller = this.contentArea.closest('.page-container') || this.contentArea;
         const top = scroller.scrollTop;
         const listMode = listView.isOn('servers');
+        this.listTotal = servers.length;
         this.contentArea.innerHTML = `
         <div class="list-toolbar">
           <h2 class="page-title">Servers List <span class="list-count">${servers.length}</span></h2>
           <div class="toolbar-actions">
+            ${listSearchHtml('servers', this.searchQuery)}
             ${listView.button('servers')}
             <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Read All</button>
           </div>
         </div>
         <div id="serversList" class="bento-grid${listMode ? ' list-view' : ''}"></div>
+        <p class="list-empty" data-list-empty hidden></p>
         `;
         scroller.scrollTop = top;
         const list = document.getElementById('serversList');
@@ -122,6 +129,9 @@ export class ServerManager {
           const end = Math.min(i + CHUNK, servers.length);
           list.insertAdjacentHTML('beforeend', servers.slice(i, end).map(row).join(''));
           i = end;
+          // Rendu chunké : on re-applique le filtre a chaque tranche, pour que la
+          // recherche tienne des les premieres cartes (pas seulement a la fin).
+          this.applySearch();
           if (i < servers.length) requestAnimationFrame(flush);
         };
         requestAnimationFrame(flush);
@@ -181,8 +191,12 @@ export class ServerManager {
     showNotification(failed ? `Marked ${ids.length - failed}/${ids.length} as read` : 'Marked selected as read');
   }
 
+  applySearch() {
+    applySearchTo(this.contentArea, this.searchQuery, this.listTotal);
+  }
+
   selectAllServers() {
-    this.contentArea.querySelectorAll('.server-checkbox').forEach(cb => { cb.checked = true; });
+    checkVisibleBoxes(this.contentArea, '.server-checkbox');
     this.updateSelectedServersCount();
   }
 

@@ -4,7 +4,7 @@ import { removeReactionsFromChannel } from '../utils/reactionRemover.js';
 import { confirmAction, showNotification } from '../utils/ui.js';
 import { escHtml } from '../utils/emojiUtils.js';
 import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
-import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
+import { bentoCard, listView, FloatingSelectionDock, listSearchHtml, applySearchTo, bindListSearch, checkVisibleBoxes } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
 import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
 
@@ -26,6 +26,10 @@ export class DMManager {
     };
     delegate(contentArea, this.actions);
 
+    this.searchQuery = '';
+    this.listTotal = 0;
+    bindListSearch(contentArea, this, () => this.applySearch());
+
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.selectAllDMs(),
       onDeselectAll: () => this.deselectAllDMs(),
@@ -41,10 +45,14 @@ export class DMManager {
     try {
       const render = (dms) => {
         const listMode = listView.isOn('dms');
+        this.listTotal = (dms || []).length;
         preservePageScroll(this.contentArea, () => `
         <div class="list-toolbar">
           <h2 class="page-title">DMs List <span class="list-count">${dms.length}</span></h2>
-          <div class="toolbar-actions">${listView.button('dms')}</div>
+          <div class="toolbar-actions">
+            ${listSearchHtml('dms', this.searchQuery)}
+            ${listView.button('dms')}
+          </div>
         </div>
         <div id="dmsList" class="bento-grid${listMode ? ' list-view' : ''}">
           ${(dms || []).map(dm => bentoCard({
@@ -65,7 +73,9 @@ export class DMManager {
             ],
           })).join('')}
         </div>
+        <p class="list-empty" data-list-empty hidden></p>
       `);
+        this.applySearch();
         this.selectionDock.sync(0, 0);
       };
       await cachedListRefresh(this, () => getDMsList(), render, force);
@@ -74,8 +84,12 @@ export class DMManager {
     }
   }
 
+  applySearch() {
+    applySearchTo(this.contentArea, this.searchQuery, this.listTotal);
+  }
+
   selectAllDMs() {
-    this.contentArea.querySelectorAll('.dm-checkbox').forEach(cb => { cb.checked = true; });
+    checkVisibleBoxes(this.contentArea, '.dm-checkbox');
     this.updateSelectedCount();
   }
 

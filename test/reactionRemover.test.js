@@ -222,12 +222,29 @@ test('BUG-004 : un 429 au scan est retenté (Retry-After) puis le scan continue'
   assert.equal(messages.length, 1);
 });
 
-test('BUG-004 : atteindre le plafond MAX_MESSAGES marque complete:false', async () => {
-  const page = Array.from({ length: 100 }, (_, i) => ({ id: `m${i}`, reactions: [{ emoji: { name: '👍' }, me: true }] }));
-  const api = { getDMMessages: async () => ({ success: true, messages: page }) };
-  const { messages, complete } = await scanOwnReactions('c1', false, api, neverStop);
-  assert.equal(messages.length, 2000);
+test('scanOwnReactions couvre TOUT l historique au-dela de 2000 (plus d incomplet a tort)', async () => {
+  // 2550 messages = 25 pages pleines de 100, puis une page finale de 50.
+  let call = 0;
+  const api = {
+    getDMMessages: async () => {
+      call++;
+      if (call <= 25) return { success: true, messages: Array.from({ length: 100 }, (_, i) => ({ id: `m${call * 100 + i}`, reactions: [] })) };
+      return { success: true, messages: Array.from({ length: 50 }, (_, i) => ({ id: `z${i}`, reactions: [] })) };
+    },
+  };
+  const { complete } = await scanOwnReactions('c1', false, api, neverStop);
+  assert.equal(complete, true, 'un historique de 2550 messages doit etre parcouru en entier (pas de plafond a 2000)');
+  assert.equal(call, 26, 'les 26 pages doivent etre lues');
+});
+
+test('BUG-004 : atteindre le plafond de securite marque complete:false', async () => {
+  // Mock qui renvoie TOUJOURS une page pleine : le scan ne peut sortir que par
+  // le plafond (injecte petit uniquement pour le test).
+  let call = 0;
+  const api = { getDMMessages: async () => { call++; return { success: true, messages: Array.from({ length: 100 }, (_, i) => ({ id: `m${call}-${i}`, reactions: [] })) }; } };
+  const { complete } = await scanOwnReactions('c1', false, api, neverStop, { maxMessages: 300 });
   assert.equal(complete, false, 'le plafond doit être signalé, pas silencieux');
+  assert.equal(call, 3, 'le scan s arrete au plafond (300 / 100)');
 });
 
 // ─── BUG-006 : la modale doit exister AVANT la construction de ProgressBar ────

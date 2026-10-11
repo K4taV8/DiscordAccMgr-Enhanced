@@ -2,7 +2,7 @@ import { showProgressModal, confirmAction, showNotification } from '../utils/ui.
 import { copyToClipboard } from '../utils/clipboard.js';
 import { escHtml } from '../utils/emojiUtils.js';
 import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domManager.js';
-import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
+import { bentoCard, listView, FloatingSelectionDock, listSearchHtml, applySearchTo, bindListSearch, checkVisibleBoxes } from './bento.js';
 
 export class FriendsManager {
   constructor(contentArea) {
@@ -18,6 +18,10 @@ export class FriendsManager {
       remove: (el) => this.removeFriend(el, itemId(el)),
     };
     delegate(contentArea, this.actions);
+
+    this.searchQuery = '';
+    this.listTotal = 0;
+    bindListSearch(contentArea, this, () => this.applySearch());
 
     this.selectionDock = new FloatingSelectionDock({
       onSelectAll: () => this.selectAllFriends(),
@@ -36,10 +40,14 @@ export class FriendsManager {
           return;
         }
         const listMode = listView.isOn('friends');
+        this.listTotal = result.friends.length;
         preservePageScroll(this.contentArea, () => `
         <div class="list-toolbar">
           <h2 class="page-title">Friends List <span class="list-count">${result.friends.length}</span></h2>
-          <div class="toolbar-actions">${listView.button('friends')}</div>
+          <div class="toolbar-actions">
+            ${listSearchHtml('friends', this.searchQuery)}
+            ${listView.button('friends')}
+          </div>
         </div>
         <div id="friendsList" class="bento-grid${listMode ? ' list-view' : ''}">
           ${result.friends.map(friend => bentoCard({
@@ -55,7 +63,9 @@ export class FriendsManager {
             ],
           })).join('')}
         </div>
+        <p class="list-empty" data-list-empty hidden></p>
       `);
+        this.applySearch();
         this.selectionDock.sync(0, 0);
       };
       await cachedListRefresh(this, () => window.electronAPI.getFriends(), render, force);
@@ -68,8 +78,12 @@ export class FriendsManager {
     }
   }
 
+  applySearch() {
+    applySearchTo(this.contentArea, this.searchQuery, this.listTotal);
+  }
+
   selectAllFriends() {
-    this.contentArea.querySelectorAll('.friend-checkbox').forEach(cb => { cb.checked = true; });
+    checkVisibleBoxes(this.contentArea, '.friend-checkbox');
     this.updateSelectedCount();
   }
 

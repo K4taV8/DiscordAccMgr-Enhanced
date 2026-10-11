@@ -59,6 +59,90 @@ export function bentoCard(cfg) {
 
 // FloatingSelectionDock — barre d'action batch, fixée en haut (sous l'en-tête).
 // cfg: { onSelectAll: fn, onDeselectAll: fn, actions: [{label, tip, className, onClick}] }
+// -- Recherche de liste (Friends / DMs / Servers) -----------------------------
+// Normalisation : minuscules + accents retires, pour une recherche tolerante
+// (« emile » trouve « Émile »).
+export function normalizeSearch(value) {
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
+// Champ de recherche d'une liste. `name` est la cle (data-list-search) ; `value`
+// est re-injectee apres un rendu pour que le filtre survive aux refresh.
+export function listSearchHtml(name, value = '') {
+  return `<input type="search" class="list-search" data-list-search="${escHtml(name)}" value="${escHtml(value)}" placeholder="Rechercher…" aria-label="Rechercher dans la liste" spellcheck="false">`;
+}
+
+// Masque les cartes dont le nom (ou la ligne meta) ne contient pas `query`.
+// Renvoie le nombre de cartes VISIBLES. Aucun acces reseau : on ne touche qu'a
+// une classe CSS, donc le filtrage est instantane.
+export function filterBentoCards(listEl, query) {
+  if (!listEl) return 0;
+  const q = normalizeSearch(query).trim();
+  let shown = 0;
+  for (const card of listEl.querySelectorAll('.bento-card')) {
+    const texte = normalizeSearch(
+      `${card.querySelector('.bento-name')?.textContent || ''} ${card.querySelector('.bento-meta')?.textContent || ''}`
+    );
+    const match = !q || texte.includes(q);
+    card.classList.toggle('search-hidden', !match);
+    if (match) shown += 1;
+  }
+  return shown;
+}
+
+// Applique le filtre a une liste et met a jour le badge de compte (X / N) et
+// l'etat vide. Renvoie le nombre de cartes visibles.
+export function applyListSearch({ listEl, countEl, emptyEl, query, total }) {
+  const shown = filterBentoCards(listEl, query);
+  const q = String(query || '').trim();
+  if (countEl) countEl.textContent = q ? `${shown} / ${total}` : String(total);
+  if (emptyEl) {
+    const vide = q.length > 0 && shown === 0;
+    emptyEl.hidden = !vide;
+    if (vide) emptyEl.textContent = `Aucun résultat pour « ${q} »`;
+  }
+  return shown;
+}
+
+// Applique la recherche a la page de liste d'un manager (selecteurs communs).
+export function applySearchTo(contentArea, query, total) {
+  return applyListSearch({
+    listEl: contentArea.querySelector('.bento-grid'),
+    countEl: contentArea.querySelector('.list-count'),
+    emptyEl: contentArea.querySelector('[data-list-empty]'),
+    query,
+    total,
+  });
+}
+
+// Câble la recherche d'une liste : mémorise la requête sur `self.searchQuery`
+// (survit aux refresh) et ré-applique le filtre. `apply` est la méthode du
+// manager (elle connaît sa liste). Échap vide le champ.
+export function bindListSearch(container, self, apply) {
+  container.addEventListener('input', (event) => {
+    if (!event.target?.matches?.('[data-list-search]')) return;
+    self.searchQuery = event.target.value;
+    apply();
+  });
+  container.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || !event.target?.matches?.('[data-list-search]')) return;
+    event.target.value = '';
+    self.searchQuery = '';
+    apply();
+  });
+}
+
+// Coche UNIQUEMENT les cartes visibles (le filtrage actif ecarte les autres) et
+// décoche les cachées, pour que « Tout cocher » corresponde à ce qui est affiché.
+export function checkVisibleBoxes(contentArea, checkboxSelector) {
+  contentArea.querySelectorAll(checkboxSelector).forEach(cb => {
+    cb.checked = !cb.closest('.bento-card')?.classList.contains('search-hidden');
+  });
+}
+
 export class FloatingSelectionDock {
   constructor(cfg) {
     this.cfg = cfg;
