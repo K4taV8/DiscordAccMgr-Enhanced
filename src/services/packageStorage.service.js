@@ -6,14 +6,14 @@ const DEFAULT_MAX_BYTES = 512 * 1024 * 1024;
 
 function openDatabase() {
   return new Promise((resolve, reject) => {
-    if (!globalThis.indexedDB) { reject(new Error('IndexedDB is unavailable in this environment.')); return; }
+    if (!globalThis.indexedDB) { reject(new Error('IndexedDB est indisponible dans cet environnement.')); return; }
     const request = indexedDB.open(DB_NAME, DB_VERSION);
     request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(STORE_NAME)) db.createObjectStore(STORE_NAME, { keyPath: 'id' });
     };
     request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error || new Error('Unable to open package storage.'));
+    request.onerror = () => reject(request.error || new Error('Impossible d’ouvrir le stockage des archives.'));
   });
 }
 
@@ -22,7 +22,7 @@ function requestTransaction(mode, operation) {
     const tx = db.transaction(STORE_NAME, mode);
     const result = operation(tx.objectStore(STORE_NAME));
     tx.oncomplete = () => { db.close(); resolve(result?.result ?? result); };
-    tx.onerror = () => { db.close(); reject(tx.error || new Error('Package storage transaction failed.')); };
+    tx.onerror = () => { db.close(); reject(tx.error || new Error('La transaction de stockage des archives a échoué.')); };
   }));
 }
 

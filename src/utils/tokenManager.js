@@ -5,7 +5,7 @@ export async function loadSavedTokens() {
     try {
         const result = await window.electronAPI.getTokens();
         if (!result.success) {
-            console.error('Failed to load tokens:', result.error);
+            console.error('Échec du chargement des tokens :', result.error);
             return;
         }
 
@@ -24,11 +24,11 @@ if (!result.tokens.length) {
                 try {
                     const r = await window.electronAPI.deleteToken(name);
                     if (r.success) loadSavedTokens();
-                } catch (e) { console.error('Delete token error:', e); }
+                } catch (e) { console.error('Erreur de suppression du token :', e); }
             }
 });
     } catch (error) {
-        console.error('Failed to load tokens:', error);
+        console.error('Échec du chargement des tokens :', error);
     }
 }
 

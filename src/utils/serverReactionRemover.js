@@ -135,10 +135,10 @@ export async function removeServerReactions({
   const { phase, status, details, progressNum, totalNum, actionBtn, updateBar, cleanExit, log, safeTimeout, shouldStop } = t;
 
   try {
-    log('start');
+    log('démarrage');
     const chRes = await electronAPI.getServerChannels(serverId);
     if (!chRes.success || !chRes.channels.length) {
-      if (status) status.textContent = 'No channels found';
+      if (status) status.textContent = 'Aucun salon trouvé';
       if (checkpoint) await clearCheckpoint(OP_REACTIONS, serverId);
       safeTimeout(() => cleanExit(onComplete), 1500);
       return;
@@ -155,9 +155,9 @@ export async function removeServerReactions({
     const seenKeys = new Set(checkpoint.queue);
 
     const concurrency = autoConcurrency(channels.length);
-    if (status) status.textContent = `Scanning ${channels.length} channels (${concurrency}x)`;
+    if (status) status.textContent = `Analyse de ${channels.length} salon(s) (${concurrency}x)`;
     if (totalNum) totalNum.textContent = channels.length.toString();
-    if (phase) phase.textContent = 'Scanning';
+    if (phase) phase.textContent = 'Analyse';
 
     // ---- Phase SCAN ----
     if (checkpoint.phase === 'scan') {
@@ -215,18 +215,18 @@ export async function removeServerReactions({
       const queue = checkpoint.queue;
       const total = queue.length;
       if (totalNum) totalNum.textContent = total.toString();
-      log(`scan done: ${total}`);
-      if (partialChannels > 0) log(`WARNING: ${partialChannels} channel(s) scanned partially — some reactions may be missing`);
+      log(`analyse terminée : ${total}`);
+      if (partialChannels > 0) log(`ATTENTION : ${partialChannels} salon(s) analysé(s) partiellement — des réactions peuvent manquer`);
 
       if (total === 0) {
         const partialCount = partialChannelCount();
         // BUG-006 : canaux non scannés → ne pas effacer le checkpoint (reprise).
         if (partialCount > 0) {
           if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
-          if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+          if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
           updateBar(100);
           if (details) details.textContent = 'Relancez pour scanner les canaux restants';
-          actionBtn.textContent = 'Close';
+          actionBtn.textContent = 'Fermer';
           actionBtn.style.background = '#faa81a';
           actionBtn.disabled = false;
           actionBtn.onclick = () => cleanExit(onComplete);
@@ -235,11 +235,11 @@ export async function removeServerReactions({
           safeTimeout(() => cleanExit(onComplete), 3000);
           return;
         }
-        if (status) status.textContent = 'No reactions found';
-        if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
+        if (status) status.textContent = 'Aucune réaction trouvée';
+        if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
         updateBar(100);
-        if (details) details.textContent = 'Nothing to remove';
-        actionBtn.textContent = 'Close';
+        if (details) details.textContent = 'Rien à retirer';
+        actionBtn.textContent = 'Fermer';
         actionBtn.style.background = '#3ba55d';
         actionBtn.disabled = false;
         actionBtn.onclick = () => cleanExit(onComplete);
@@ -257,10 +257,10 @@ export async function removeServerReactions({
     // ---- Phase DELETE (reprend à progress.done) ----
     const queue = checkpoint.queue.map(decodeQueue);
     const total = queue.length;
-    if (phase) { phase.textContent = 'Removing'; phase.style.background = '#faa81a'; }
-    if (status) status.textContent = `Removing ${total} reactions...`;
+    if (phase) { phase.textContent = 'Retrait'; phase.style.background = '#faa81a'; }
+    if (status) status.textContent = `Retrait de ${total} réaction(s)...`;
     if (progressNum) progressNum.textContent = checkpoint.progress.done.toString();
-    actionBtn.textContent = 'Stop';
+    actionBtn.textContent = 'Arrêter';
     actionBtn.disabled = false;
     updateBar(total ? (checkpoint.progress.done / total) * 100 : 0);
 
@@ -304,7 +304,7 @@ export async function removeServerReactions({
 
       if (progressNum) progressNum.textContent = removed.toString();
       updateBar(((i + 1) / total) * 100);
-      if (details) details.textContent = `Removed ${removed}/${i + 1}${failed > 0 ? ` (${failed} failed)` : ''}`;
+      if (details) details.textContent = `Retirées ${removed}/${i + 1}${failed > 0 ? ` (${failed} en échec)` : ''}`;
     }
 
     await flushLedger();
@@ -323,16 +323,16 @@ export async function removeServerReactions({
 
     const recheckChannels = channels.filter(ch => (checkpoint.channels[ch.id]?.found || 0) > 0);
     for (let pass = 0; pass < 2 && !shouldStop(); pass++) {
-      if (phase) { phase.textContent = 'Verifying'; phase.style.background = '#faa81a'; }
-      if (status) status.textContent = `Verifying pass ${pass + 1}...`;
+      if (phase) { phase.textContent = 'Vérification'; phase.style.background = '#faa81a'; }
+      if (status) status.textContent = `Vérification passe ${pass + 1}...`;
       const ghosts = [];
       for (const ch of recheckChannels) {
         const { reactions } = await scanChannelReactions(ch, electronAPI, log, shouldStop, p => {
-          if (details) details.textContent = `Verify #${ch.name}: page ${p}`;
+          if (details) details.textContent = `Vérification #${ch.name} : page ${p}`;
         }, { suppressed });
         ghosts.push(...reactions);
       }
-      if (!ghosts.length) { if (status) status.textContent = `Clean: ${removed} removed, ${failed} failed`; break; }
+      if (!ghosts.length) { if (status) status.textContent = `Terminé : ${removed} retirée(s), ${failed} en échec`; break; }
       log(`ghost pass ${pass + 1}: ${ghosts.length}`);
       let gRemoved = 0, gFailed = 0;
       for (const item of ghosts) {
@@ -374,7 +374,7 @@ export async function removeServerReactions({
       return;
     }
 
-    log(`fin: removed=${removed} failed=${failed}`);
+    log(`fin : retirées=${removed} échecs=${failed}`);
 
     // BUG-006 : des canaux n'ont pas pu être scannés (partial) → statut final
     // explicite et checkpoint CONSERVÉ (phase remise à « scan » pour les
@@ -386,10 +386,10 @@ export async function removeServerReactions({
       await saveCheckpoint(OP_REACTIONS, serverId, checkpoint);
       log(`fin partielle: ${removed} supprimées, ${partialCount} canal(aux) non scanné(s)`);
       updateBar(100);
-      if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+      if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
       if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
       if (details) details.textContent = `${removed} supprimées — relancez pour scanner les canaux restants`;
-      actionBtn.textContent = 'Close';
+      actionBtn.textContent = 'Fermer';
       actionBtn.style.background = '#faa81a';
       actionBtn.disabled = false;
       actionBtn.onclick = () => cleanExit(onComplete);
@@ -398,10 +398,10 @@ export async function removeServerReactions({
     }
 
     updateBar(100);
-    if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
-    if (status) status.textContent = `Removed ${removed} / ${removed + failed}${failed > 0 ? ` (${failed} failed)` : ''}`;
-    if (details) details.textContent = `${removed} removed${failed > 0 ? `, ${failed} failed` : ''}`;
-    actionBtn.textContent = 'Close';
+    if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
+    if (status) status.textContent = `Retirées ${removed} / ${removed + failed}${failed > 0 ? ` (${failed} en échec)` : ''}`;
+    if (details) details.textContent = `${removed} retirée(s)${failed > 0 ? `, ${failed} en échec` : ''}`;
+    actionBtn.textContent = 'Fermer';
     actionBtn.style.background = '#3ba55d';
     actionBtn.disabled = false;
     actionBtn.onclick = () => cleanExit(onComplete);
@@ -411,8 +411,8 @@ export async function removeServerReactions({
   } catch (err) {
     console.error(err);
     log(`err: ${err.message}`);
-    if (status) status.textContent = `Error: ${err.message}`;
-    if (phase) { phase.textContent = 'Error'; phase.style.background = '#ed4245'; }
+    if (status) status.textContent = `Erreur : ${err.message}`;
+    if (phase) { phase.textContent = 'Erreur'; phase.style.background = '#ed4245'; }
     if (checkpoint) {
       checkpoint = touch(checkpoint);
       await saveCheckpoint(OP_REACTIONS, serverId, checkpoint).catch(() => {});

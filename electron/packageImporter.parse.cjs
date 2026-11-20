@@ -315,7 +315,7 @@ function assemble(entries, { packageSizeBytes = 0, discarded = { noise: 0, overs
   // « Messages », « Serveurs ») ou en anglais.
   const account = entries.find(entry => entry.kind === 'user');
   if (!account || !account.value || !account.value.id) {
-    throw new Error('Unrecognized Discord package: user.json is missing.');
+    throw new Error('Archive Discord non reconnue : user.json est absent.');
   }
 
   const selfId = String(account.value.id);
@@ -326,7 +326,7 @@ function assemble(entries, { packageSizeBytes = 0, discarded = { noise: 0, overs
     if (!match || entry.kind !== 'guild' || !entry.value?.id) continue;
     guilds.push({
       id: String(entry.value.id),
-      name: entry.value.name || 'Unnamed server',
+      name: entry.value.name || 'Serveur sans nom',
       icon: cdnGuildIcon(String(entry.value.id), entry.value.icon),
     });
   }
@@ -435,7 +435,7 @@ function assemble(entries, { packageSizeBytes = 0, discarded = { noise: 0, overs
   return {
     user: {
       id: String(account.value.id),
-      username: account.value.username || 'Unknown user',
+      username: account.value.username || 'Utilisateur inconnu',
       globalName: account.value.global_name || null,
       // Ton vrai avatar est DANS l'export (Compte/user.json.avatar_hash). Sans
       // lui, toute l'app affiche les PP par defaut de Discord.

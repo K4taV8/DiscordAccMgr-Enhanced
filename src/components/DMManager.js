@@ -48,7 +48,7 @@ export class DMManager {
         this.listTotal = (dms || []).length;
         preservePageScroll(this.contentArea, () => `
         <div class="list-toolbar">
-          <h2 class="page-title">DMs List <span class="list-count">${dms.length}</span></h2>
+          <h2 class="page-title">Liste des MP <span class="list-count">${dms.length}</span></h2>
           <div class="toolbar-actions">
             ${listSearchHtml('dms', this.searchQuery)}
             ${listView.button('dms')}
@@ -65,7 +65,7 @@ export class DMManager {
             checkboxClass: 'dm-checkbox',
             badge: { label: 'MP' },
             quick: [
-              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
+              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
               { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
               // Nettoyage combiné sur CE DM : messages + réactions, sans le fermer.
               { action: 'cleanBoth', label: 'Messages + réactions', theme: 'combo', emoji: '📦' },
@@ -80,7 +80,7 @@ export class DMManager {
       };
       await cachedListRefresh(this, () => getDMsList(), render, force);
     } catch (error) {
-      this.contentArea.innerHTML = '<p class="error">Failed to load DMs</p>';
+      this.contentArea.innerHTML = '<p class="error">Échec du chargement des MP</p>';
     }
   }
 
@@ -110,7 +110,7 @@ export class DMManager {
   async deleteDMMessages(channelId, username, oldestFirst = false, skipRefresh = false) {
     if (this.isDeleting) return;
     this.isDeleting = true;
-    if (!(await confirmAction('Delete Messages', `Delete ALL your messages with ${username}? This cannot be undone.`))) { this.isDeleting = false; return; }
+    if (!(await confirmAction('Supprimer les messages', `Supprimer TOUS vos messages avec ${username} ? Cette action est irréversible.`))) { this.isDeleting = false; return; }
 
     try {
       await deleteDMMessages({
@@ -127,7 +127,7 @@ export class DMManager {
         oldestFirst
       });
     } catch (error) {
-      console.error('Failed to delete messages:', error);
+      console.error('Échec de la suppression des messages :', error);
       this.isDeleting = false;
     }
   }
@@ -135,7 +135,7 @@ export class DMManager {
   async closeDM(btn, channelId) {
     if (this.isDeleting) return;
     this.isDeleting = true;
-    if (!(await confirmAction('Close DM', 'Close this DM? The conversation will be deleted.'))) { this.isDeleting = false; return; }
+    if (!(await confirmAction('Fermer la conversation', 'Fermer cette conversation ? Elle sera supprimée de votre liste.'))) { this.isDeleting = false; return; }
     btn.disabled = true;
 
     try {
@@ -145,12 +145,12 @@ export class DMManager {
       if (result?.success) {
         this.refreshDMsList(true);
       } else {
-        showNotification(result?.error || 'Échec : DM non fermé');
+        showNotification(result?.error || 'Échec : conversation non fermée');
         btn.disabled = false;
       }
     } catch (error) {
-      console.error('Failed to close DM:', error);
-      showNotification('Échec : DM non fermé');
+      console.error('Échec de la fermeture de la conversation :', error);
+      showNotification('Échec : conversation non fermée');
       btn.disabled = false;
     } finally {
       this.isDeleting = false;
@@ -173,7 +173,7 @@ export class DMManager {
         }
       });
     } catch (error) {
-      console.error('Failed to remove reactions:', error);
+      console.error('Échec du retrait des réactions :', error);
       this.isDeleting = false;
       btn.disabled = false;
     }
@@ -197,7 +197,7 @@ export class DMManager {
         onComplete: () => {},
       });
     } catch (error) {
-      console.error('Clean both (messages) failed:', error);
+      console.error('Échec du nettoyage des messages :', error);
     }
 
     try {
@@ -208,7 +208,7 @@ export class DMManager {
         onComplete: () => {},
       });
     } catch (error) {
-      console.error('Clean both (reactions) failed:', error);
+      console.error('Échec du nettoyage des réactions :', error);
     } finally {
       this.isDeleting = false;
       btn.disabled = false;
@@ -235,9 +235,9 @@ export class DMManager {
       messages: 'supprimer les messages',
       reactions: 'supprimer les réactions',
       both: 'supprimer messages et réactions',
-      full: 'supprimer messages, réactions et fermer les DM'
+      full: 'supprimer messages, réactions et fermer les MP'
     };
-    if (!(await confirmAction('Nettoyer', `Confirmer : ${modeLabels[mode]} dans ${selected.length} DM(s) sélectionné(s) ?`))) { this.isDeleting = false; return; }
+    if (!(await confirmAction('Nettoyer', `Confirmer : ${modeLabels[mode]} dans ${selected.length} MP sélectionné(s) ?`))) { this.isDeleting = false; return; }
 
     // Le nettoyage respecte le debit de Discord : sans panneau, plusieurs DM
     // donnaient l impression que rien ne se passait.
@@ -247,14 +247,14 @@ export class DMManager {
       + (mode === 'both' ? 2 : 0) + (mode === 'full' ? 3 : 0);
     let done = 0;
     let failures = 0;
-    showProgressPanel({ title: 'Nettoyage des DM', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
+    showProgressPanel({ title: 'Nettoyage des MP', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
     try {
       for (const dm of selected) {
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
           let status = 'failed';
           try {
             status = await deleteDMMessages({ channelId: dm.channelId, username: dm.username, electronAPI: window.electronAPI, onComplete: () => {}, skipRefresh: true, quiet: true });
-          } catch (e) { console.error('Cleaning delete failed:', e); }
+          } catch (e) { console.error('Échec de la suppression pendant le nettoyage :', e); }
           // BUG-014 : agréger le statut (`partial` n'est pas un succès).
           if (status !== 'done') failures++;
           done += 1;
@@ -262,14 +262,14 @@ export class DMManager {
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, quiet: true, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
+          } catch (e) { console.error('Échec du retrait des réactions pendant le nettoyage :', e); failures++; }
           done += 1;
         }
         if (mode === 'full') {
           // BUG-009 : vérifier le retour de closeDM.
           let ok = false;
           try { const r = await window.electronAPI.closeDM(dm.channelId); ok = !!r?.success; }
-          catch (e) { console.error('Cleaning close failed:', e); }
+          catch (e) { console.error('Échec de la fermeture pendant le nettoyage :', e); }
           if (!ok) failures++;
           done += 1;
         }
@@ -277,10 +277,10 @@ export class DMManager {
       }
       this.refreshDMsList(true);
       if (failures > 0) {
-        finishProgressPanel({ detail: `${selected.length} DM traité(s) — ${failures} étape(s) en échec`, status: 'failed' });
+        finishProgressPanel({ detail: `${selected.length} MP traité(s) — ${failures} étape(s) en échec`, status: 'failed' });
         showNotification(`${failures} opération(s) en échec lors du nettoyage`);
       } else {
-        finishProgressPanel({ detail: `${selected.length} DM traité(s)` });
+        finishProgressPanel({ detail: `${selected.length} MP traité(s)` });
       }
     } finally {
       this.isDeleting = false;

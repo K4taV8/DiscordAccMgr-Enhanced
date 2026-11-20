@@ -103,8 +103,8 @@ window.toggleDebugLog = () => {
   p.style.cssText = 'position:fixed;bottom:60px;left:84px;width:232px;z-index:10001';
   p.innerHTML = [
     '<div id="dlHeader" class="dl-header">',
-      '<span class="dl-title">Debug Log</span>',
-      '<button id="dlCopy" class="dl-btn">Copy</button>',
+      '<span class="dl-title">Journal de débogage</span>',
+      '<button id="dlCopy" class="dl-btn">Copier</button>',
       '<button id="dlClose" class="dl-btn dl-close">&times;</button>',
     '</div>',
     '<div id="dlBody" class="dl-body"></div>',
@@ -280,7 +280,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     await loadSavedTokens();
     warmUpPages();
   } catch (error) {
-    console.error('Error during initialization:', error);
+    console.error('Erreur d’initialisation :', error);
   }
 });
 
@@ -325,7 +325,7 @@ document.getElementById('disconnectBtn').addEventListener('click', () => {
   tokenInput.type = 'password';
   const eyeOpen = document.getElementById('eyeOpenIcon');
   const eyeClosed = document.getElementById('eyeClosedIcon');
-  if (eyeOpen) eyeOpen.style.display = 'inline';
+  if (eyeOpen) eyeOpen.style.display = 'inline-block';
   if (eyeClosed) eyeClosed.style.display = 'none';
   document.getElementById('toggleTokenBtn').title = 'Afficher';
   status.textContent = '';
@@ -412,11 +412,11 @@ document.getElementById('toggleTokenBtn').addEventListener('click', () => {
   if (tokenInput.type === 'password') {
     tokenInput.type = 'text';
     if (eyeOpenIcon) eyeOpenIcon.style.display = 'none';
-    if (eyeClosedIcon) eyeClosedIcon.style.display = 'inline';
+    if (eyeClosedIcon) eyeClosedIcon.style.display = 'inline-block';
     document.getElementById('toggleTokenBtn').title = 'Masquer';
   } else {
     tokenInput.type = 'password';
-    if (eyeOpenIcon) eyeOpenIcon.style.display = 'inline';
+    if (eyeOpenIcon) eyeOpenIcon.style.display = 'inline-block';
     if (eyeClosedIcon) eyeClosedIcon.style.display = 'none';
     document.getElementById('toggleTokenBtn').title = 'Afficher';
   }

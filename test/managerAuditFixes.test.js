@@ -31,7 +31,7 @@ test('BUG-009 : GroupManager / DMManager / ServerManager vérifient la sortie', 
 
   const dm = src('src/components/DMManager.js');
   assert.ok(dm.includes('const result = await window.electronAPI.closeDM(channelId);'), 'closeDM capture le retour');
-  assert.ok(dm.includes("showNotification(result?.error || 'Échec : DM non fermé')"), 'notifie la fermeture ratée');
+  assert.ok(dm.includes("showNotification(result?.error || 'Échec : conversation non fermée')"), 'notifie la fermeture ratée');
   assert.ok(dm.includes('const r = await window.electronAPI.closeDM(dm.channelId); ok = !!r?.success;'), 'mode full vérifie closeDM');
 
   const server = src('src/components/ServerManager.js');

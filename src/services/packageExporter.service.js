@@ -59,12 +59,12 @@ function toRow(message, channelId) {
 }
 
 export function exportDiscordPackage(parsed) {
-  if (!parsed || !parsed.user) throw new Error('Nothing to export: no package loaded.');
+  if (!parsed || !parsed.user) throw new Error('Rien à exporter : aucune archive chargée.');
 
   const entries = {};
   const user = {
     id: String(parsed.user.id),
-    username: parsed.user.username || 'Unknown user',
+    username: parsed.user.username || 'Utilisateur inconnu',
   };
   if (parsed.user.globalName) user.global_name = parsed.user.globalName;
   const userAvatarHash = avatarHashFromUrl(parsed.user.avatar);

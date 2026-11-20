@@ -37,10 +37,10 @@ export async function deleteDMMessages({
     modalOverlay.className = 'modal-overlay';
     modalOverlay.innerHTML = `
       <div class="modal-content">
-        <h2>Deleting messages ${isGroup ? 'in' : 'with'} ${escHtml(username)}</h2>
+        <h2>Suppression des messages ${isGroup ? 'dans' : 'avec'} ${escHtml(username)}</h2>
         <div id="progressContainer">
           <div class="message-counter">
-            <span id="deletedCount">0</span> / <span id="totalCount">calculating...</span> messages
+            <span id="deletedCount">0</span> / <span id="totalCount">calcul en cours...</span> messages
             <span id="etaText" class="eta-text"></span>
           </div>
         </div>
@@ -58,7 +58,7 @@ export async function deleteDMMessages({
   let shouldStop = false;
   progressBar?.onCancel(() => {
     shouldStop = true;
-    progressBar.setCancelButtonText('Cancelling...');
+    progressBar.setCancelButtonText('Annulation...');
     progressBar.disableCancelButton();
   });
 
@@ -97,7 +97,7 @@ export async function deleteDMMessages({
       }
 
       if (!result.success) {
-        throw new Error(`Failed to fetch messages: ${result.error?.message || String(result.error || 'network error')} — deletion aborted, remaining messages preserved.`);
+        throw new Error(`Impossible de récupérer les messages : ${result.error?.message || String(result.error || 'erreur réseau')} — suppression interrompue, les messages restants sont conservés.`);
       }
 
       if (!Array.isArray(result.messages) || !result.messages.length) {
@@ -114,7 +114,7 @@ export async function deleteDMMessages({
       // ecarterait toute la page a tort. On refuse plutot que de perdre des
       // messages en silence.
       if (isGroup && !currentUserId) {
-        throw new Error('Identifiant de compte indisponible : suppression annulee, aucun message touche.');
+        throw new Error('Identifiant de compte indisponible : suppression annulée, aucun message touché.');
       }
 
       const messages = result.messages;
@@ -208,12 +208,12 @@ export async function deleteDMMessages({
         if (etaText && remainingSec > 5 && deletedCount >= 5) {
           const m = Math.floor(remainingSec / 60);
           const s = remainingSec % 60;
-          etaText.textContent = m > 0 ? `— ETA ${m}m ${s}s` : `— ETA ${s}s`;
+          etaText.textContent = m > 0 ? `— restant ${m} min ${s} s` : `— restant ${s} s`;
         }
 
         await sleep(humanDelay(200));
       } catch (error) {
-        console.error('Unexpected IPC error:', error);
+        console.error('Erreur IPC inattendue :', error);
         failedCount++;
         await new Promise(resolve => setTimeout(resolve, 2500));
       }
@@ -233,7 +233,7 @@ export async function deleteDMMessages({
     }
     return 'done';
   } catch (error) {
-    console.error('Delete messages error:', error);
+    console.error('Erreur de suppression des messages :', error);
     // BUG-014 : en mode `quiet` il n'y a pas de modale — l'échec ne doit pas
     // disparaître pour autant : on notifie l'utilisateur.
     const progressContainer = quiet ? null : document.getElementById('progressContainer');

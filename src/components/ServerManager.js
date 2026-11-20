@@ -50,7 +50,7 @@ export class ServerManager {
       await window.electronAPI.muteServer(serverId);
       this.refreshServersList(true);
     } catch (error) {
-      console.error('Failed to mute server:', error);
+      console.error('Échec de la mise en sourdine :', error);
       btn.disabled = false;
     }
   }
@@ -60,7 +60,7 @@ export class ServerManager {
       await window.electronAPI.unmuteServer(serverId);
       this.refreshServersList(true);
     } catch (error) {
-      console.error('Failed to unmute server:', error);
+      console.error('Échec de la réactivation des notifications :', error);
     }
   }
 
@@ -73,12 +73,12 @@ export class ServerManager {
         const result = await window.electronAPI.muteServer(serverItem.dataset.id);
         if (!result?.success) failed++;
       } catch (error) {
-        console.error('Failed to mute server:', error);
+        console.error('Échec de la mise en sourdine :', error);
         failed++;
       }
     }
     if (failed > 0) {
-      showNotification(`Failed to mute ${failed} server(s)`);
+      showNotification(`${failed} serveur(s) n’ont pas pu être mis en sourdine`);
     }
     this.refreshServersList(true);
   }
@@ -92,11 +92,11 @@ export class ServerManager {
         this.listTotal = servers.length;
         this.contentArea.innerHTML = `
         <div class="list-toolbar">
-          <h2 class="page-title">Servers List <span class="list-count">${servers.length}</span></h2>
+          <h2 class="page-title">Liste des serveurs <span class="list-count">${servers.length}</span></h2>
           <div class="toolbar-actions">
             ${listSearchHtml('servers', this.searchQuery)}
             ${listView.button('servers')}
-            <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Read All</button>
+            <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Tout marquer comme lu</button>
           </div>
         </div>
         <div id="serversList" class="bento-grid${listMode ? ' list-view' : ''}"></div>
@@ -116,7 +116,7 @@ export class ServerManager {
           badge: server.owner ? { label: '👑 Propriétaire', className: 'is-owner' } : null,
           quick: [
             { action: 'mute', label: 'Mettre en sourdine', emoji: '🔕' },
-            { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
+            { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
             { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
             { action: 'leave', label: 'Quitter le serveur', theme: 'crimson', emoji: '🚪' },
           ],
@@ -147,7 +147,7 @@ export class ServerManager {
     const btn = document.getElementById('readAllBtn');
     const originalText = btn?.textContent;
     const unsubscribe = window.electronAPI?.onReadAllProgress?.(({ done, total }) => {
-      if (btn) btn.textContent = `Read All (${done}/${total})`;
+      if (btn) btn.textContent = `Tout marquer comme lu (${done}/${total})`;
     });
     try {
       if (btn) btn.disabled = true;
@@ -155,18 +155,18 @@ export class ServerManager {
       if (result.success) {
         // RED-3 : distinguer complétion totale / arrêt anticipé (échecs > 1/3).
         if (result.partial) {
-          showNotification(`Marked ${result.done}/${result.total} as read — ${result.failed} failed, stopped early`);
+          showNotification(`${result.done}/${result.total} serveur(s) marqué(s) comme lu(s) — ${result.failed} échec(s), arrêt anticipé`);
         } else if (result.failed > 0) {
-          showNotification(`Marked all as read (${result.failed} failed)`);
+          showNotification(`Tous les serveurs ont été marqués comme lus (${result.failed} échec(s))`);
         } else {
-          showNotification('Marked all as read!');
+          showNotification('Tous les serveurs ont été marqués comme lus !');
         }
       } else {
-        showNotification('Failed to mark all as read');
+        showNotification('Échec du marquage comme lu');
       }
     } catch (error) {
-      console.error('Read all error:', error);
-      showNotification('Failed to mark all as read');
+      console.error('Erreur du marquage comme lu :', error);
+      showNotification('Échec du marquage comme lu');
     } finally {
       unsubscribe?.();
       if (btn) { btn.disabled = false; btn.textContent = originalText; }
@@ -184,11 +184,11 @@ export class ServerManager {
         const r = await window.electronAPI.readServer(id);
         if (!r?.success) failed++;
       } catch (error) {
-        console.error('Failed to read server:', error);
+        console.error('Échec du marquage du serveur comme lu :', error);
         failed++;
       }
     }
-    showNotification(failed ? `Marked ${ids.length - failed}/${ids.length} as read` : 'Marked selected as read');
+    showNotification(failed ? `${ids.length - failed}/${ids.length} serveur(s) marqué(s) comme lu(s)` : 'Les serveurs sélectionnés ont été marqués comme lus');
   }
 
   applySearch() {
@@ -215,10 +215,10 @@ export class ServerManager {
   async deleteServerMessages(serverId) {
     if (this.isDeleting) return;
     this.isDeleting = true;
-    if (!(await confirmAction('Delete Messages', 'Delete ALL your messages in this server? This cannot be undone.'))) { this.isDeleting = false; return; }
+    if (!(await confirmAction('Supprimer les messages', 'Supprimer TOUS vos messages dans ce serveur ? Cette action est irréversible.'))) { this.isDeleting = false; return; }
     try {
       const item = document.querySelector(`.bento-card[data-id="${serverId}"]`);
-      const serverName = item?.querySelector('.bento-name')?.textContent || 'this server';
+      const serverName = item?.querySelector('.bento-name')?.textContent || 'ce serveur';
       await deleteServerMessages({
         serverId,
         serverName,
@@ -233,10 +233,10 @@ export class ServerManager {
   async removeServerReactions(serverId) {
     if (this.isDeleting) return;
     this.isDeleting = true;
-    if (!(await confirmAction('Remove Reactions', 'Remove all your reactions in this server?'))) { this.isDeleting = false; return; }
+    if (!(await confirmAction('Retirer les réactions', 'Retirer toutes vos réactions dans ce serveur ?'))) { this.isDeleting = false; return; }
     try {
       const item = document.querySelector(`.bento-card[data-id="${serverId}"]`);
-      const serverName = item?.querySelector('.bento-name')?.textContent || 'this server';
+      const serverName = item?.querySelector('.bento-name')?.textContent || 'ce serveur';
       await removeServerReactions({
         serverId,
         serverName,
@@ -253,7 +253,7 @@ export class ServerManager {
   async leaveServer(btn, serverId) {
     if (this.isDeleting) return;
     this.isDeleting = true;
-    if (!(await confirmAction('Leave Server', 'Leave this server? This cannot be undone.'))) { this.isDeleting = false; return; }
+    if (!(await confirmAction('Quitter le serveur', 'Quitter ce serveur ? Cette action est irréversible.'))) { this.isDeleting = false; return; }
     btn.disabled = true;
     try {
       const result = await window.electronAPI.leaveServer(serverId);
@@ -266,7 +266,7 @@ export class ServerManager {
         btn.disabled = false;
       }
     } catch (error) {
-      console.error('Failed to leave server:', error);
+      console.error('Échec de la sortie du serveur :', error);
       showNotification('Échec : serveur non quitté');
       btn.disabled = false;
     } finally {
@@ -309,24 +309,24 @@ export class ServerManager {
     try {
       for (const item of items) {
         const serverId = item.dataset.id;
-        const serverName = item.querySelector('.bento-name')?.textContent || 'server';
+        const serverName = item.querySelector('.bento-name')?.textContent || 'ce serveur';
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
           try {
             await deleteServerMessages({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning delete failed:', e); failures++; }
+          } catch (e) { console.error('Échec de la suppression pendant le nettoyage :', e); failures++; }
           done += 1;
         }
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeServerReactions({ serverId, serverName, electronAPI: window.electronAPI, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
+          } catch (e) { console.error('Échec du retrait des réactions pendant le nettoyage :', e); failures++; }
           done += 1;
         }
         if (mode === 'full') {
           // BUG-009 : vérifier le retour de leaveServer.
           let ok = false;
           try { const r = await window.electronAPI.leaveServer(serverId); ok = !!r?.success; }
-          catch (e) { console.error('Cleaning leave failed:', e); }
+          catch (e) { console.error('Échec de la sortie pendant le nettoyage :', e); }
           if (!ok) failures++;
           done += 1;
         }

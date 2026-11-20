@@ -61,19 +61,19 @@ function createTokenStore({ safeStorage, tokensPath }) {
     async save(name, token) {
       return withLock(async () => {
         if (!encryptionAvailable()) {
-          return { success: false, error: 'Cannot save: secure storage unavailable. On Linux, install libsecret.' };
+          return { success: false, error: 'Enregistrement impossible : stockage sécurisé indisponible. Sous Linux, installe libsecret.' };
         }
         try {
           const store = await readTokensFile();
           const tokens = store.tokens || [];
           if (tokens.some(t => t.name === name)) {
-            return { success: false, error: 'A token with this name already exists' };
+            return { success: false, error: 'Un token portant ce nom existe déjà' };
           }
           tokens.push({ name, token: encryptToken(token) });
           await writeTokensFile(tokens);
           return { success: true };
         } catch (error) {
-          return { success: false, error: 'Failed to save token' };
+          return { success: false, error: 'Échec de l’enregistrement du token' };
         }
       });
     },
@@ -111,7 +111,7 @@ function createTokenStore({ safeStorage, tokensPath }) {
 
           return { success: true, tokens: result };
         } catch (error) {
-          return { success: false, error: 'Failed to load tokens' };
+          return { success: false, error: 'Échec du chargement des tokens' };
         }
       });
     },
@@ -124,7 +124,7 @@ function createTokenStore({ safeStorage, tokensPath }) {
           await writeTokensFile(tokens.filter(t => t.name !== name));
           return { success: true };
         } catch (error) {
-          return { success: false, error: 'Failed to delete token' };
+          return { success: false, error: 'Échec de la suppression du token' };
         }
       });
     },
@@ -135,7 +135,7 @@ function createTokenStore({ safeStorage, tokensPath }) {
           await writeTokensFile([]);
           return { success: true };
         } catch (error) {
-          return { success: false, error: 'Failed to delete tokens' };
+          return { success: false, error: 'Échec de la suppression des tokens' };
         }
       });
     },
@@ -144,20 +144,20 @@ function createTokenStore({ safeStorage, tokensPath }) {
     // Le mutex n'est tenu que pendant la lecture.
     async resolveByName(name) {
       return withLock(async () => {
-        if (typeof name !== 'string' || !name) return { error: 'Invalid token name' };
+        if (typeof name !== 'string' || !name) return { error: 'Nom de token invalide' };
         if (!encryptionAvailable()) {
-          return { error: 'Cannot connect: secure storage unavailable. On Linux, install libsecret.' };
+          return { error: 'Connexion impossible : stockage sécurisé indisponible. Sous Linux, installe libsecret.' };
         }
         const store = await readTokensFile();
         const entry = (store.tokens || []).find(t => t.name === name);
-        if (!entry) return { error: 'Token not found' };
+        if (!entry) return { error: 'Token introuvable' };
         let token;
         try {
           token = decryptToken(entry.token);
         } catch {
           token = null;
         }
-        if (!token) return { error: 'Token is corrupted or not securely stored (re-save it)' };
+        if (!token) return { error: 'Token corrompu ou mal stocké (réenregistre-le)' };
         // userId optionnel : stocke cote main, sert a reutiliser la session en
         // cours ("meme compte") au lieu de re-loggner - perf + limite de sessions.
         return entry.userId ? { token, userId: String(entry.userId) } : { token };
@@ -167,17 +167,17 @@ function createTokenStore({ safeStorage, tokensPath }) {
     // Enrichit une entree avec l'identifiant du compte apres un login reussi.
     async setUserId(name, userId) {
       return withLock(async () => {
-        if (typeof name !== 'string' || !name) return { success: false, error: 'Invalid token name' };
+        if (typeof name !== 'string' || !name) return { success: false, error: 'Nom de token invalide' };
         const store = await readTokensFile();
         const tokens = store.tokens || [];
         const entry = tokens.find(t => t.name === name);
-        if (!entry) return { success: false, error: 'Token not found' };
+        if (!entry) return { success: false, error: 'Token introuvable' };
         entry.userId = String(userId);
         try {
           await writeTokensFile(tokens);
           return { success: true };
         } catch {
-          return { success: false, error: 'Failed to update token' };
+          return { success: false, error: 'Échec de la mise à jour du token' };
         }
       });
     },

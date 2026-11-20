@@ -2380,8 +2380,8 @@ test('une annulation donne le MEME comportement des deux chemins', async () => {
   );
   assert.ok(motifIndex, `une annulation avant toute entree doit faire ECHOUER le chemin par index : ${JSON.stringify(motifIndex)}`);
   assert.ok(motifFlux, 'et le chemin de reference echoue aussi : rien de lu n est pas un import reussi');
-  assert.match(motifIndex, /user\.json is missing/, `le chemin par index doit nommer ce qui lui manque : « ${motifIndex} »`);
-  assert.match(motifFlux, /invalid zip data/, `le chemin de reference doit dire qu il n a rien lu : « ${motifFlux} »`);
+  assert.match(motifIndex, /user\.json est absent/, `le chemin par index doit nommer ce qui lui manque : « ${motifIndex} »`);
+  assert.match(motifFlux, /données ZIP invalides/, `le chemin de reference doit dire qu il n a rien lu : « ${motifFlux} »`);
   assert.notEqual(motifIndex, motifFlux, 'les deux messages nomment deux causes, et le test le dit plutot que de le tolerer en silence');
 
 // Et le cas ou l annulation survient APRES quelques entrees : c est la que les
@@ -3070,7 +3070,7 @@ test('une archive sans repertoire central bascule sur le flux et le dit', async 
 
   assert.equal(resultat.mode, 'stream', 'le pilote index echoue et le chemin flux prend le relais');
   assert.ok(resultat.reason, 'la raison du repli est conservee');
-  assert.match(resultat.reason, /Unable to read ZIP archive/, `la raison nomme l echec de l index : « ${resultat.reason} »`);
+  assert.match(resultat.reason, /Impossible de lire l’archive ZIP/, `la raison nomme l echec de l index : « ${resultat.reason} »`);
   // LES DEUX MESSAGES, ET ILS DIFFERENT. Une annulation, ou une entree refusee,
   // donne un `reason` qui n'est PAS « Unable to read ZIP archive: … » (voir
   // interfaces.md) : wrapper qui remplace l un par l autre afficherait un motif
@@ -3091,7 +3091,7 @@ test('le repli ne laisse aucun resultat partiel : rien n est presente comme un i
   const resultat = await importPackageWithFallback(file, {});
 
   assert.equal(resultat.package, null, 'aucun paquet : ni vide, ni partiel — le repli n invente rien');
-  assert.equal(resultat.error, 'Unable to read ZIP archive: invalid zip data', `le motif du chemin flux est celui du chemin de reference : « ${resultat.error} »`);
+  assert.equal(resultat.error, 'Impossible de lire l’archive ZIP : données ZIP invalides', `le motif du chemin flux est celui du chemin de reference : « ${resultat.error} »`);
   assert.equal(resultat.cancelled, false);
 });
 
@@ -3198,7 +3198,7 @@ const { corps } = archiveComplete();
   assert.equal(resultat.cancelled, true, 'une annulation vaut une annulation, meme quand les deux chemins echouent');
   assert.equal(resultat.package, null, 'et aucun paquet n est rendu');
   assert.equal(resultat.error, null, `l annulation n est pas un echec d archive : « ${resultat.error} »`);
-  assert.match(resultat.reason, /user\.json is missing/, `le motif de l index est conserve tel quel : « ${resultat.reason} »`);
+  assert.match(resultat.reason, /user\.json est absent/, `le motif de l index est conserve tel quel : « ${resultat.reason} »`);
 
   // Et ICI le chemin flux ne doit pas etre relance non plus. C'est la meme regle
   // que le test precedent, sur l'autre moitie du cas : la-bas l'index aboutissait
@@ -3624,7 +3624,7 @@ test('par IPC, le renderer reconstruit la Map, journalise le mode, et persiste l
     assert.equal(manager.package.schemaVersion, PACKAGE_SCHEMA_VERSION, 'la version du schema est posee par le renderer');
     assert.equal(isCurrentPackageArchive({ packageData: manager.package }), true, 'et l archive est donc consideree comme courante');
     assert.equal(
-      journaux.captured.warn.some(ligne => ligne.includes('Unable to persist package archive')),
+      journaux.captured.warn.some(ligne => ligne.includes('Impossible de persister l’archive')),
       true,
       'la persistence a bien ete tentee : en Node il n y a pas d IndexedDB, et l absence de ce warn prouverait au contraire qu aucune archive n a ete enregistree',
     );
@@ -3809,7 +3809,7 @@ test('un ecart de taille est un ECHEC FRANC cote renderer : statut d erreur, et 
       assert.equal(/annul/i.test(item.statusText), false, `ce n'est pas une annulation : « ${item.statusText} »`);
       assert.equal(manager.package, null, 'aucun paquet n est charge');
       assert.equal(
-        journaux.captured.warn.some(ligne => ligne.includes('Unable to persist package archive')),
+        journaux.captured.warn.some(ligne => ligne.includes('Impossible de persister l’archive')),
         false,
         `rien ne doit etre enregistre : le fichier REMPLACE deviendrait un import valide au redemarrage. Journaux : ${JSON.stringify(journaux.captured.warn)}`,
       );
@@ -3846,7 +3846,7 @@ test('une annulation venue du main process ne devient ni un succes, ni une archi
     assert.match(item.statusText, /annul/i, `et le texte la distingue d un echec d archive : « ${item.statusText} »`);
     assert.equal(manager.package, null, 'aucun paquet n est charge');
     assert.equal(
-      journaux.captured.warn.some(ligne => ligne.includes('Unable to persist package archive')),
+      journaux.captured.warn.some(ligne => ligne.includes('Impossible de persister l’archive')),
       false,
       `rien ne doit etre enregistre : un paquet partiel ecrit en base serait relu comme un import complet. Journaux : ${JSON.stringify(journaux.captured.warn)}`,
     );
@@ -3980,14 +3980,14 @@ test('un paquet sans `user` est INATTEIGNABLE : les deux chemins lèvent sur son
   // le repertoire central — c'est un refus de CONTENU, pas un echec d'archive.
   await assert.rejects(
     () => importViaIndex(fileFromBlob(sansCompte, 'sans-compte.zip'), {}),
-    /user\.json is missing/,
+    /user\.json est absent/,
     'le chemin par index refuse une archive sans compte',
   );
 
   // Le chemin de reference, le meme refus, pour la meme raison.
   await assert.rejects(
     () => cheminFlux(new Blob([sansCompte], { type: 'application/zip' }), {}),
-    /user\.json is missing/,
+    /user\.json est absent/,
     'et le chemin de reference aussi : les deux partagent `assemble`',
   );
 
@@ -3995,7 +3995,7 @@ test('un paquet sans `user` est INATTEIGNABLE : les deux chemins lèvent sur son
   // peut pas rendre de paquet sans `user` par un autre chemin.
   const repli = await importPackageWithFallback(fileFromBlob(sansCompte, 'sans-compte.zip'), {});
   assert.equal(repli.package, null, `le repli ne fabrique pas de paquet sans compte : ${JSON.stringify(repli)}`);
-  assert.match(repli.error, /user\.json is missing/);
+  assert.match(repli.error, /user\.json est absent/);
 });
 
 test('« un compte, zero message » est un import VALIDE : il est rendu, aplati et persiste', () => {

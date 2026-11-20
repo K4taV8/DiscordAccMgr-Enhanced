@@ -43,7 +43,7 @@ export class FriendsManager {
         this.listTotal = result.friends.length;
         preservePageScroll(this.contentArea, () => `
         <div class="list-toolbar">
-          <h2 class="page-title">Friends List <span class="list-count">${result.friends.length}</span></h2>
+          <h2 class="page-title">Liste des amis <span class="list-count">${result.friends.length}</span></h2>
           <div class="toolbar-actions">
             ${listSearchHtml('friends', this.searchQuery)}
             ${listView.button('friends')}
@@ -59,7 +59,7 @@ export class FriendsManager {
             checkboxClass: 'friend-checkbox',
             badge: { label: 'Ami' },
             quick: [
-              { action: 'remove', label: "Retirer l'ami", theme: 'crimson', emoji: '🚫' },
+              { action: 'remove', label: "Retirer l'ami", theme: 'crimson', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
             ],
           })).join('')}
         </div>
@@ -105,7 +105,7 @@ export class FriendsManager {
   async removeFriend(btn, friendId) {
     if (this.isDeleting) return;
     this.isDeleting = true;
-    if (!(await confirmAction('Remove Friend', 'Remove this friend?'))) { this.isDeleting = false; return; }
+    if (!(await confirmAction('Retirer l’ami', 'Retirer cet ami de votre liste ?'))) { this.isDeleting = false; return; }
     btn.disabled = true;
     try {
       const result = await window.electronAPI.deleteFriend(friendId);
@@ -118,7 +118,7 @@ export class FriendsManager {
         btn.disabled = false;
       }
     } catch (error) {
-      console.error('Failed to remove friend:', error);
+      console.error('Échec du retrait de l’ami :', error);
       showNotification('Échec : ami non retiré');
       btn.disabled = false;
     } finally {
@@ -135,9 +135,9 @@ export class FriendsManager {
       const selectedFriends = this.contentArea.querySelectorAll('.friend-checkbox:checked');
       const total = selectedFriends.length;
       if (total === 0) return;
-      if (!(await confirmAction('Remove Friends', `Remove ${total} selected friend(s)? This cannot be undone.`))) return;
+      if (!(await confirmAction('Retirer les amis', `Retirer ${total} ami(s) sélectionné(s) ? Cette action est irréversible.`))) return;
 
-      const { updateProgress, closeModal } = showProgressModal('Removing Friends', total);
+      const { updateProgress, closeModal } = showProgressModal('Retrait des amis', total);
       let completed = 0;
       let failed = 0;
 
@@ -149,7 +149,7 @@ export class FriendsManager {
           if (result?.success) completed++;
           else failed++;
         } catch (error) {
-          console.error('Failed to remove friend:', error);
+          console.error('Échec du retrait de l’ami :', error);
           failed++;
         }
         updateProgress(completed + failed);

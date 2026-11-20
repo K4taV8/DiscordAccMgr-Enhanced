@@ -391,7 +391,7 @@ async function collectEntries(file, onEntry, shouldStop, onRead) {
   }
   if (!shouldStop()) unzipper.push(new Uint8Array(0), true);
   if (failures.length) throw failures[0];
-  if (seen === 0) throw new Error('invalid zip data');
+  if (seen === 0) throw new Error('données ZIP invalides');
   return { entries, discarded };
 }
 
@@ -405,14 +405,14 @@ export async function importDiscordPackage(file, { onProgress = () => {}, onEntr
       onProgress({ current: read, total: total || 1, stage: "Lecture du ZIP", bytes: true });
     }));
   } catch (error) {
-    throw new PackageImportError(`Unable to read ZIP archive: ${error.message}`);
+    throw new PackageImportError(`Impossible de lire l’archive ZIP : ${error.message}`);
   }
 
   // Sections par motif : l'archive peut être en français (« Compte »,
   // « Messages », « Serveurs ») ou en anglais.
   const account = entries.find(entry => entry.kind === 'user');
   if (!account || !account.value || !account.value.id) {
-    throw new PackageImportError('Unrecognized Discord package: user.json is missing.');
+    throw new PackageImportError('Archive Discord non reconnue : user.json est absent.');
   }
 
   const selfId = String(account.value.id);
@@ -423,7 +423,7 @@ export async function importDiscordPackage(file, { onProgress = () => {}, onEntr
     if (!match || entry.kind !== 'guild' || !entry.value?.id) continue;
     guilds.push({
       id: String(entry.value.id),
-      name: entry.value.name || 'Unnamed server',
+      name: entry.value.name || 'Serveur sans nom',
       icon: cdnGuildIcon(String(entry.value.id), entry.value.icon),
     });
   }
@@ -532,7 +532,7 @@ export async function importDiscordPackage(file, { onProgress = () => {}, onEntr
   return {
     user: {
       id: String(account.value.id),
-      username: account.value.username || 'Unknown user',
+      username: account.value.username || 'Utilisateur inconnu',
       globalName: account.value.global_name || null,
       // Ton vrai avatar est DANS l'export (Compte/user.json.avatar_hash). Sans
       // lui, toute l'app affiche les PP par defaut de Discord.

@@ -23,7 +23,7 @@ export class ProgressBar {
 
     if (this.options.showCancelButton) {
       this.cancelButton = document.createElement('button');
-      this.cancelButton.textContent = 'Cancel';
+      this.cancelButton.textContent = 'Annuler';
       this.cancelButton.className = 'btn btn-danger';
     }
 

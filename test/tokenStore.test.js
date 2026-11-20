@@ -57,7 +57,7 @@ test('save rejects duplicate name', async () => {
   assert.equal((await store.save('main', 'A')).success, true);
   const dup = await store.save('main', 'B');
   assert.equal(dup.success, false);
-  assert.match(dup.error, /already exists/);
+  assert.match(dup.error, /existe déjà/);
 });
 
 test('resolveByName round-trips the decrypted secret', async () => {
@@ -69,9 +69,9 @@ test('resolveByName round-trips the decrypted secret', async () => {
 
 test('resolveByName rejects invalid/missing names', async () => {
   const { store } = freshStore();
-  assert.deepEqual(await store.resolveByName(''), { error: 'Invalid token name' });
-  assert.deepEqual(await store.resolveByName(42), { error: 'Invalid token name' });
-  assert.deepEqual(await store.resolveByName('nope'), { error: 'Token not found' });
+  assert.deepEqual(await store.resolveByName(''), { error: 'Nom de token invalide' });
+  assert.deepEqual(await store.resolveByName(42), { error: 'Nom de token invalide' });
+  assert.deepEqual(await store.resolveByName('nope'), { error: 'Token introuvable' });
 });
 
 test('remove and removeAll delete entries', async () => {
@@ -117,14 +117,14 @@ test('encryption unavailable → save/list/resolveByName all harden', async () =
 
   const r = await store.save('x', 'TOKEN');
   assert.equal(r.success, false);
-  assert.match(r.error, /unavailable/);
+  assert.match(r.error, /indisponible/);
 
   writeFileSync(tokensPath, JSON.stringify([{ name: 'legacy', token: 'PLAINTEXT' }]), 'utf8');
   const { tokens } = await store.list();
   assert.deepEqual(tokens, [{ name: 'legacy', corrupt: true }]);
 
   assert.deepEqual(await store.resolveByName('legacy'), {
-    error: 'Cannot connect: secure storage unavailable. On Linux, install libsecret.',
+    error: 'Connexion impossible : stockage sécurisé indisponible. Sous Linux, installe libsecret.',
   });
 });
 

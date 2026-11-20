@@ -23,17 +23,17 @@ export function createTaskPanel(serverName, logPrefix) {
   panel.innerHTML = `
     <div class="task-panel-header">
       <span style="font-size:14px;color:#fff">${escHtml(serverName)}</span>
-      <span id="taskPhase" class="task-phase">Scanning</span>
+      <span id="taskPhase" class="task-phase">Analyse</span>
     </div>
     <div class="task-panel-body">
       <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:8px">
-        <span id="taskStatus">Loading channels...</span>
+        <span id="taskStatus">Chargement des salons...</span>
         <span><span id="progressNum">0</span> / <span id="totalNum">0</span></span>
       </div>
       <div class="progress-track"><div id="barFill" class="progress-fill"></div></div>
       <div id="taskDetails" class="task-details"></div>
       <div style="margin-top:8px">
-        <button id="taskActionBtn" class="btn btn-danger" style="width:100%">Cancel</button>
+        <button id="taskActionBtn" class="btn btn-danger" style="width:100%">Annuler</button>
       </div>
     </div>
   `;
@@ -67,7 +67,7 @@ export function createTaskPanel(serverName, logPrefix) {
 
   refs.actionBtn.onclick = () => {
     _shouldStop = true;
-    refs.actionBtn.textContent = 'Stopping...';
+    refs.actionBtn.textContent = 'Arrêt...';
     refs.actionBtn.disabled = true;
   };
 

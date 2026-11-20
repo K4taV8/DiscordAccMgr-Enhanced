@@ -337,10 +337,10 @@ function pointDeRendement() {
 // pas charger (meme raison que les parseurs). L'appelant ne doit donc PAS
 // discriminer sur la classe, seulement sur le fait qu'il y a eu echec.
 async function importViaIndex(file, { onProgress = () => {}, onEntry = () => {}, shouldStop = () => false } = {}) {
-  if (!file || typeof file.slice !== 'function') throw new Error('A ZIP file is required.');
+  if (!file || typeof file.slice !== 'function') throw new Error('Un fichier ZIP est requis.');
 
   const { entries, reason } = await readZipIndex(file);
-  if (!entries) throw new Error(`Unable to read ZIP archive: ${reason}`);
+  if (!entries) throw new Error(`Impossible de lire l’archive ZIP : ${reason}`);
 
   const { kept, discarded: ecartees } = selectEntries(entries);
   const gardes = new Set(kept);
@@ -415,7 +415,7 @@ async function importViaIndex(file, { onProgress = () => {}, onEntry = () => {},
   }
 
   // Meme ordre que le chemin flux : les echecs d'entree d'abord, puis le reste.
-  if (echecs.length) throw new Error(`Unable to read ZIP archive: ${echecs[0].message}`);
+  if (echecs.length) throw new Error(`Impossible de lire l’archive ZIP : ${echecs[0].message}`);
 
   return assemble(collectees, {
     packageSizeBytes: Number(file.size) || 0,

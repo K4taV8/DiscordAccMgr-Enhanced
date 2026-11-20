@@ -159,11 +159,11 @@ export async function removeReactionsFromChannel({
     modalOverlay.className = 'modal-overlay';
     modalOverlay.innerHTML = `
       <div class="modal-content">
-        <h2>Removing your reactions ${isGroup ? 'in' : 'with'} ${escHtml(channelName)}</h2>
+        <h2>Retrait de vos réactions ${isGroup ? 'dans' : 'avec'} ${escHtml(channelName)}</h2>
         <div id="progressContainer">
           <div class="message-counter">
-            <span id="processedCount">0</span> / <span id="totalCount">0</span> processed
-            — <span id="removedCount">0</span> removed, <span id="failedCount">0</span> failed
+            <span id="processedCount">0</span> / <span id="totalCount">0</span> traitées
+            — <span id="removedCount">0</span> retirées, <span id="failedCount">0</span> en échec
           </div>
           <div id="scanWarning" class="scan-warning"></div>
         </div>
@@ -183,7 +183,7 @@ export async function removeReactionsFromChannel({
 
   progressBar?.onCancel(() => {
     shouldStop = true;
-    progressBar.setCancelButtonText('Cancelling...');
+    progressBar.setCancelButtonText('Annulation...');
     progressBar.disableCancelButton();
   });
 
@@ -225,7 +225,7 @@ export async function removeReactionsFromChannel({
     const messages = firstScan.messages;
     if (!firstScan.complete) markScanIncomplete();
 
-    if (shouldStop) throw new Error('Operation cancelled');
+    if (shouldStop) throw new Error('Opération annulée');
 
     const totalReactions = messages.reduce((acc, msg) => acc + msg.reactions.length, 0);
     setText('totalCount', totalReactions.toString());
@@ -274,8 +274,8 @@ export async function removeReactionsFromChannel({
     progressBar?.update(100);
     refreshCounters(totalReactions, removed, failed);
   } catch (error) {
-    console.error('Remove reactions error:', error);
-    if (quiet) showNotification(`Reactions : ${error?.message || String(error)}`);
+    console.error('Erreur du retrait des réactions :', error);
+    if (quiet) showNotification(`Réactions : ${error?.message || String(error)}`);
     const progressContainer = document.getElementById('progressContainer');
     if (progressContainer) progressContainer.innerHTML = `<p class="error">${escHtml(error?.message || String(error))}</p>`;
   } finally {

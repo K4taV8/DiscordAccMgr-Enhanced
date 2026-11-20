@@ -67,7 +67,7 @@ test('THEME_BUTTON_ICON est un svg a heriter de currentColor, de taille fixee', 
   assert.ok(THEME_BUTTON_ICON.includes('fill="currentColor"'), 'il suit la couleur du theme');
   assert.ok(THEME_BUTTON_ICON.includes('width="24"'), 'il porte une taille explicite');
   assert.ok(THEME_BUTTON_ICON.includes('height="24"'));
-  assert.ok(THEME_BUTTON_ICON.includes('<path d="M13.707'), 'c est le brush de Boxicons');
+  assert.ok(THEME_BUTTON_ICON.includes('<path d="M10.97 20.39'), 'c est le brush de Boxicons');
 });
 
 test('chaque icone de theme porte une taille explicite', () => {

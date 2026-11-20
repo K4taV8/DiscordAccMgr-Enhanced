@@ -1,7 +1,7 @@
 export { copyToClipboard, showNotification } from './clipboard.js';
 import { escHtml } from './emojiUtils.js';
 
-export const confirmAction = (title, message, confirmLabel = 'Confirm') => new Promise(resolve => {
+export const confirmAction = (title, message, confirmLabel = 'Confirmer') => new Promise(resolve => {
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
 
@@ -24,7 +24,7 @@ export const confirmAction = (title, message, confirmLabel = 'Confirm') => new P
 
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'btn btn-secondary';
-  cancelBtn.textContent = 'Cancel';
+  cancelBtn.textContent = 'Annuler';
   cancelBtn.addEventListener('click', () => { resolve(false); modal.remove(); });
 
   buttonGroup.appendChild(okBtn);
@@ -146,7 +146,19 @@ export const showInfoModal = async () => {
     </div>
     <div class="info-section">
       <h3>Technologies</h3>
-      <div class="info-tags"><span>Electron</span><span>Node.js</span><span>JavaScript</span><span>discord.js</span><span>axios</span><span>fflate</span></div>
+      <div class="info-tags">
+        <span title="Runtime desktop (Chromium + Node.js)">Electron</span>
+        <span title="Processus principal et outillage">Node.js</span>
+        <span title="Renderer ESM + main CJS">JavaScript</span>
+        <span title="Types et contrats">TypeScript</span>
+        <span class="info-tag-wide" title="Client Discord (API v9)">discord.js-selfbot-v13</span>
+        <span title="REST + Gateway">Discord API v9</span>
+        <span title="Interface sans framework">HTML/CSS</span>
+        <span title="HTTP avec timeout">axios</span>
+        <span title="Archives ZIP">fflate</span>
+        <span title="Packaging Windows">electron-builder</span>
+        <span title="Tests (stdlib Node)">node:test</span>
+      </div>
     </div>
     <div class="info-links">
       ${forkLink}

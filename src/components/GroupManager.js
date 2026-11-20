@@ -74,7 +74,7 @@ export class GroupManager {
             checkboxClass: 'group-checkbox',
             badge: { label: 'Groupe' },
             quick: [
-              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
+              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
               { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
               { action: 'leave', label: 'Quitter le groupe', theme: 'crimson', emoji: '🚪' },
             ],
@@ -133,7 +133,7 @@ export class GroupManager {
         oldestFirst
       });
     } catch (error) {
-      console.error('Failed to delete messages:', error);
+      console.error('Échec de la suppression des messages :', error);
       this.isDeleting = false;
     }
   }
@@ -154,7 +154,7 @@ export class GroupManager {
         btn.disabled = false;
       }
     } catch (error) {
-      console.error('Failed to leave group:', error);
+      console.error('Échec de la sortie du groupe :', error);
       showNotification('Échec : groupe non quitté');
       btn.disabled = false;
     } finally {
@@ -179,7 +179,7 @@ export class GroupManager {
         }
       });
     } catch (error) {
-      console.error('Failed to remove reactions:', error);
+      console.error('Échec du retrait des réactions :', error);
       this.isDeleting = false;
       btn.disabled = false;
     }
@@ -233,7 +233,7 @@ export class GroupManager {
               quiet: true,
               onComplete: () => {},
             });
-          } catch (e) { console.error('Cleaning delete failed:', e); }
+          } catch (e) { console.error('Échec de la suppression pendant le nettoyage :', e); }
           // BUG-014 : agréger le statut — `partial`/`cancelled`/`undefined`
           // n'est pas un succès et ne doit pas passer pour « traité ».
           if (status !== 'done') failures++;
@@ -242,14 +242,14 @@ export class GroupManager {
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
           try {
             await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, quiet: true, onComplete: () => {} });
-          } catch (e) { console.error('Cleaning reactions failed:', e); failures++; }
+          } catch (e) { console.error('Échec du retrait des réactions pendant le nettoyage :', e); failures++; }
           done += 1;
         }
         if (mode === 'full') {
           // BUG-009 : vérifier `success` au lieu de compter un échec comme traité.
           let ok = false;
           try { const r = await window.electronAPI.leaveGroup(g.groupId); ok = !!r?.success; }
-          catch (e) { console.error('Cleaning leave failed:', e); }
+          catch (e) { console.error('Échec de la sortie pendant le nettoyage :', e); }
           if (!ok) failures++;
           done += 1;
         }

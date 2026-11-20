@@ -183,7 +183,7 @@ test('les fichiers de bruit (__MACOSX, ._) sont ignores', async () => {
 test('une archive non zip est rejetee proprement', async () => {
   await assert.rejects(
     () => importDiscordPackage(chunkOnlyFile(new TextEncoder().encode('ceci n est pas un zip'))),
-    /Unable to read ZIP archive/,
+    /Impossible de lire l’archive ZIP/,
   );
 });
 

@@ -56,7 +56,7 @@ test('BUG-008 : login borne par un timeout et candidat detruit en echec', () => 
 test('BUG-011 : un seul lot de miroir a la fois', () => {
   const src = mainSrc();
   assert.ok(src.includes('let mirrorRunning = false;'));
-  assert.ok(src.includes("if (mirrorRunning) return { ok: false, error: 'Telechargement deja en cours' };"));
+  assert.ok(src.includes("if (mirrorRunning) return { ok: false, error: 'Téléchargement déjà en cours' };"));
   assert.match(src, /finally \{\r?\n\s*mirrorRunning = false;/);
 });
 

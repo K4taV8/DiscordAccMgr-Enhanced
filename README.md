@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Node.js-22-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
   <img src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
   <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Tests-420_verts-3ba55d?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Tests-517_verts-3ba55d?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
@@ -61,7 +61,7 @@ Ce dépôt présente une application de bureau Electron pour gérer ton propre c
 5. [`🔐`︲Sécurité.](#securite)
 
    * [`🪪`︲Jetons.](#securite-jetons)
-   * [`🧪`︲Fenêtre de connexion native (session éphémère).](#securite-fenetre)
+   * [`🧪`︲Fenêtre de connexion native (session dédiée, auth purgée).](#securite-fenetre)
    * [`🛡️`︲Isolation du renderer (CSP).](#securite-csp)
    * [`📁`︲Portabilité, télémétrie et données d'export.](#securite-portable)
 
@@ -148,7 +148,7 @@ Ce que tu peux faire avec :
 >
 > - ` 🔷 `︲**TypeScript :** types (aucune étape de build obligatoire).
 >
-> - ` 🧪 `︲**node:test (stdlib) :** **420 tests** (`npm test`), couverture via `npm run test:coverage`.
+> - ` 🧪 `︲**node:test (stdlib) :** **517 tests** (`npm test`), couverture via `npm run test:coverage`.
 >
 > - ` 👤 `︲**Interface Chaise-Clavier fonctionnelle.** 🫵
 
@@ -166,7 +166,8 @@ Ce que tu peux faire avec :
 
 ` 🔌 `︲**Connexion.**
 
-* **Connexion avec Discord** (nouveau) : une fenêtre Discord s'ouvre, tu te connectes (mot de passe, 2FA ou **QR code**), **Discord gère le captcha et la 2FA**, et l'app récupère ta session. **Isolée et jetable** (voir [Sécurité](#securite)).
+* **Connexion avec Discord** (nouveau) : une fenêtre Discord s'ouvre, tu te connectes (mot de passe, 2FA ou **QR code**), **Discord gère le captcha et la 2FA**, et l'app récupère ta session. **Session dédiée, auth purgée** (voir [Sécurité](#securite)).
+* **Pas de popup Windows Hello** : la demande automatique de passkey (*conditional UI*) est neutralisée ; seuls les passkeys explicitement demandés restent disponibles.
 * **Jeton manuel** : colle un jeton utilisateur, bouton œil pour l'afficher / masquer. Reste disponible à tout moment.
 * **Enregistrement de compte** : enregistre un compte connecté pour le recharger plus tard, **chiffré au repos** (`safeStorage`).
 
@@ -402,13 +403,13 @@ Sélectionne plusieurs cartes, puis lance un mode : **tout s'exécute en séquen
 ---
 
 <a id="securite-fenetre"></a>
-### ` 🧪 `︲Fenêtre de connexion native : session éphémère.
+### ` 🧪 `︲Fenêtre de connexion native : session dédiée, authentification purgée.
 
 ---
 
-* Session **isolée, en mémoire, jamais écrite sur disque**, avec un **nom unique à chaque tentative**. Elle **repart toujours vierge** : aucune connexion Discord ne « fuit » d'une fois sur l'autre.
-* La session est **purgée** (cookies + stockage) à la fermeture, dans tous les cas.
-* Aucun `preload`, `nodeIntegration` désactivé : la page distante n'a **aucun accès** à Node ni au système.
+* Session dédiée **`persist:dam-discord-login`** : seuls les **assets publics** sont mis en cache HTTP (ouverture ~2 s). **L'authentification n'est jamais conservée** : cookies + stockage sont purgés à **chaque ouverture et fermeture**, donc la fenêtre repart toujours vierge.
+* La purge est garantie dans **tous les cas** (succès, annulation, timeout, fermeture).
+* Preload **minimal** (neutralisation de la demande automatique de passkey Windows Hello), `contextIsolation`, `sandbox`, `nodeIntegration` désactivé : la page distante n'a **aucun accès** à Node ni au système, et le preload n'expose rien via `contextBridge`.
 
 ---
 
@@ -648,7 +649,7 @@ Dans la galerie, **« Télécharger les médias »** pour tout avoir en local.
 | **S2** | Jetons jamais en clair (`safeStorage` + mutex) | Fuite / perte de jeton |
 | **S3** | Ne pas élargir `openExternal` (liste blanche) ni `connect-src 'self'` | Exfiltration possible par XSS |
 | **S4** | Garder `script-src 'self'` (aucun script inline) | Réouverture d'une XSS |
-| **S5** | La fenêtre de connexion native reste en **session éphémère** (pas de `partition` persistante) | La fenêtre se rouvrirait déjà connectée |
+| **S5** | La fenêtre de connexion native garde sa **session dédiée** mais **purge l'auth** (cookies + stockage) à chaque ouverture/fermeture | La fenêtre se rouvrirait déjà connectée |
 
 ---
 

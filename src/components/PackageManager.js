@@ -12,6 +12,14 @@ import { GALLERY_COLUMNS, GALLERY_GAP, buildMediaIndex, filterMedia, tileSizeFor
 
 const MAX_FILE_BYTES = 8 * 1024 * 1024 * 1024;
 
+// Avertissement persistant de la page Archive : la fonctionnalité est encore
+// en cours de test. Il est affiché dans l'état vide ET dans l'état chargé.
+const PACKAGE_WARNING_HTML = `
+  <div class="package-warning" role="alert">
+    <strong>⚠️ Fonctionnalité en cours de test</strong>
+    <span>L'import et l'exploration d'archives sont encore en développement : des instabilités et des bugs sont possibles. À utiliser uniquement si tu es curieux.</span>
+  </div>`;
+
 // Conteneurs video que Chromium ne sait pas demultiplexer : QuickTime (.mov),
 // Matroska (.mkv), AVI (.avi), l OGV (Theora) et le M4V non H.264. Le lecteur
 // les nomme et propose l enregistrement au lieu d une boite noire muette. Les
@@ -72,7 +80,7 @@ function isZip(file) {
 // La copie par spread ne deplace pas les cles : l'ordre du paquet reste celui du
 // chemin par index, qui est l'ordre du repertoire central.
 export function hydrateImportedPackage(paquet) {
-  if (!paquet || typeof paquet !== 'object') throw new Error('Paquet d import vide.');
+  if (!paquet || typeof paquet !== 'object') throw new Error('Paquet d’import vide.');
   const reconstruit = { ...paquet };
   // `Object.entries` sur une Map rend un tableau VIDE : un paquet qui arriverait
   // avec une vraie Map doit donc etre accepte tel quel, pas converti en un objet
@@ -231,7 +239,7 @@ export class PackageManager {
       if (!this.package) this.render();
     } catch (error) {
       this.storageReady = false;
-      console.warn('Package archive persistence unavailable:', error);
+      console.warn('Persistance des archives indisponible :', error);
     }
   }
 
@@ -309,11 +317,12 @@ filteredChannels() {
     if (!this.package) {
       this.contentArea.innerHTML = `
         <section class="package-import-shell" data-dropzone>
+          ${PACKAGE_WARNING_HTML}
           <div class="package-empty package-dropzone${this.isDragging ? ' is-dragover' : ''}">
             <div class="package-drop-icon">📦</div>
-            <h2 data-drop-copy>${this.isDragging ? 'Relâchez le fichier ZIP' : 'Importer un Discord Data Package'}</h2>
+            <h2 data-drop-copy>${this.isDragging ? 'Relâchez le fichier ZIP' : 'Importer une archive Discord'}</h2>
             <p class="text-muted" data-drop-description>${this.isDragging ? 'Importation automatique de l’export Discord' : 'Glissez-déposez votre export Discord ou sélectionnez-le ci-dessous.'}</p>
-            <label class="btn btn-primary package-picker-label">Choisir un fichier ZIP<input id="packageFileInput" type="file" accept=".zip,application/zip" multiple hidden></label>
+            <label class="btn btn-primary package-picker-label"><span class="icon icon-18 icon-login" aria-hidden="true"></span> Choisir un fichier ZIP<input id="packageFileInput" type="file" accept=".zip,application/zip" multiple hidden></label>
             <div class="package-drop-hint">.ZIP uniquement · traitement local 100 % · aucune donnée envoyée</div>
           </div>
           <div class="package-queue" data-queue>${this.renderQueue()}</div>
@@ -330,9 +339,10 @@ filteredChannels() {
     this.clampMessagePageOffset();
     if (this.selectedChannelId && !this.messageSearchIndex.has(this.selectedChannelId)) this.messageSearchIndex.set(this.selectedChannelId, buildMessageSearchIndex(this.package.messages.get(this.selectedChannelId) || []));
     this.contentArea.innerHTML = `
+      ${PACKAGE_WARNING_HTML}
       <div class="list-toolbar package-toolbar">
-        <div><h2 class="page-title"><span class="package-title-icon">📦</span> Data Package <span class="list-count">${channels.length}</span></h2><p class="text-muted">${escHtml(this.package.user.username)} · ${this.package.totalMessages} messages</p></div>
-        <div class="toolbar-actions package-toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Médias</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="download-all">Télécharger les médias</button><button type="button" class="package-menu-item" data-package-action="purge-media">Purger les médias</button></div></details><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Exporter</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button type="button" class="package-menu-item" data-package-action="export" data-export-format="json">Exporter JSON</button></div></details><button class="btn btn-icon" data-package-action="close" aria-label="Fermer" title="Fermer">✕</button></div>
+        <div><h2 class="page-title"><span class="package-title-icon">📦</span> Archive de données <span class="list-count">${channels.length}</span></h2><p class="text-muted">${escHtml(this.package.user.username)} · ${this.package.totalMessages} messages</p></div>
+        <div class="toolbar-actions package-toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}><span class="icon icon-18 icon-trash" aria-hidden="true"></span> ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Médias</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="download-all">Télécharger les médias</button><button type="button" class="package-menu-item" data-package-action="purge-media">Purger les médias</button></div></details><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Exporter</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button type="button" class="package-menu-item" data-package-action="export" data-export-format="json">Exporter JSON</button></div></details><button class="btn btn-icon" data-package-action="close" aria-label="Fermer" title="Fermer">✕</button></div>
       </div>
       <div class="package-layout${this.view === 'gallery' ? ' package-layout-gallery' : ''}">${this.view === 'gallery' ? this.renderGallery() : this.layoutMessages()}</div>`;
     this.attachChannelScroll();
@@ -351,7 +361,7 @@ filteredChannels() {
     const channelContext = this.currentSectionContext();
     return `
         <aside class="package-channels card">
-          <input class="package-filter" data-package-filter value="${escHtml(this.channelQuery)}" placeholder="Filtrer salons, serveurs ou DMs..." aria-label="Filtrer les salons">
+          <input class="package-filter" data-package-filter value="${escHtml(this.channelQuery)}" placeholder="Filtrer les salons, serveurs ou MP..." aria-label="Filtrer les salons">
           ${this.renderChannelFilterBar()}
           <div class="package-channel-context" data-channel-context>${escHtml(channelContext)}</div>
           <div class="package-channel-list" data-channel-scroll>${channelListHtml}</div>
@@ -402,7 +412,7 @@ filteredChannels() {
     const prochain = this.galleryFilter.tri === 'recent' ? 'ancien' : 'recent';
     const libelle = prochain === 'ancien' ? 'Les plus anciens' : 'Les plus récents';
     return `<div class="package-gallery-toolbar" data-gallery-filter>
-          <div class="package-filter-group" role="group" aria-label="Type de media">${chip('all', 'Tout')}${chip('image', 'Photos')}${chip('video', 'Videos')}${chip('audio', 'Audio')}${chip('file', 'Fichiers')}</div>
+          <div class="package-filter-group" role="group" aria-label="Type de média">${chip('all', 'Tout')}${chip('image', 'Photos')}${chip('video', 'Vidéos')}${chip('audio', 'Audio')}${chip('file', 'Fichiers')}</div>
           <select class="package-gallery-channel" data-gallery-channel aria-label="Filtrer par salon"><option value="">Tous les salons</option>${options}</select>
           <span class="package-gallery-count">${items.length} média${items.length === 1 ? '' : 's'}</span>
           <button type="button" class="btn btn-secondary btn-xs" data-gallery-sort="${prochain}">${libelle}</button>
@@ -570,7 +580,7 @@ filteredChannels() {
       // cache (media:// perimes) tant que le scroll reste dans la zone peinte.
       if (change) { this.mediaManifest = prochain; this.resetGalleryPaint(true); this.render(); }
     } catch (error) {
-      console.warn('Media mirror status unavailable:', error);
+      console.warn('État du miroir média indisponible :', error);
     }
   }
 
@@ -615,7 +625,7 @@ filteredChannels() {
     const items = this.mediaItems();
     let key = this.mediaMirrorKey;
     if (!key && api.mediaMirror.status) {
-      try { key = (await api.mediaMirror.status(items))?.key || ''; } catch (error) { console.warn('Media mirror status unavailable:', error); }
+      try { key = (await api.mediaMirror.status(items))?.key || ''; } catch (error) { console.warn('État du miroir média indisponible :', error); }
     }
     if (!key) { showNotification('Purge impossible : aucune copie locale'); return; }
     if (!(await confirmAction('Purger les médias', 'Supprimer les copies locales téléchargées ? Les tuiles reviendront au CDN.'))) return;
@@ -1001,7 +1011,7 @@ currentSectionLabel() {
 
   renderSavedArchives() {
     if (!this.savedArchives.length) return '';
-    return `<section class="package-saved card"><div class="package-saved-header"><h3>Archives locales</h3><span class="text-muted">${this.savedArchives.length}</span></div><div class="package-saved-list">${this.savedArchives.map(archive => `<div class="package-saved-item"><button class="package-saved-open" data-archive-id="${escHtml(archive.id)}"><strong>${escHtml(archive.metadata.name || 'Package importé')}</strong><small>${formatBytes(archive.metadata.size || archive.packageData.packageSizeBytes || 0)} · ${new Date(archive.savedAt).toLocaleString()}</small></button><button class="btn btn-secondary btn-xs" data-delete-archive="${escHtml(archive.id)}" aria-label="Supprimer l’archive locale">Supprimer</button></div>`).join('')}</div></section>`;
+    return `<section class="package-saved card"><div class="package-saved-header"><h3>Archives locales</h3><span class="text-muted">${this.savedArchives.length}</span></div><div class="package-saved-list">${this.savedArchives.map(archive => `<div class="package-saved-item"><button class="package-saved-open" data-archive-id="${escHtml(archive.id)}"><strong>${escHtml(archive.metadata.name || 'Archive importée')}</strong><small>${formatBytes(archive.metadata.size || archive.packageData.packageSizeBytes || 0)} · ${new Date(archive.savedAt).toLocaleString()}</small></button><button class="btn btn-secondary btn-xs" data-delete-archive="${escHtml(archive.id)}" aria-label="Supprimer l’archive locale"><span class="icon icon-14 icon-trash" aria-hidden="true"></span> Supprimer</button></div>`).join('')}</div></section>`;
   }
 
   renderQueue() {
@@ -1347,7 +1357,7 @@ applyImportProgress(item, info) {
         await savePackageArchive(archiveId, parsed, { name: item.file.name, size: item.file.size, type: item.file.type, lastModified: item.file.lastModified });
         this.savedArchives = (await listPackageArchives()).filter(isCurrentPackageArchive);
       } catch (storageError) {
-        console.warn('Unable to persist package archive:', storageError);
+        console.warn('Impossible de persister l’archive :', storageError);
       }
       if (!this.package) { this.package = parsed; this.selectedChannelId = parsed.channels[0]?.id || null; }
       this.renderNow();
@@ -1508,7 +1518,7 @@ handleKeydown(event) {
     try {
       result = await api.getDMs();
     } catch (error) {
-      console.warn('Package DM hydration failed:', error);
+      console.warn('Échec de l’hydratation de la conversation :', error);
       return 0;
     }
     const live = new Map((Array.isArray(result?.dms) ? result.dms : []).map(dm => [String(dm.id), dm]));
@@ -1660,7 +1670,7 @@ async confirmMessageStillExists(channelId, messageId) {
       const result = await api.getMessage(channelId, messageId);
       return Boolean(result?.success);
     } catch (error) {
-      console.warn('Package message existence check failed:', error);
+      console.warn('Échec de la vérification de l’existence du message :', error);
       return null;
     }
   }
@@ -1708,14 +1718,14 @@ async confirmMessageStillExists(channelId, messageId) {
         counts.reasons = counts.reasons || {};
         const reason = 'suppression refusée, message toujours présent';
         counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
-        console.warn('Package message deletion refused but message exists:', `${target.channelId}:${target.messageId}`, result);
+        console.warn('Suppression du message refusée mais le message existe :', `${target.channelId}:${target.messageId}`, result);
         return outcome;
       }
       if (exists === true && outcome === 'failed') {
         counts.reasons = counts.reasons || {};
         const reason = `message présent, suppression refusée (${describeDeleteFailure(result)})`;
         counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
-        console.warn('Package message present but undeletable:', `${target.channelId}:${target.messageId}`, result);
+        console.warn('Message présent mais non supprimable :', `${target.channelId}:${target.messageId}`, result);
         return outcome;
       }
     }
@@ -1726,7 +1736,7 @@ async confirmMessageStillExists(channelId, messageId) {
       const reason = persistentRateLimit ? 'rate limit persistant' : describeDeleteFailure(result);
       counts.reasons = counts.reasons || {};
       counts.reasons[reason] = (counts.reasons[reason] || 0) + 1;
-      console.warn('Package message deletion failed:', reason);
+      console.warn('Échec de la suppression du message :', reason);
     }
     if (outcome === 'deleted') {
       this.selectedMessages.delete(`${target.channelId}:${target.messageId}`);
@@ -1746,7 +1756,7 @@ async channelIsAccessible(channelId) {
       const result = await api.getChannel(channelId);
       return Boolean(result?.success);
     } catch (error) {
-      console.warn('Package channel access check failed:', error);
+      console.warn('Échec de la vérification d’accès au salon :', error);
       return false;
     }
   }
@@ -1763,7 +1773,7 @@ async channelIsAccessible(channelId) {
       const archived = result.channel?.thread_metadata?.archived;
       return typeof archived === 'boolean' ? archived : null;
     } catch (error) {
-      console.warn('Package thread state read failed:', error);
+      console.warn('Échec de la lecture de l’état du fil :', error);
       return null;
     }
   }
@@ -1781,7 +1791,7 @@ async channelIsAccessible(channelId) {
       const result = await api.setThreadArchived(threadId, false);
       return result?.success ? 'reactivated' : 'failed';
     } catch (error) {
-      console.warn('Package thread unarchive failed:', error);
+      console.warn('Échec du désarchivage du fil :', error);
       return 'failed';
     }
   }
@@ -1792,7 +1802,7 @@ async channelIsAccessible(channelId) {
     try {
       await api.setThreadArchived(threadId, true);
     } catch (error) {
-      console.warn('Package thread re-archive failed:', error);
+      console.warn('Échec du réarchivage du fil :', error);
     }
   }
 
@@ -1810,7 +1820,7 @@ async deleteChannelGroup(channel, group, counts, onProgress) {
           await this.deleteOnePackageMessage(target, counts);
         } catch (error) {
           counts.failed += 1;
-          console.warn('Package message deletion failed:', error);
+          console.warn('Échec de la suppression du message :', error);
         }
         if (onProgress) await onProgress();
       }

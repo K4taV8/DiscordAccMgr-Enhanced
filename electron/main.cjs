@@ -90,6 +90,7 @@ function migrateLegacyUserData(localUserData) {
 migrateLegacyUserData(portablePaths.userData);
 
 let mainWindow;
+let loginWindow = null;
 let discordClient = null;
 let connecting = false;
 
@@ -160,6 +161,12 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
+  // La fenetre de login n'est plus une fenetre enfant : on la detruit
+  // explicitement si la fenetre principale se ferme, sinon elle maintiendrait
+  // l'app en vie (window-all-closed ne se declencherait pas).
+  mainWindow.on('closed', () => {
+    try { if (loginWindow && !loginWindow.isDestroyed()) loginWindow.destroy(); } catch {}
+  });
 }
 
 ipcMain.on('window:minimize', () => mainWindow?.minimize());
@@ -175,7 +182,7 @@ ipcMain.on('window:close', () => mainWindow?.close());
 // Succès = statut 2xx ; sinon {success:false, error, status} — le handler
 // interprète 403/404 comme il veut ('No access' / 'not found' / 'noReaction').
 async function discordFetch(method, path, { data, params } = {}) {
-  if (!discordClient?.token) return { success: false, error: 'Not connected' };
+  if (!discordClient?.token) return { success: false, error: 'Non connecté' };
   const key = routeKeyFor(path);
   const scheduler = method === 'DELETE' ? deleteScheduler : readScheduler;
   const release = await scheduler.acquire(key);
@@ -394,7 +401,7 @@ const deleteScheduler = makeRouteScheduler({ nominalRatePerSec: 4, burst: 2, max
 ipcMain.handle('discord:readAll', async () => {
   try {
     if (!discordClient?.token) {
-      return { success: false, error: 'Not connected' };
+      return { success: false, error: 'Non connecté' };
     }
 
     // ARCH-03 : tout HTTP repasse par discordFetch (G1). Le bucket de route est
@@ -425,7 +432,7 @@ ipcMain.handle('discord:readAll', async () => {
       lastId = r.data[r.data.length - 1].id;
     }
     if (allGuilds.length === 0 && !firstPageOk) {
-      return { success: false, error: 'Failed to fetch servers' };
+      return { success: false, error: 'Impossible de récupérer les serveurs' };
     }
 
     let failed = 0;
@@ -476,7 +483,7 @@ ipcMain.handle('discord:readAll', async () => {
 const EXTERNAL_URL_ALLOWLIST = /^https:\/\/github\.com\/Bherl1\/DiscordAccMgr(\/|$)/;
 ipcMain.handle('app:openExternal', async (_, url) => {
   if (typeof url !== 'string' || !EXTERNAL_URL_ALLOWLIST.test(url)) {
-    return { success: false, error: 'URL not allowed' };
+    return { success: false, error: 'URL non autorisée' };
   }
   try {
     await shell.openExternal(url);
@@ -617,7 +624,7 @@ const mirrorRootDir = () => path.join(dataDir, MIRROR_DIR_NAME);
 
 ipcMain.handle('media:mirrorStart', async (event, demande) => {
   // BUG-011 : un seul lot a la fois — sinon deux boucles partagent `mirrorStop`.
-  if (mirrorRunning) return { ok: false, error: 'Telechargement deja en cours' };
+  if (mirrorRunning) return { ok: false, error: 'Téléchargement déjà en cours' };
   mirrorRunning = true;
   // Tout est enveloppe : un echec d'ecriture du manifeste (mineur T2) ne doit
   // pas rejeter l'IPC, il se dit `{ ok: false, error }`.
@@ -741,7 +748,7 @@ function connectPayload(u) {
 const LOGIN_TIMEOUT_MS = 30000;
 
 async function connectDiscord(token) {
-  if (connecting) return { success: false, error: 'Already connecting' };
+  if (connecting) return { success: false, error: 'Connexion déjà en cours' };
   connecting = true;
   let suivant = null;
   let minuteur = null;
@@ -765,7 +772,7 @@ async function connectDiscord(token) {
     await Promise.race([
       suivant.login(token),
       new Promise((_, rejeter) => {
-        minuteur = setTimeout(() => rejeter(new Error('Delai de connexion depasse (30 s)')), LOGIN_TIMEOUT_MS);
+        minuteur = setTimeout(() => rejeter(new Error('Délai de connexion dépassé (30 s)')), LOGIN_TIMEOUT_MS);
       }),
     ]);
     const ancien = discordClient;
@@ -779,7 +786,7 @@ async function connectDiscord(token) {
     // Echec : le client candidat est detruit, l'ancien (s'il existe) reste en place.
     if (suivant) { try { const p = suivant.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
     console.error('Connect error:', error.message);
-    return { success: false, error: error.message || 'Connection failed' };
+    return { success: false, error: error.message || 'Échec de la connexion' };
   } finally {
     if (minuteur) clearTimeout(minuteur);
     connecting = false;
@@ -812,6 +819,18 @@ let loginWindowEnCours = null;
 const LOGIN_PARTITION = 'persist:dam-discord-login';
 let prechauffageLogin = null;
 
+// Rend le focus a la fenetre principale apres la fermeture du login. Sous
+// Windows, fermer une fenetre topmost/enfant peut laisser l'app minimisee ;
+// ce garde-fou la remet visible et active dans TOUS les cas de sortie.
+function reveillerFenetrePrincipale() {
+  try {
+    if (!mainWindow || mainWindow.isDestroyed()) return;
+    if (mainWindow.isMinimized()) mainWindow.restore();
+    if (!mainWindow.isVisible()) mainWindow.show();
+    mainWindow.focus();
+  } catch {}
+}
+
 function ouvrirLoginDiscord() {
   if (loginWindowEnCours) return loginWindowEnCours;
 
@@ -833,20 +852,30 @@ function ouvrirLoginDiscord() {
     // purge de fermeture : sinon la fenetre s ouvrirait deja connectee.
     try { session.fromPartition(partition).clearStorageData(); } catch {}
 
+    // FENETRE INDEPENDANTE, PAS ENFANT. `parent` + `alwaysOnTop` declenchaient
+    // un quirk Windows : a la fermeture, la fenetre principale pouvait se
+    // retrouver minimisee (l'utilisateur croyait a un crash). La fenetre est
+    // centree et focalisee a l'ouverture ; `nettoyer()` rend explicitement le
+    // focus a l'app. Sans `parent`, on la detruit nous-memes si l'app se ferme.
     const win = new BrowserWindow({
-      parent: mainWindow,
-      modal: false,
       width: 1000,
       height: 820,
-      alwaysOnTop: true,
+      center: true,
       title: 'Connexion Discord',
+      backgroundColor: '#313338',
       webPreferences: {
         partition,
         contextIsolation: true,
         sandbox: true,
         nodeIntegration: false,
+        // Neutralise la « conditional mediation » WebAuthn AVANT les scripts
+        // de Discord : sans ca, Electron ouvre la fenetre Windows Hello au
+        // chargement de la page (isConditionalMediationAvailable = true).
+        preload: path.join(__dirname, 'preload-discord-login.cjs'),
       },
     });
+    loginWindow = win;
+    try { win.focus(); } catch {}
 
     // BUG-020(a) : `webPreferences.userAgent` n'existe pas (Electron l'ignore) ;
     // l'UA se fixe sur le webContents AVANT la navigation.
@@ -880,10 +909,14 @@ function ouvrirLoginDiscord() {
       if (minuteur) { clearTimeout(minuteur); minuteur = null; }
       try { win.webContents.debugger.detach(); } catch {}
       try { if (!win.isDestroyed()) win.destroy(); } catch {}
+      if (loginWindow === win) loginWindow = null;
       // Purge l AUTH (cookies, stockage) mais PAS le cache HTTP : les assets
       // Discord restent en cache pour accelerer la prochaine ouverture.
       try { session.fromPartition(partition).clearStorageData(); } catch {}
       loginWindowEnCours = null;
+      // Garde-fou anti « l'app se reduit toute seule » : on rend TOUJOURS le
+      // focus a la fenetre principale, succes, annulation ou timeout.
+      reveillerFenetrePrincipale();
     };
 
     // Resolution unique : le premier evenement gagne, les suivants sont ignores.
@@ -894,7 +927,7 @@ function ouvrirLoginDiscord() {
       resolve(resultat);
     };
 
-    minuteur = setTimeout(() => finir({ ok: false, error: 'delai' }), 240000);
+    minuteur = setTimeout(() => finir({ ok: false, error: 'Délai dépassé' }), 240000);
 
     win.on('closed', () => finir({ ok: false, cancelled: true }));
 
@@ -967,7 +1000,13 @@ function ouvrirLoginDiscord() {
   return loginWindowEnCours;
 }
 
-ipcMain.handle('discord:loginNative', () => ouvrirLoginDiscord());
+ipcMain.handle('discord:loginNative', async () => {
+  const resultat = await ouvrirLoginDiscord();
+  // Le renderer enchaine sur connectDiscord : la fenetre principale doit etre
+  // deja revenue au premier plan, meme si Windows l'a minimisee entre-temps.
+  reveillerFenetrePrincipale();
+  return resultat;
+});
 
 // Pre-chauffe le CACHE HTTP de la page de login, en tache de fond au demarrage.
 // Le chargement FROID de discord.com/login dans Electron est lent (beaucoup de
@@ -982,7 +1021,17 @@ function prechaufferLogin() {
     const w = new BrowserWindow({
       parent: mainWindow,
       show: false,
-      webPreferences: { partition: LOGIN_PARTITION, contextIsolation: true, sandbox: true, nodeIntegration: false, backgroundThrottling: false },
+      webPreferences: {
+        partition: LOGIN_PARTITION,
+        contextIsolation: true,
+        sandbox: true,
+        nodeIntegration: false,
+        backgroundThrottling: false,
+        // Meme neutralisation WebAuthn que la vraie fenetre de login : le
+        // pre-chauffage charge Discord en arriere-plan et declenchait sinon la
+        // fenetre Windows Hello des le demarrage de l'app.
+        preload: path.join(__dirname, 'preload-discord-login.cjs'),
+      },
     });
     w.webContents.setUserAgent(w.webContents.getUserAgent().replace(/\sElectron\/[^\s]+/, ''));
     w.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -1029,8 +1078,8 @@ ipcMain.handle('discord:getDMs', async () => {
     .filter(ch => ch.type === 1)
     .map(dm => ({
       id: dm.id,
-      username: dm.recipients?.[0]?.username || 'Unknown User',
-      displayName: dm.recipients?.[0]?.global_name || dm.recipients?.[0]?.username || 'Unknown User',
+      username: dm.recipients?.[0]?.username || 'Utilisateur inconnu',
+      displayName: dm.recipients?.[0]?.global_name || dm.recipients?.[0]?.username || 'Utilisateur inconnu',
       avatar: dm.recipients?.[0]?.avatar
         ? `https://cdn.discordapp.com/avatars/${dm.recipients[0].id}/${dm.recipients[0].avatar}.png?size=64`
         : 'https://cdn.discordapp.com/embed/avatars/0.png'
@@ -1056,7 +1105,7 @@ ipcMain.handle('discord:closeDM', async (_, channelId) => {
 
 ipcMain.handle('discord:removeOwnReaction', async (_, channelId, messageId, rawEmojiKey) => {
   if (!isSnowflake(channelId) || !isSnowflake(messageId)) return { success: false, error: 'identifiant invalide' };
-  if (!rawEmojiKey) return { success: false, error: 'empty emoji key' };
+  if (!rawEmojiKey) return { success: false, error: 'Emoji manquant' };
 
   // La clé vient déjà de formatEmojiForApi (référence discrub) : "name:id" brut
   // ou unicode URL-encodé AVEC variation selector. On ne la re-strippe PAS

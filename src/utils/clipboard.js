@@ -1,9 +1,9 @@
 export const copyToClipboard = async (text) => {
     try {
         await navigator.clipboard.writeText(text);
-        showNotification('Copied to clipboard!');
+        showNotification('Copié dans le presse-papiers !');
     } catch (error) {
-        console.error('Failed to copy:', error);
+        console.error('Échec de la copie :', error);
     }
 };
 

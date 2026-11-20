@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import vm from 'node:vm';
 
 // Le service vit dans le main process (CommonJS) : ce test ESM le charge via
 // createRequire, comme le fait deja test/packageIndex.test.js pour les .cjs.
@@ -82,4 +83,59 @@ test('fenetre login : cache HTTP persistant (partition persist:) + purge auth', 
     'pre-chauffage du cache defini (fenetre de login rapide des le demarrage)');
   assert.ok(src.includes('prechaufferLogin();'),
     'pre-chauffage declenche au demarrage de l app');
+});
+
+// Bug : la fenetre de login etait une fenetre ENFANT (`parent`) et
+// `alwaysOnTop`. Sous Windows, fermer une telle fenetre peut minimiser la
+// fenetre principale ; l'utilisateur croit alors a un crash. On verrouille
+// l'absence de ce couplage et la restauration explicite apres le login.
+test('fenetre login : pas de fenetre enfant, restauration explicite de la fenetre principale', () => {
+  const src = readFileSync(new URL('../electron/main.cjs', import.meta.url), 'utf8');
+  const debut = src.indexOf('function ouvrirLoginDiscord');
+  const fin = src.indexOf("ipcMain.handle('discord:loginNative'");
+  assert.ok(debut !== -1 && fin > debut, 'bloc ouvrirLoginDiscord localisable');
+  const bloc = src.slice(debut, fin);
+  assert.ok(!bloc.includes('parent: mainWindow'),
+    'la fenetre de login ne doit plus etre une fenetre enfant (quirk Windows de minimisation)');
+  assert.ok(!bloc.includes('alwaysOnTop: true'),
+    'pas de alwaysOnTop sur la fenetre de login (quirk Windows des fenetres enfants)');
+  assert.ok(bloc.includes('reveillerFenetrePrincipale()'),
+    'la fenetre principale est restauree/focalisee apres la fermeture du login');
+  assert.ok(bloc.includes("preload: path.join(__dirname, 'preload-discord-login.cjs')"),
+    'le preload anti-passkey est branche sur la fenetre de login');
+
+  const prechauffeDebut = src.indexOf('function prechaufferLogin');
+  assert.ok(prechauffeDebut !== -1, 'bloc prechaufferLogin localisable');
+  const prechauffeBloc = src.slice(prechauffeDebut, prechauffeDebut + 2500);
+  assert.ok(prechauffeBloc.includes("preload: path.join(__dirname, 'preload-discord-login.cjs')"),
+    'le pre-chauffage charge aussi le preload (sinon Windows Hello s ouvre au demarrage)');
+});
+
+// Bug : Electron annonce le support de la "conditional mediation" WebAuthn
+// (passkeys dans l'autofill) mais ouvre en realite la fenetre Windows Hello au
+// chargement de Discord. Le preload neutralise cette capacite AVANT les scripts
+// de la page ; les passkeys explicites restent disponibles.
+test('preload login : neutralise la conditional mediation WebAuthn', async () => {
+  const { SCRIPT_NEUTRALISER_PASSKEYS } = require('../electron/preload-discord-login.cjs');
+  assert.equal(typeof SCRIPT_NEUTRALISER_PASSKEYS, 'string');
+
+  class FauxPublicKeyCredential {
+    static async getClientCapabilities() {
+      return { conditionalGet: true, hybridTransport: true, userVerifyingPlatformAuthenticator: true };
+    }
+  }
+  const sandbox = { window: { PublicKeyCredential: FauxPublicKeyCredential }, Promise, Object };
+  vm.runInNewContext(SCRIPT_NEUTRALISER_PASSKEYS, sandbox);
+
+  assert.equal(await sandbox.window.PublicKeyCredential.isConditionalMediationAvailable(), false,
+    'isConditionalMediationAvailable doit repondre false (sinon Windows Hello s ouvre tout seul)');
+  const caps = await sandbox.window.PublicKeyCredential.getClientCapabilities();
+  assert.equal(caps.conditionalGet, false, 'conditionalGet doit etre desactive');
+  assert.equal(caps.hybridTransport, true, 'les autres capacites WebAuthn restent intactes');
+});
+
+test('preload login : ne jette pas si l API WebAuthn est absente', () => {
+  const { SCRIPT_NEUTRALISER_PASSKEYS } = require('../electron/preload-discord-login.cjs');
+  const sandbox = { window: {}, Promise, Object };
+  assert.doesNotThrow(() => vm.runInNewContext(SCRIPT_NEUTRALISER_PASSKEYS, sandbox));
 });

@@ -138,7 +138,7 @@ export async function scanChannelMessages(channel, knownUserId, electronAPI, log
   // Sequential scan for channels under 1 day old (borné par le watermark si delta)
   if (ageDays < 1) {
     const { found, skipped, noAccess, cancelled, newestId } = await scanSegment(channel, uid, electronAPI, isCancelled, null, stopAtId || null);
-    log(`#${channel.name}: ${found.length}m seq${skipped ? ' (partial)' : ''}`);
+    log(`#${channel.name}: ${found.length} msg seq${skipped ? ' (partiel)' : ''}`);
     return { channelId: channel.id, messages: found, currentUserId: uid, skipped, noAccess, cancelled, newestId };
   }
 
@@ -162,7 +162,7 @@ export async function scanChannelMessages(channel, knownUserId, electronAPI, log
   // Canal entier inaccessible uniquement si TOUS les segments le sont.
   const noAccess = skipped && results.every(r => r.noAccess);
   const newestId = results[0]?.newestId || null; // segment 0 scanne depuis le plus récent
-  log(`#${channel.name}: ${messages.length}m (${segments}x${skipped ? ', partial' : ''})`);
+  log(`#${channel.name}: ${messages.length} msg (${segments}x${skipped ? ', partiel' : ''})`);
   return { channelId: channel.id, messages, currentUserId: uid, skipped, noAccess, cancelled, newestId };
 }
 
@@ -193,10 +193,10 @@ export async function deleteServerMessages({
   const { phase, status, details, progressNum, totalNum, actionBtn, updateBar, cleanExit, log, safeTimeout, shouldStop } = t;
 
   try {
-    log('start');
+    log('démarrage');
     const chRes = await electronAPI.getServerChannels(serverId);
     if (!chRes.success || !chRes.channels.length) {
-      if (status) status.textContent = 'No channels found';
+      if (status) status.textContent = 'Aucun salon trouvé';
       if (checkpoint) await clearCheckpoint(OP_MESSAGES, serverId);
       safeTimeout(() => cleanExit(onComplete), 1500);
       return;
@@ -212,9 +212,9 @@ export async function deleteServerMessages({
     const seenKeys = new Set(checkpoint.queue);
 
     const concurrency = autoConcurrency(channels.length);
-    if (status) status.textContent = `Scanning ${channels.length} channels (${concurrency}x)`;
+    if (status) status.textContent = `Analyse de ${channels.length} salon(s) (${concurrency}x)`;
     if (totalNum) totalNum.textContent = channels.length.toString();
-    if (phase) phase.textContent = 'Scanning';
+    if (phase) phase.textContent = 'Analyse';
 
     // ---- Phase SCAN ----
     if (checkpoint.phase === 'scan') {
@@ -294,9 +294,9 @@ export async function deleteServerMessages({
 
       const total = checkpoint.queue.length;
       if (totalNum) totalNum.textContent = total.toString();
-      log(`done: ${total}`);
+      log(`terminé : ${total}`);
       if (partialChannels > 0) {
-        log(`WARNING: ${partialChannels} channel(s) scanned partially — some messages may be missing`);
+        log(`ATTENTION : ${partialChannels} salon(s) analysé(s) partiellement — des messages peuvent manquer`);
       }
 
       if (total === 0) {
@@ -305,10 +305,10 @@ export async function deleteServerMessages({
         const partialCount = partialChannelCount();
         if (partialCount > 0) {
           if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
-          if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+          if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
           updateBar(100);
           if (details) details.textContent = 'Relancez pour scanner les canaux restants';
-          actionBtn.textContent = 'Close';
+          actionBtn.textContent = 'Fermer';
           actionBtn.style.background = '#faa81a';
           actionBtn.disabled = false;
           actionBtn.onclick = () => cleanExit(onComplete);
@@ -317,11 +317,11 @@ export async function deleteServerMessages({
           safeTimeout(() => cleanExit(onComplete), 3000);
           return;
         }
-        if (status) status.textContent = 'No messages to delete';
-        if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
+        if (status) status.textContent = 'Aucun message à supprimer';
+        if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
         updateBar(100);
-        if (details) details.textContent = 'Nothing to delete';
-        actionBtn.textContent = 'Close';
+        if (details) details.textContent = 'Rien à supprimer';
+        actionBtn.textContent = 'Fermer';
         actionBtn.style.background = '#3ba55d';
         actionBtn.disabled = false;
         actionBtn.onclick = () => cleanExit(onComplete);
@@ -339,11 +339,11 @@ export async function deleteServerMessages({
 
     // ---- Phase DELETE (reprend à progress.done) ----
     const total = checkpoint.progress.total;
-    if (phase) { phase.textContent = 'Deleting'; phase.style.background = '#faa81a'; }
-    if (status) status.textContent = `Deleting ${total} messages...`;
+    if (phase) { phase.textContent = 'Suppression'; phase.style.background = '#faa81a'; }
+    if (status) status.textContent = `Suppression de ${total} message(s)...`;
     if (totalNum) totalNum.textContent = total.toString();
     if (progressNum) progressNum.textContent = checkpoint.progress.done.toString();
-    actionBtn.textContent = 'Stop';
+    actionBtn.textContent = 'Arrêter';
     actionBtn.disabled = false;
     updateBar(total ? (checkpoint.progress.done / total) * 100 : 0);
 
@@ -398,7 +398,7 @@ export async function deleteServerMessages({
         const elapsed = (Date.now() - delStart) / 1000;
         const rate = elapsed > 0 ? deleted / elapsed : 0;
         const eta = rate > 0 ? (total - deleted) / rate : 0;
-        details.textContent = eta > 0 && isFinite(eta) ? `Deleted ${deleted}/${total} — ETA ${fmt(eta)}` : `Deleted ${deleted}/${total}`;
+        details.textContent = eta > 0 && isFinite(eta) ? `Supprimés ${deleted}/${total} — restant ${fmt(eta)}` : `Supprimés ${deleted}/${total}`;
       }
     }
 
@@ -420,12 +420,12 @@ export async function deleteServerMessages({
       if (firstFail >= 0) checkpoint.progress.done = firstFail;
       checkpoint = touch(checkpoint);
       await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
-      log(`incomplete: ${deleted}/${total} (${failed} échec(s)) — reprise @${checkpoint.progress.done}`);
+      log(`incomplet : ${deleted}/${total} (${failed} échec(s)) — reprise @${checkpoint.progress.done}`);
       updateBar(total ? (deleted / total) * 100 : 0);
-      if (phase) { phase.textContent = 'Incomplete'; phase.style.background = '#ed4245'; }
-      if (status) status.textContent = `Deleted ${deleted} / ${total} — ${failed} failed (resume available)`;
+      if (phase) { phase.textContent = 'Incomplet'; phase.style.background = '#ed4245'; }
+      if (status) status.textContent = `Supprimés ${deleted} / ${total} — ${failed} échec(s) (reprise possible)`;
       if (details) details.textContent = 'Des suppressions ont échoué — relancez pour réessayer';
-      actionBtn.textContent = 'Close';
+      actionBtn.textContent = 'Fermer';
       actionBtn.style.background = '#ed4245';
       actionBtn.disabled = false;
       actionBtn.onclick = () => cleanExit(onComplete);
@@ -433,7 +433,7 @@ export async function deleteServerMessages({
       return;
     }
 
-    log(`fin: ${deleted} ${fmt((Date.now() - delStart) / 1000)}`);
+    log(`fin : ${deleted} ${fmt((Date.now() - delStart) / 1000)}`);
 
     // BUG-006 : si des canaux sont restés « partial », ne PAS effacer le
     // checkpoint. Le watermark ne doit PAS être finalisé pour ces canaux
@@ -447,10 +447,10 @@ export async function deleteServerMessages({
       await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
       log(`fin partielle: ${deleted} supprimés, ${partialCount} canal(aux) non scanné(s)`);
       updateBar(100);
-      if (phase) { phase.textContent = 'Partial'; phase.style.background = '#faa81a'; }
+      if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
       if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
       if (details) details.textContent = `${deleted} supprimés — relancez pour scanner les canaux restants`;
-      actionBtn.textContent = 'Close';
+      actionBtn.textContent = 'Fermer';
       actionBtn.style.background = '#faa81a';
       actionBtn.disabled = false;
       actionBtn.onclick = () => cleanExit(onComplete);
@@ -459,9 +459,9 @@ export async function deleteServerMessages({
     }
 
     updateBar(100);
-    if (phase) { phase.textContent = 'Done'; phase.style.background = '#3ba55d'; }
-    if (status) status.textContent = `Deleted ${deleted} messages`;
-    actionBtn.textContent = 'Close';
+    if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
+    if (status) status.textContent = `${deleted} message(s) supprimé(s)`;
+    actionBtn.textContent = 'Fermer';
     actionBtn.style.background = '#3ba55d';
     actionBtn.disabled = false;
     actionBtn.onclick = () => cleanExit(onComplete);
@@ -472,8 +472,8 @@ export async function deleteServerMessages({
   } catch (err) {
     console.error(err);
     log(`err: ${err.message}`);
-    if (status) status.textContent = `Error: ${err.message}`;
-    if (phase) { phase.textContent = 'Error'; phase.style.background = '#ed4245'; }
+    if (status) status.textContent = `Erreur : ${err.message}`;
+    if (phase) { phase.textContent = 'Erreur'; phase.style.background = '#ed4245'; }
     if (checkpoint) {
       checkpoint = touch(checkpoint);
       await saveCheckpoint(OP_MESSAGES, serverId, checkpoint).catch(() => {});

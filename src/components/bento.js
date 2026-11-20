@@ -10,7 +10,7 @@ export const icons = {
 export const listView = {
   isOn: (name) => localStorage.getItem(`bento:${name}`) === 'list',
   button: (name) =>
-    `<button class="btn btn-ghost view-toggle" data-action="toggleView" title="Toggle view" aria-label="Toggle view">${listView.isOn(name) ? icons.grid : icons.list}</button>`,
+    `<button class="btn btn-ghost view-toggle" data-action="toggleView" title="Changer de vue" aria-label="Changer de vue">${listView.isOn(name) ? icons.grid : icons.list}</button>`,
   toggle: (listEl, name, btn) => {
     const on = listEl.classList.toggle('list-view');
     localStorage.setItem(`bento:${name}`, on ? 'list' : 'grid');
@@ -31,7 +31,7 @@ export function bentoCard(cfg) {
     ? `<span class="bento-badge${cfg.badge.className ? ' ' + cfg.badge.className : ''}">${escHtml(cfg.badge.label)}</span>`
     : '';
   const head = `<div class="bento-head">
-        <input type="checkbox" class="${cfg.checkboxClass}" data-action="updateSelected" aria-label="Select">
+        <input type="checkbox" class="${cfg.checkboxClass}" data-action="updateSelected" aria-label="Sélectionner">
         ${badge}
       </div>`;
   const foot = cfg.quick?.length
@@ -48,7 +48,7 @@ export function bentoCard(cfg) {
         <div class="bento-ident">
           <div class="bento-name-row">
             <span class="bento-name" title="${escHtml(cfg.name)}">${escHtml(cfg.name)}</span>
-            <button type="button" class="id-badge" data-action="copy" title="Copy ID" aria-label="Copy ID">ID</button>
+            <button type="button" class="id-badge" data-action="copy" title="Copier l’ID" aria-label="Copier l’ID">ID</button>
           </div>
           ${cfg.meta ? `<div class="bento-meta">${escHtml(cfg.meta)}</div>` : ''}
         </div>
