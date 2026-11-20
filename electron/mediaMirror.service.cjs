@@ -28,6 +28,8 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
+const { pipeline } = require('node:stream/promises');
+const { Transform } = require('node:stream');
 
 // Le dossier, sous `data/`, ou le miroir se range. La constante existe pour que
 // l'ecriture du dossier et la lecture des chemins ne puissent pas diverger.
@@ -290,9 +292,10 @@ function writeManifest(dir, manifest) {
 // TACHE 2 : le plan de telechargement et la boucle.
 //
 // Aucun reseau ici non plus : le transport est INJECTE
-// (`{ head(url) => Promise<number>, get(url) => Promise<Buffer> }`). La tache 3
-// branchera le vrai (axios) sans toucher a cette logique, qui se teste donc
-// sous Node nu.
+// (`{ head(url) => Promise<number>, get(url) => Promise<Buffer|Readable> }`). La
+// tache 3 branchera le vrai (axios) sans toucher a cette logique, qui se teste
+// donc sous Node nu. BUG-004 : un `Readable` est ecrit en flux vers le disque,
+// jamais materialise en memoire.
 // ===========================================================================
 
 // Le nombre de telechargements simultanes. Quatre : assez pour tenir une
@@ -369,6 +372,7 @@ async function downloadMirror(options) {
     shouldStop,
     onProgress,
     concurrency = MIRROR_CONCURRENCY,
+    maxBytes = 0,
   } = options || {};
 
   const dir = path.join(rootDir, key);
@@ -403,6 +407,51 @@ async function downloadMirror(options) {
       fs.rmSync(chemin, { force: true });
     } catch (error) {
       // Le partiel restera, mais l'erreur d'origine est celle qui compte.
+    }
+  };
+
+  // BUG-004 : ecrit dans un temporaire puis renomme. Un Buffer marche comme
+  // avant ; un flux est pompe vers le disque sans jamais tenir le fichier
+  // entier en memoire. `maxBytes` coupe un flux anormalement gros.
+  const ecrire = async (cible, contenu, attenduOctets) => {
+    fs.mkdirSync(path.dirname(cible), { recursive: true });
+    const temporaire = `${cible}.${process.pid}.part`;
+    try {
+      if (Buffer.isBuffer(contenu) || contenu instanceof Uint8Array) {
+        fs.writeFileSync(temporaire, contenu);
+      } else if (contenu && typeof contenu.pipe === 'function') {
+        const limite = Number(maxBytes) > 0 ? Number(maxBytes) : 0;
+        if (limite > 0) {
+          let recus = 0;
+          const compteur = new Transform({
+            transform(chunk, _encodage, callback) {
+              recus += chunk.length;
+              if (recus > limite) {
+                callback(new Error(`fichier trop volumineux (> ${limite} octets)`));
+                return;
+              }
+              callback(null, chunk);
+            },
+          });
+          await pipeline(contenu, compteur, fs.createWriteStream(temporaire));
+        } else {
+          await pipeline(contenu, fs.createWriteStream(temporaire));
+        }
+      } else {
+        throw new Error('contenu média invalide');
+      }
+      const ecrits = fs.statSync(temporaire).size;
+      // BUG-012 : on ne compare la taille que si `head` a annonce une longueur
+      // (> 0). Sans en-tete `content-length`, `attendu` valait 0 et TOUT fichier
+      // non vide etait marque en erreur a tort.
+      if (attenduOctets > 0 && ecrits !== attenduOctets) {
+        throw new Error(`taille inattendue : ${ecrits} octets ecrits, ${attenduOctets} attendus`);
+      }
+      fs.renameSync(temporaire, cible);
+      return ecrits;
+    } catch (error) {
+      retirer(temporaire);
+      throw error;
     }
   };
 
@@ -444,20 +493,14 @@ async function downloadMirror(options) {
     }
 
     try {
-      fs.mkdirSync(path.dirname(cible), { recursive: true });
-      fs.writeFileSync(cible, contenu);
-      const ecrits = fs.statSync(cible).size;
-      // BUG-012 : on ne compare la taille que si `head` a annonce une longueur
-      // (> 0). Sans en-tete `content-length`, `attendu` valait 0 et TOUT fichier
-      // non vide etait marque en erreur a tort.
-      if (attenduOctets > 0 && ecrits !== attenduOctets) {
-        throw new Error(`taille inattendue : ${ecrits} octets ecrits, ${attenduOctets} attendus`);
-      }
+      const ecrits = await ecrire(cible, contenu, attenduOctets);
       // `done` SEULEMENT ici : ecriture terminee ET taille verifiee.
       manifest[url] = { state: 'done', bytes: ecrits };
       resultat.done += 1;
       resultat.bytesDownloaded += ecrits;
     } catch (error) {
+      // `ecrire` a deja supprime son temporaire ; on nettoie aussi un ancien
+      // partiel eventuel reste sur le chemin final.
       retirer(cible);
       resultat.failed += 1;
       manifest[url] = { state: 'error', error: messageErreur(error) };

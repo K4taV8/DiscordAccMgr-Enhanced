@@ -26,10 +26,10 @@ test('bentoCard renders all actions directly with emoji + theme', () => {
   assert.ok(html.includes('data-fallback="/discord.png"'));
   assert.ok(html.includes('class="bento-foot"'));
   // 4 actions visibles directement, avec emoji et thème.
-  assert.ok(html.includes('class="foot-btn" data-action="mute">🔕 Mute'));
-  assert.ok(html.includes('class="foot-btn danger" data-action="deleteMessages">🗑️ Delete Msgs'));
-  assert.ok(html.includes('class="foot-btn amber" data-action="removeReactions">💥 Rm Reactions'));
-  assert.ok(html.includes('class="foot-btn crimson" data-action="leave">🚪 Leave'));
+  assert.ok(html.includes('class="foot-btn" data-action="mute"><span class="foot-icon" aria-hidden="true">🔕</span><span class="foot-label">Mute</span>'));
+  assert.ok(html.includes('class="foot-btn danger" data-action="deleteMessages"><span class="foot-icon" aria-hidden="true">🗑️</span><span class="foot-label">Delete Msgs</span>'));
+  assert.ok(html.includes('class="foot-btn amber" data-action="removeReactions"><span class="foot-icon" aria-hidden="true">💥</span><span class="foot-label">Rm Reactions</span>'));
+  assert.ok(html.includes('class="foot-btn crimson" data-action="leave"><span class="foot-icon" aria-hidden="true">🚪</span><span class="foot-label">Leave</span>'));
 });
 
 test('bentoCard keeps the selection circle in its own header zone', () => {

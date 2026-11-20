@@ -7,6 +7,7 @@ import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domMan
 import { bentoCard, listView, FloatingSelectionDock } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
 import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
+import { acquireOperation, releaseOperation } from '../utils/operationLock.js';
 
 export class GroupManager {
   constructor(contentArea) {
@@ -74,7 +75,7 @@ export class GroupManager {
             checkboxClass: 'group-checkbox',
             badge: { label: 'Groupe' },
             quick: [
-              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
+              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
               { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
               { action: 'leave', label: 'Quitter le groupe', theme: 'crimson', emoji: '🚪' },
             ],
@@ -210,6 +211,14 @@ export class GroupManager {
     };
     if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${selected.length} groupe(s) sélectionné(s) ?`))) { this.isDeleting = false; return; }
 
+    // BUG-001 : une seule operation longue pilote le panneau a la fois.
+    const lock = acquireOperation('Nettoyage des groupes');
+    if (!lock) {
+      this.isDeleting = false;
+      showNotification('Une autre opération est déjà en cours. Attendez sa fin.');
+      return;
+    }
+
     // Comme pour les DM : le debit de Discord impose des attentes, le panneau
     // donne le sentiment d avance et nomme le groupe traite.
     // BUG-023c : `both` exécute 2 étapes (messages + réactions) — l'ancienne
@@ -218,9 +227,18 @@ export class GroupManager {
       + (mode === 'both' ? 2 : 0) + (mode === 'full' ? 3 : 0);
     let done = 0;
     let failures = 0;
-    showProgressPanel({ title: 'Nettoyage des groupes', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
+    // BUG-002 : bouton « Arrêter » distinct de « Masquer ».
+    const stop = { value: false };
+    showProgressPanel({
+      title: 'Nettoyage des groupes',
+      total: selected.length * Math.max(1, steps),
+      detail: 'démarrage',
+      cancelable: true,
+      onCancel: () => { stop.value = true; },
+    });
     try {
       for (const g of selected) {
+        if (stop.value) break;
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
           let status = 'failed';
           try {
@@ -232,19 +250,25 @@ export class GroupManager {
               skipRefresh: true,
               quiet: true,
               onComplete: () => {},
+              isStopSignal: () => stop.value,
             });
           } catch (e) { console.error('Échec de la suppression pendant le nettoyage :', e); }
+          if (status === 'cancelled') { stop.value = true; break; }
           // BUG-014 : agréger le statut — `partial`/`cancelled`/`undefined`
           // n'est pas un succès et ne doit pas passer pour « traité ».
           if (status !== 'done') failures++;
           done += 1;
         }
+        if (stop.value) break;
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
+          let status = 'done';
           try {
-            await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, quiet: true, onComplete: () => {} });
+            status = await removeReactionsFromChannel({ channelId: g.groupId, channelName: g.name, electronAPI: window.electronAPI, isGroup: true, quiet: true, onComplete: () => {}, isStopSignal: () => stop.value });
           } catch (e) { console.error('Échec du retrait des réactions pendant le nettoyage :', e); failures++; }
+          if (status === 'cancelled') { stop.value = true; break; }
           done += 1;
         }
+        if (stop.value) break;
         if (mode === 'full') {
           // BUG-009 : vérifier `success` au lieu de compter un échec comme traité.
           let ok = false;
@@ -256,13 +280,16 @@ export class GroupManager {
         updateProgressPanel({ done, detail: g.name });
       }
       this.refreshGroupsList(true);
-      if (failures > 0) {
+      if (stop.value) {
+        finishProgressPanel({ detail: `Arrêté — ${done} étape(s) traitée(s)`, status: 'cancelled' });
+      } else if (failures > 0) {
         finishProgressPanel({ detail: `${selected.length} groupe(s) traité(s) — ${failures} étape(s) en échec`, status: 'failed' });
         showNotification(`${failures} opération(s) en échec lors du nettoyage`);
       } else {
         finishProgressPanel({ detail: `${selected.length} groupe(s) traité(s)` });
       }
     } finally {
+      releaseOperation(lock);
       this.isDeleting = false;
     }
   }

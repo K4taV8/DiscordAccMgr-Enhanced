@@ -7,7 +7,8 @@
   "main": "electron/main.cjs",
   "scripts": {
     "start": "electron .",
-    "test": "node --test \"test/*.test.js\"",
+    "test": "npm run typecheck && node --test \"test/*.test.js\"",
+    "typecheck": "tsc --noEmit",
     "test:coverage": "node --experimental-test-coverage --test \"test/*.test.js\"",
     "audit:sca": "npm audit --omit=dev",
     "package": "electron-builder",
@@ -23,7 +24,7 @@
   "devDependencies": {
     "@electron/asar": "^3.4.1",
     "@types/node": "^26.6.3",
-    "electron": "43.4.0",
+    "electron": "43.8.12",
     "electron-builder": "^26.15.3",
     "typescript": "^7.0.2"
   },

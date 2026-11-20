@@ -218,7 +218,6 @@ export async function deleteServerMessages({
 
     // ---- Phase SCAN ----
     if (checkpoint.phase === 'scan') {
-      const allMessages = [];
       let partialChannels = 0;
       let uid = chRes.currentUserId || globalThis.window?.currentUser?.id || null;
       let scanned = 0;
@@ -271,7 +270,6 @@ export async function deleteServerMessages({
               const k = `${item.channelId}:${item.msg.id}`;
               if (!seenKeys.has(k)) { seenKeys.add(k); checkpoint.queue.push(k); }
             }
-            allMessages.push(...result.messages);
             checkpoint = touch(checkpoint);
             await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
             scanned++;

@@ -7,6 +7,7 @@ import { preservePageScroll, cachedListRefresh, delegate } from '../utils/domMan
 import { bentoCard, listView, FloatingSelectionDock, listSearchHtml, applySearchTo, bindListSearch, checkVisibleBoxes } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
 import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
+import { acquireOperation, releaseOperation } from '../utils/operationLock.js';
 
 export class DMManager {
   constructor(contentArea) {
@@ -65,7 +66,7 @@ export class DMManager {
             checkboxClass: 'dm-checkbox',
             badge: { label: 'MP' },
             quick: [
-              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
+              { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
               { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
               // Nettoyage combiné sur CE DM : messages + réactions, sans le fermer.
               { action: 'cleanBoth', label: 'Messages + réactions', theme: 'combo', emoji: '📦' },
@@ -186,30 +187,40 @@ export class DMManager {
     if (this.isDeleting) return;
     this.isDeleting = true;
     if (!(await confirmAction('Nettoyer', `Supprimer vos messages ET vos réactions avec ${username} ? Le DM restera ouvert.`))) { this.isDeleting = false; return; }
+    // BUG-001 : verrou applicatif — deux managers ne pilotent pas l UI en meme temps.
+    const lock = acquireOperation('Nettoyage d’un MP');
+    if (!lock) {
+      this.isDeleting = false;
+      showNotification('Une autre opération est déjà en cours. Attendez sa fin.');
+      return;
+    }
     btn.disabled = true;
 
     try {
-      await deleteDMMessages({
-        channelId,
-        username,
-        electronAPI: window.electronAPI,
-        skipRefresh: true,
-        onComplete: () => {},
-      });
-    } catch (error) {
-      console.error('Échec du nettoyage des messages :', error);
-    }
+      try {
+        await deleteDMMessages({
+          channelId,
+          username,
+          electronAPI: window.electronAPI,
+          skipRefresh: true,
+          onComplete: () => {},
+        });
+      } catch (error) {
+        console.error('Échec du nettoyage des messages :', error);
+      }
 
-    try {
-      await removeReactionsFromChannel({
-        channelId,
-        channelName: username,
-        electronAPI: window.electronAPI,
-        onComplete: () => {},
-      });
-    } catch (error) {
-      console.error('Échec du nettoyage des réactions :', error);
+      try {
+        await removeReactionsFromChannel({
+          channelId,
+          channelName: username,
+          electronAPI: window.electronAPI,
+          onComplete: () => {},
+        });
+      } catch (error) {
+        console.error('Échec du nettoyage des réactions :', error);
+      }
     } finally {
+      releaseOperation(lock);
       this.isDeleting = false;
       btn.disabled = false;
       this.refreshDMsList(true);
@@ -239,6 +250,14 @@ export class DMManager {
     };
     if (!(await confirmAction('Nettoyer', `Confirmer : ${modeLabels[mode]} dans ${selected.length} MP sélectionné(s) ?`))) { this.isDeleting = false; return; }
 
+    // BUG-001 : une seule operation longue pilote le panneau a la fois.
+    const lock = acquireOperation('Nettoyage des MP');
+    if (!lock) {
+      this.isDeleting = false;
+      showNotification('Une autre opération est déjà en cours. Attendez sa fin.');
+      return;
+    }
+
     // Le nettoyage respecte le debit de Discord : sans panneau, plusieurs DM
     // donnaient l impression que rien ne se passait.
     // BUG-023c : `both` exécute 2 étapes (messages + réactions) — l'ancienne
@@ -247,24 +266,38 @@ export class DMManager {
       + (mode === 'both' ? 2 : 0) + (mode === 'full' ? 3 : 0);
     let done = 0;
     let failures = 0;
-    showProgressPanel({ title: 'Nettoyage des MP', total: selected.length * Math.max(1, steps), detail: 'démarrage' });
+    // BUG-002 : le panneau expose « Arrêter », distinct de « Masquer ».
+    const stop = { value: false };
+    showProgressPanel({
+      title: 'Nettoyage des MP',
+      total: selected.length * Math.max(1, steps),
+      detail: 'démarrage',
+      cancelable: true,
+      onCancel: () => { stop.value = true; },
+    });
     try {
       for (const dm of selected) {
+        if (stop.value) break;
         if (mode === 'messages' || mode === 'both' || mode === 'full') {
           let status = 'failed';
           try {
-            status = await deleteDMMessages({ channelId: dm.channelId, username: dm.username, electronAPI: window.electronAPI, onComplete: () => {}, skipRefresh: true, quiet: true });
+            status = await deleteDMMessages({ channelId: dm.channelId, username: dm.username, electronAPI: window.electronAPI, onComplete: () => {}, skipRefresh: true, quiet: true, isStopSignal: () => stop.value });
           } catch (e) { console.error('Échec de la suppression pendant le nettoyage :', e); }
+          if (status === 'cancelled') { stop.value = true; break; }
           // BUG-014 : agréger le statut (`partial` n'est pas un succès).
           if (status !== 'done') failures++;
           done += 1;
         }
+        if (stop.value) break;
         if (mode === 'reactions' || mode === 'both' || mode === 'full') {
+          let status = 'done';
           try {
-            await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, quiet: true, onComplete: () => {} });
+            status = await removeReactionsFromChannel({ channelId: dm.channelId, channelName: dm.username, electronAPI: window.electronAPI, quiet: true, onComplete: () => {}, isStopSignal: () => stop.value });
           } catch (e) { console.error('Échec du retrait des réactions pendant le nettoyage :', e); failures++; }
+          if (status === 'cancelled') { stop.value = true; break; }
           done += 1;
         }
+        if (stop.value) break;
         if (mode === 'full') {
           // BUG-009 : vérifier le retour de closeDM.
           let ok = false;
@@ -276,13 +309,16 @@ export class DMManager {
         updateProgressPanel({ done, detail: dm.username });
       }
       this.refreshDMsList(true);
-      if (failures > 0) {
+      if (stop.value) {
+        finishProgressPanel({ detail: `Arrêté — ${done} étape(s) traitée(s)`, status: 'cancelled' });
+      } else if (failures > 0) {
         finishProgressPanel({ detail: `${selected.length} MP traité(s) — ${failures} étape(s) en échec`, status: 'failed' });
         showNotification(`${failures} opération(s) en échec lors du nettoyage`);
       } else {
         finishProgressPanel({ detail: `${selected.length} MP traité(s)` });
       }
     } finally {
+      releaseOperation(lock);
       this.isDeleting = false;
     }
   }

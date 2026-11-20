@@ -7,6 +7,7 @@ import { cachedListRefresh, delegate } from '../utils/domManager.js';
 import { bentoCard, listView, FloatingSelectionDock, listSearchHtml, applySearchTo, bindListSearch, checkVisibleBoxes } from './bento.js';
 import { openCleaningModeSelector } from './CleaningModeSelector.js';
 import { finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
+import { acquireOperation, releaseOperation } from '../utils/operationLock.js';
 
 export class ServerManager {
   constructor(contentArea) {
@@ -91,12 +92,16 @@ export class ServerManager {
         const listMode = listView.isOn('servers');
         this.listTotal = servers.length;
         this.contentArea.innerHTML = `
-        <div class="list-toolbar">
-          <h2 class="page-title">Liste des serveurs <span class="list-count">${servers.length}</span></h2>
-          <div class="toolbar-actions">
+        <div class="list-toolbar list-toolbar-servers">
+          <div class="list-toolbar-head">
+            <h2 class="page-title">Liste des serveurs <span class="list-count">${servers.length}</span></h2>
+            <div class="toolbar-actions">
+              <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Tout marquer comme lu</button>
+              ${listView.button('servers')}
+            </div>
+          </div>
+          <div class="list-toolbar-search">
             ${listSearchHtml('servers', this.searchQuery)}
-            ${listView.button('servers')}
-            <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Tout marquer comme lu</button>
           </div>
         </div>
         <div id="serversList" class="bento-grid${listMode ? ' list-view' : ''}"></div>
@@ -116,7 +121,7 @@ export class ServerManager {
           badge: server.owner ? { label: '👑 Propriétaire', className: 'is-owner' } : null,
           quick: [
             { action: 'mute', label: 'Mettre en sourdine', emoji: '🔕' },
-            { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
+            { action: 'deleteMessages', label: 'Supprimer les messages', theme: 'danger', emoji: '🗑️' },
             { action: 'removeReactions', label: 'Retirer les réactions', theme: 'amber', emoji: '💥' },
             { action: 'leave', label: 'Quitter le serveur', theme: 'crimson', emoji: '🚪' },
           ],
@@ -298,6 +303,14 @@ export class ServerManager {
     };
     if (!(await confirmAction('Nettoyer', `${modeLabels[mode]} dans ${items.length} serveur(s) sélectionné(s) ?`))) { this.isDeleting = false; return; }
 
+    // BUG-001 : une seule operation longue pilote le panneau a la fois.
+    const lock = acquireOperation('Nettoyage des serveurs');
+    if (!lock) {
+      this.isDeleting = false;
+      showNotification('Une autre opération est déjà en cours. Attendez sa fin.');
+      return;
+    }
+
     // Le meme panneau que pour les DM et les groupes : la suppression d un
     // serveur parcourt tous ses salons et peut durer tres longtemps.
     // BUG-023c : `both` exécute 2 étapes — l'ancienne formule les ignorait.
@@ -340,6 +353,7 @@ export class ServerManager {
         finishProgressPanel({ detail: `${items.length} serveur(s) traité(s)` });
       }
     } finally {
+      releaseOperation(lock);
       this.isDeleting = false;
     }
   }

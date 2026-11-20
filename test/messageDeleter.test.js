@@ -7,6 +7,7 @@
 //   4. les messages système (appels, type 3) sont exclus de la suppression.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import { deleteDMMessages, isDeletableMessageType } from '../src/utils/messageDeleter.js';
 
 // DOM minimal : en mode `quiet` il n'y a pas de modale, mais le code interroge
@@ -120,4 +121,41 @@ test('BUG-014 : un échec de suppression renvoie partial, jamais done', async ()
     channelId: 'c1', username: 'x', electronAPI: api, quiet: true,
   }));
   assert.equal(status, 'partial');
+});
+
+test('BUG-002 : isStopSignal interrompt la suppression et renvoie cancelled', async () => {
+  let deleted = 0;
+  let calls = 0;
+  const api = {
+    getDMMessages: async () => ({
+      success: true,
+      currentUserId: 'u1',
+      messages: [
+        { id: 'm1', isDeletable: true, type: 0 },
+        { id: 'm2', isDeletable: true, type: 0 },
+        { id: 'm3', isDeletable: true, type: 0 },
+      ],
+    }),
+    deleteDMMessage: async () => { deleted += 1; return { success: true }; },
+  };
+  const status = await withDocument(() => deleteDMMessages({
+    channelId: 'c1',
+    username: 'x',
+    electronAPI: api,
+    quiet: true,
+    isStopSignal: () => { calls += 1; return calls >= 3; },
+  }));
+  assert.equal(status, 'cancelled');
+  assert.equal(deleted, 0, 'aucune suppression après le signal d’arrêt');
+});
+
+test('BUG-001 : la modale de suppression utilise un identifiant unique et des compteurs scopés', () => {
+  const source = fs.readFileSync(new URL('../src/utils/messageDeleter.js', import.meta.url), 'utf8');
+  assert.ok(source.includes('const uid ='), 'identifiant par instance');
+  assert.ok(source.includes('new ProgressBar(uid'), 'la barre reçoit cet identifiant');
+  assert.ok(!source.includes("new ProgressBar('progressContainer'"), 'plus d’identifiant fixe');
+  assert.ok(!source.includes("getElementById('totalCount')"), 'compteur total scopé');
+  assert.ok(!source.includes("getElementById('deletedCount')"), 'compteur supprimé scopé');
+  assert.ok(!source.includes("getElementById('etaText')"), 'ETA scopée');
+  assert.ok(source.includes('modalOverlay?.querySelector'), 'requêtes limitées à la modale');
 });

@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Node.js-22-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
   <img src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
   <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Tests-517_verts-3ba55d?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Tests-559_verts-3ba55d?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
@@ -136,7 +136,7 @@ Ce que tu peux faire avec :
 > **Technologies et prérequis :**
 > - ` ⚡ `︲**Electron 43 :** application de bureau (renderer sandboxé, `contextIsolation`), icône de fenêtre personnalisée.
 >
-> - ` 🟩 `︲**Node.js 22 :** moteur (main/preload en `.cjs`, renderer en ESM). **Prérequis :** Node.js LTS (≥ 20) et npm.
+> - ` 🟩 `︲**Node.js 22 :** moteur (main/preload en `.cjs`, renderer en ESM). **Prérequis :** Node.js LTS (≥ 22.18, nécessaire aux tests de parité qui importent les miroirs `.ts`).
 >
 > - ` 🌐 `︲**axios :** HTTP vers l'API Discord (timeout 15 s).
 >
@@ -146,9 +146,9 @@ Ce que tu peux faire avec :
 >
 > - ` 📦 `︲**electron-builder :** packaging Windows (NSIS / dossier), 100 % portable.
 >
-> - ` 🔷 `︲**TypeScript :** types (aucune étape de build obligatoire).
+> - ` 🔷 `︲**TypeScript :** miroirs typés vérifiés par `npm test` (`tsc --noEmit` + parité JS/TS).
 >
-> - ` 🧪 `︲**node:test (stdlib) :** **517 tests** (`npm test`), couverture via `npm run test:coverage`.
+> - ` 🧪 `︲**node:test (stdlib) :** **559 tests** (`npm test`), couverture via `npm run test:coverage`.
 >
 > - ` 👤 `︲**Interface Chaise-Clavier fonctionnelle.** 🫵
 
@@ -222,8 +222,8 @@ Chaque carte propose un bouton **Nettoyer** qui ouvre **4 modes** :
 
 Sélectionne plusieurs cartes, puis lance un mode : **tout s'exécute en séquence**, avec progression et annulation.
 
-> [!TIP]
-> **Les opérations sont reprenables : en cas d'interruption, relancer la même opération propose « Reprendre / Repartir à zéro ».**
+> [!NOTE]
+> **Reprise :** les nettoyages de serveurs (checkpoints) et les imports sont reprenables. Les nettoyages de **MP/groupes** rescannent l'historique au lancement : une interruption ne reprend pas le scan à mi-parcours (choix assumé, pas de checkpoint côté MP).
 
 ---
 

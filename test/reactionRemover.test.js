@@ -349,7 +349,9 @@ test('BUG-006 (régression) : hors quiet, la modale est rattachée AVANT create(
   await withDom(async ({ bodyChildren, registry }) => {
     await removeReactionsFromChannel({ channelId: 'c1', channelName: 'x', electronAPI: api, onComplete: () => {} });
     assert.equal(bodyChildren.length, 1, 'la modale est rattachée au document');
-    assert.ok(registry.get('progressContainer'), 'ProgressBar a bien trouvé #progressContainer');
+    const containerId = [...registry.keys()].find((id) => id.startsWith('progress-'));
+    assert.ok(containerId, 'ProgressBar a trouvé son conteneur unique');
+    assert.notEqual(containerId, 'progressContainer', 'plus d’identifiant fixe partagé');
   });
 });
 
@@ -359,5 +361,37 @@ test('BUG-006 : en mode quiet, aucune modale n est créée ni ajoutée', async (
     await removeReactionsFromChannel({ channelId: 'c1', channelName: 'x', electronAPI: api, quiet: true, onComplete: () => {} });
     assert.equal(bodyChildren.length, 0, 'aucune modale en mode lot');
   });
+});
+
+test('BUG-002 : removeReactionsFromChannel honore un signal d’arrêt externe', async () => {
+  let scans = 0;
+  const api = {
+    getDMMessages: async () => {
+      scans += 1;
+      return { success: true, messages: [{ id: 'm1', reactions: [{ emoji: { name: '👍' }, me: true }] }] };
+    },
+  };
+  const status = await removeReactionsFromChannel({
+    channelId: 'c1',
+    channelName: 'x',
+    electronAPI: api,
+    quiet: true,
+    isStopSignal: () => true,
+    onComplete: () => {},
+  });
+  assert.equal(status, 'cancelled');
+  assert.equal(scans, 0, 'aucun scan après le signal d’arrêt');
+});
+
+test('BUG-001 : le retrait des réactions scope son DOM par instance', () => {
+  const source = fs.readFileSync(new URL('../src/utils/reactionRemover.js', import.meta.url), 'utf8');
+  assert.ok(source.includes('const uid ='), 'identifiant par instance');
+  assert.ok(source.includes('new ProgressBar(uid'), 'la barre reçoit cet identifiant');
+  assert.ok(!source.includes("new ProgressBar('progressContainer'"), 'plus d’identifiant fixe');
+  assert.ok(!source.includes("getElementById('processedCount')"), 'compteur scopé');
+  assert.ok(!source.includes("getElementById('removedCount')"), 'compteur scopé');
+  assert.ok(!source.includes("getElementById('failedCount')"), 'compteur scopé');
+  assert.ok(!source.includes("getElementById('totalCount')"), 'total scopé');
+  assert.ok(source.includes('modalOverlay?.querySelector'), 'requêtes limitées à la modale');
 });
 

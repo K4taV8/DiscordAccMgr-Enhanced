@@ -10,13 +10,26 @@ const axios = require('axios');
 const fs = require('fs');
 const fsp = require('fs/promises');
 const { Readable } = require('stream');
+const { pipeline: pipelineAsync } = require('stream/promises');
 
 // Garde-fou : une exception NON capturee dans le main ne doit JAMAIS tuer l'app
 // entiere. Sans ca, Electron affiche « A JavaScript error occurred in the main
 // process » puis ferme tout — arrive en production sur un simple message recu.
 // On journalise et on CONTINUE, l'app reste utilisable.
-process.on('uncaughtException', (err) => { try { console.error('[main] uncaughtException:', err); } catch {} });
-process.on('unhandledRejection', (reason) => { try { console.error('[main] unhandledRejection:', reason); } catch {} });
+//
+// BUG-005 : le journal est aussi ecrit sur disque (data/logs/main.log, rotation
+// bornee). `mainLogger` est installe apres la definition des dossiers portables.
+let mainLogger = null;
+function journalMain(level, ...args) {
+  try { mainLogger?.[level]?.(...args); } catch {}
+  try {
+    const output = level === 'fatal' || level === 'error' ? console.error : console.log;
+    output('[main]', ...args);
+  } catch {}
+}
+// BUG-008 : garde-fous isolés dans un module testé par comportement.
+const { installProcessGuards } = require('./crashGuards.cjs');
+installProcessGuards({ journal: journalMain });
 
 // SEC-03 : timeout global — aucun appel HTTP ne doit pendre indéfiniment
 axios.defaults.timeout = 15000;
@@ -24,6 +37,9 @@ axios.defaults.timeout = 15000;
 const { readJson, writeJson } = require('./persist.cjs');
 const { routeKeyFor, isSnowflake, isOp, isMessageBearingChannel } = require('./helpers.cjs');
 const { createTokenStore } = require('./tokenStore.cjs');
+const { loadDiscordClient } = require('./discordClientFactory.cjs');
+const { toggleDevTools } = require('./devTools.cjs');
+const { loginWithTimeout } = require('./loginLifecycle.cjs');
 const { importArchiveDepuisChemin } = require('./packageImporter.service.cjs');
 const { mediaRequestPath, mediaUrlFor, mediaRelPath, mediaMirrorKey, readManifest, downloadMirror, MIRROR_DIR_NAME, isMediaPathInside, parseByteRange } = require('./mediaMirror.service.cjs');
 const { extraireToken, estUrlAuth, MOTIF_TOKEN } = require('./discordLogin.service.cjs');
@@ -59,6 +75,15 @@ try {
   dialog.showErrorBox('Portable Mode Error',
     'Cannot write to application data directory.\nPlease ensure the application folder is writable.');
   process.exit(1);
+}
+
+// BUG-005 : journal fichier borne (5 Mo, 3 archives). Il ne leve jamais : un
+// disque plein ne doit pas aggraver l'incident qu'il documente.
+try {
+  const { createMainLogger } = require('./logger.cjs');
+  mainLogger = createMainLogger({ dir: portablePaths.logs, fileName: 'main.log', maxBytes: 5 * 1024 * 1024, maxFiles: 3 });
+} catch (err) {
+  console.error('Failed to initialize main logger:', err.message);
 }
 
 // Migration ponctuelle : rapatrie une fois les données de l'ancien userData
@@ -194,6 +219,9 @@ async function discordFetch(method, path, { data, params } = {}) {
       data,
       headers: { Authorization: discordClient.token },
       validateStatus: () => true,
+      // BUG-006 : l'API Discord ne redirige pas. Suivre une redirection
+      // transmettrait le jeton a l'hote de destination.
+      maxRedirects: 0,
     });
     scheduler.applyHeaders(key, resp.headers);
     if (resp.status === 429) {
@@ -240,12 +268,9 @@ async function discordMutate(method, path, { data, params } = {}) {
 
 // Ouvre / ferme les DevTools (F12 et Ctrl+Shift+L cote renderer).
 // Indispensable pour lire la console quand un import reste bloque.
-ipcMain.handle('app:toggleDevTools', () => {
-  const win = BrowserWindow.getAllWindows()[0];
-  if (!win) return false;
-  win.webContents.toggleDevTools();
-  return true;
-});
+// POSSIBLE 1 : cible EXPLICITEMENT mainWindow — une fenetre de prechauffage
+// cachee peut exister et ne doit jamais recevoir F12.
+ipcMain.handle('app:toggleDevTools', () => toggleDevTools(mainWindow));
 ipcMain.handle('discord:getGroups', async () => {
   const r = await discordFetch('GET', '/users/@me/channels');
   if (!r.success) return apiFailure(r);
@@ -540,8 +565,17 @@ ipcMain.handle('discord:saveAttachment', async (event, attachment) => {
   try {
     const cible = await dialog.showSaveDialog(parent, { defaultPath: nom });
     if (cible.canceled || !cible.filePath) return { ok: false, cancelled: true };
-    const reponse = await axios.get(url, { responseType: 'arraybuffer', maxContentLength: MAX_MEDIA_CONTENT_LENGTH });
-    await fsp.writeFile(cible.filePath, Buffer.from(reponse.data));
+    // BUG-004 : ecriture en flux + temporaire, pour ne jamais tenir un fichier
+    // de plusieurs centaines de Mo en memoire. Un echec ne laisse pas de partiel.
+    const reponse = await axios.get(url, { responseType: 'stream', maxContentLength: MAX_MEDIA_CONTENT_LENGTH });
+    const temporaire = `${cible.filePath}.${process.pid}.part`;
+    try {
+      await pipelineAsync(reponse.data, fs.createWriteStream(temporaire));
+      fs.renameSync(temporaire, cible.filePath);
+    } catch (error) {
+      try { fs.rmSync(temporaire, { force: true }); } catch {}
+      throw error;
+    }
     return { ok: true, chemin: cible.filePath };
   } catch (error) {
     return { ok: false, error: error.message || 'Échec du téléchargement' };
@@ -612,11 +646,10 @@ const mirrorTransport = {
   },
   get: url => {
     if (!estUrlDiscordCdn(url)) return Promise.reject(new Error('URL média non autorisée'));
-    // BUG-012 : axios (Node) rend deja un Buffer pour `arraybuffer` ; on evite la
-    // copie inutile de `Buffer.from`. Le streaming complet du corps est reporte
-    // (voir rapport) : la borne `maxContentLength` garde la memoire plafonnee.
-    return axios.get(url, { responseType: 'arraybuffer', timeout: 15000, maxContentLength: MAX_MEDIA_CONTENT_LENGTH })
-      .then(r => (Buffer.isBuffer(r.data) ? r.data : Buffer.from(r.data)));
+    // BUG-004 : le corps est rendu en FLUX, jamais en Buffer complet — quatre
+    // fichiers simultanes ne pesent plus leur taille totale dans le main.
+    return axios.get(url, { responseType: 'stream', timeout: 15000, maxContentLength: MAX_MEDIA_CONTENT_LENGTH })
+      .then(r => r.data);
   },
 };
 
@@ -640,6 +673,7 @@ ipcMain.handle('media:mirrorStart', async (event, demande) => {
       transport: mirrorTransport,
       shouldStop: () => mirrorStop,
       onProgress: publier,
+      maxBytes: MAX_MEDIA_CONTENT_LENGTH,
     });
     return { ok: true, key, ...resultat };
   } catch (error) {
@@ -751,30 +785,17 @@ async function connectDiscord(token) {
   if (connecting) return { success: false, error: 'Connexion déjà en cours' };
   connecting = true;
   let suivant = null;
-  let minuteur = null;
   try {
-    // Correctif d'un bug AMONT de discord.js-selfbot-v13 3.4.6 : Application.js
-    // fait `const { ApplicationFlags } = require('../../util/ApplicationFlags')`
-    // alors que ce module exporte la CLASSE directement (`module.exports =
-    // ApplicationFlags`) -> `ApplicationFlags` est undefined -> « ApplicationFlags
-    // is not a constructor » des qu'un message porte un `application` (crash du
-    // main). On expose la classe sous la propriete attendue AVANT que la lib ne
-    // soit chargee.
-    try {
-      const af = require('discord.js-selfbot-v13/src/util/ApplicationFlags');
-      if (af && typeof af === 'function' && !af.ApplicationFlags) af.ApplicationFlags = af;
-    } catch {}
-    const { Client } = require('discord.js-selfbot-v13');
+    // Correctif d'un bug AMONT de discord.js-selfbot-v13 3.4.6 : le patch
+    // ApplicationFlags est appliqué AVANT le chargement de la lib (factory
+    // testée dans test/applicationFlagsPatch.test.js).
+    const { Client } = loadDiscordClient();
     suivant = new Client({ checkUpdate: false, fetchAllMembers: false });
     // BUG-008 : on N'ECRASE l'ancien client qu'APRES un login reussi. En cas
     // d'echec (ou de timeout), l'utilisateur reste connecte au compte precedent
     // (UI, navigation, caches intacts) au lieu de basculer sur « Not connected ».
-    await Promise.race([
-      suivant.login(token),
-      new Promise((_, rejeter) => {
-        minuteur = setTimeout(() => rejeter(new Error('Délai de connexion dépassé (30 s)')), LOGIN_TIMEOUT_MS);
-      }),
-    ]);
+    // POSSIBLE 3 : timeout + nettoyage d'une éventuelle session tardive.
+    await loginWithTimeout(suivant, token, LOGIN_TIMEOUT_MS);
     const ancien = discordClient;
     discordClient = suivant;
     if (ancien) { try { const p = ancien.destroy(); if (p?.catch) p.catch(() => {}); } catch {} }
@@ -788,7 +809,6 @@ async function connectDiscord(token) {
     console.error('Connect error:', error.message);
     return { success: false, error: error.message || 'Échec de la connexion' };
   } finally {
-    if (minuteur) clearTimeout(minuteur);
     connecting = false;
   }
 }
@@ -819,6 +839,17 @@ let loginWindowEnCours = null;
 const LOGIN_PARTITION = 'persist:dam-discord-login';
 let prechauffageLogin = null;
 
+// POSSIBLE 2 : le préchauffage et la vraie fenêtre de login partagent la même
+// partition persistante. Ils ne doivent JAMAIS coexister : deux documents sur
+// le même pot de cookies rendraient la purge d'auth et la session ambigus.
+function arreterPrechauffageLogin() {
+  const fenetre = prechauffageLogin;
+  prechauffageLogin = null;
+  try {
+    if (fenetre && !fenetre.isDestroyed()) fenetre.destroy();
+  } catch {}
+}
+
 // Rend le focus a la fenetre principale apres la fermeture du login. Sous
 // Windows, fermer une fenetre topmost/enfant peut laisser l'app minimisee ;
 // ce garde-fou la remet visible et active dans TOUS les cas de sortie.
@@ -833,6 +864,9 @@ function reveillerFenetrePrincipale() {
 
 function ouvrirLoginDiscord() {
   if (loginWindowEnCours) return loginWindowEnCours;
+
+  // POSSIBLE 2 : coupe le préchauffage AVANT de créer la fenêtre de login.
+  arreterPrechauffageLogin();
 
   loginWindowEnCours = new Promise((resolve) => {
     let fini = false;
@@ -1017,6 +1051,9 @@ ipcMain.handle('discord:loginNative', async () => {
 // prete (ou ~3 min max).
 function prechaufferLogin() {
   try {
+    // POSSIBLE 2 : jamais de préchauffage pendant qu'une fenêtre de login vit
+    // sur la même partition persistante.
+    if (loginWindowEnCours || loginWindow) return;
     if (prechauffageLogin && !prechauffageLogin.isDestroyed()) return;
     const w = new BrowserWindow({
       parent: mainWindow,

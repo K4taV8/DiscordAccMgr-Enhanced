@@ -5,7 +5,7 @@
 import { escHtml } from '../utils/emojiUtils.js';
 
 const MODES = [
-  { id: 'messages', label: 'Messages', iconClass: 'icon-trash', title: 'Supprimer uniquement les messages' },
+  { id: 'messages', label: 'Messages', icon: '🗑️', title: 'Supprimer uniquement les messages' },
   { id: 'reactions', label: 'Réactions', icon: '💥', title: 'Supprimer uniquement les réactions' },
   { id: 'both', label: 'Msg + Réac', icon: '📦', title: 'Supprimer messages et réactions, sans quitter' },
   { id: 'full', label: 'Tout + Quitter', icon: '⚡', title: 'Nettoyage complet : messages → réactions → quitter' },
@@ -48,7 +48,7 @@ export function openCleaningModeSelector(anchor, cfg = {}) {
     <div class="theme-grid">
       ${MODES.map(m => `
         <button type="button" class="theme-tile" role="menuitemradio" aria-checked="false" data-mode="${m.id}" title="${escHtml(m.title)}">
-          <span class="theme-tile-icon">${m.iconClass ? `<span class="icon icon-24 ${m.iconClass}" aria-hidden="true"></span>` : escHtml(m.icon)}</span>
+          <span class="theme-tile-icon">${escHtml(m.icon)}</span>
           <span class="theme-tile-label">${escHtml(m.label)}</span>
         </button>`).join('')}
     </div>`;

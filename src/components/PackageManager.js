@@ -5,6 +5,7 @@ import { confirmAction, showNotification, showProgressModal } from '../utils/ui.
 import { escHtml } from '../utils/emojiUtils.js';
 import { buildMessageSearchIndex, isSystemNotification, attachmentKind, attachmentExtension } from '../services/packageData.service.js';
 import { closeProgressPanel, finishProgressPanel, showProgressPanel, updateProgressPanel } from '../utils/progressPanel.js';
+import { acquireOperation, releaseOperation } from '../utils/operationLock.js';
 import { createPackageArchiveId, deletePackageArchive, isCurrentPackageArchive, listPackageArchives, savePackageArchive, PACKAGE_SCHEMA_VERSION } from '../services/packageStorage.service.js';
 import { groupChannels } from '../services/packageSections.service.js';
 import { channelWindow, CHANNEL_ROW_HEIGHT, CHANNEL_OVERSCAN } from '../services/packageWindow.service.js';
@@ -322,7 +323,7 @@ filteredChannels() {
             <div class="package-drop-icon">📦</div>
             <h2 data-drop-copy>${this.isDragging ? 'Relâchez le fichier ZIP' : 'Importer une archive Discord'}</h2>
             <p class="text-muted" data-drop-description>${this.isDragging ? 'Importation automatique de l’export Discord' : 'Glissez-déposez votre export Discord ou sélectionnez-le ci-dessous.'}</p>
-            <label class="btn btn-primary package-picker-label"><span class="icon icon-18 icon-login" aria-hidden="true"></span> Choisir un fichier ZIP<input id="packageFileInput" type="file" accept=".zip,application/zip" multiple hidden></label>
+            <label class="btn btn-primary package-picker-label">Choisir un fichier ZIP<input id="packageFileInput" type="file" accept=".zip,application/zip" multiple hidden></label>
             <div class="package-drop-hint">.ZIP uniquement · traitement local 100 % · aucune donnée envoyée</div>
           </div>
           <div class="package-queue" data-queue>${this.renderQueue()}</div>
@@ -342,7 +343,7 @@ filteredChannels() {
       ${PACKAGE_WARNING_HTML}
       <div class="list-toolbar package-toolbar">
         <div><h2 class="page-title"><span class="package-title-icon">📦</span> Archive de données <span class="list-count">${channels.length}</span></h2><p class="text-muted">${escHtml(this.package.user.username)} · ${this.package.totalMessages} messages</p></div>
-        <div class="toolbar-actions package-toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}><span class="icon icon-18 icon-trash" aria-hidden="true"></span> ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Médias</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="download-all">Télécharger les médias</button><button type="button" class="package-menu-item" data-package-action="purge-media">Purger les médias</button></div></details><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Exporter</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button type="button" class="package-menu-item" data-package-action="export" data-export-format="json">Exporter JSON</button></div></details><button class="btn btn-icon" data-package-action="close" aria-label="Fermer" title="Fermer">✕</button></div>
+        <div class="toolbar-actions package-toolbar-actions"><button class="btn btn-danger" data-package-action="delete" ${this.selectedMessages.size && !this.isDeleting ? '' : 'disabled'}>🗑️ ${this.isDeleting ? `Suppression ${this.deleteProgress?.done || 0}/${this.deleteProgress?.total || 0}` : `Supprimer (${this.selectedMessages.size})`}</button><button class="btn btn-secondary" data-package-action="gallery">${this.view === 'gallery' ? 'Retour aux messages' : 'Galerie'}</button><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Médias</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="download-all">Télécharger les médias</button><button type="button" class="package-menu-item" data-package-action="purge-media">Purger les médias</button></div></details><details class="package-menu"><summary class="btn btn-secondary package-menu-trigger">Exporter</summary><div class="package-menu-panel" role="menu"><button type="button" class="package-menu-item" data-package-action="export" data-export-format="zip">Exporter ZIP</button><button type="button" class="package-menu-item" data-package-action="export" data-export-format="json">Exporter JSON</button></div></details><button class="btn btn-icon" data-package-action="close" aria-label="Fermer" title="Fermer">✕</button></div>
       </div>
       <div class="package-layout${this.view === 'gallery' ? ' package-layout-gallery' : ''}">${this.view === 'gallery' ? this.renderGallery() : this.layoutMessages()}</div>`;
     this.attachChannelScroll();
@@ -1837,9 +1838,16 @@ async deleteChannelGroup(channel, group, counts, onProgress) {
     // (TOCTOU). Il est relâché dans le `finally`, y compris sur annulation/erreur.
     this.isDeleting = true;
     let started = false;
+    let lock = null;
     try {
       const targets = getSelectedPackageMessageKeys(this.selectedMessages);
       if (!targets.length || !(await confirmAction('Supprimer les messages', `Supprimer ${targets.length} message(s) sélectionné(s) ? Cette action est irréversible.`))) return;
+      // BUG-001 : verrou applicatif — une seule operation longue a la fois.
+      lock = acquireOperation('Suppression des messages');
+      if (!lock) {
+        showNotification('Une autre opération est déjà en cours. Attendez sa fin.');
+        return;
+      }
       started = true;
       this.deleteProgress = { done: 0, total: targets.length };
       const counts = { deleted: 0, missing: 0, forbidden: 0, failed: 0 };
@@ -1896,6 +1904,7 @@ async deleteChannelGroup(channel, group, counts, onProgress) {
       showNotification(resume);
       finishProgressPanel({ detail: resume });
     } finally {
+      if (lock) releaseOperation(lock);
       this.isDeleting = false;
       this.deleteProgress = null;
       // Sur annulation/erreur avant démarrage, ne pas reconstruire la vue

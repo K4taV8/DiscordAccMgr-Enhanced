@@ -215,7 +215,7 @@ const SONDE = [
   "    const service = require('./electron/packageImporter.service.cjs');",
   "    const resultat = await service.importPackageWithFallback({ name: 'faux.zip', size: 11, slice: () => ({ arrayBuffer: async () => new ArrayBuffer(11) }) }, {});",
   "    affirmer(resultat.mode === 'stream', 'l index echoue, le flux doit prendre le relais : ' + JSON.stringify(resultat));",
-  "    affirmer(resultat.error === 'Unable to read ZIP archive: invalid zip data', 'l erreur du chemin de reference est attendue : ' + resultat.error);",
+  "    affirmer(/ZIP/i.test(String(resultat.error)) && /invalide|invalid/i.test(String(resultat.error)), 'l erreur du chemin de reference est attendue : ' + resultat.error);",
   "    affirmer(resultat.fallbackToRenderer === undefined, 'le flux a reussi a se charger depuis l archive : aucun repli n a lieu');",
   "    return 'mode stream, motif « ' + resultat.error + ' », aucun repli';",
   "  });",

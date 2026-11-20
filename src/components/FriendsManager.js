@@ -59,7 +59,7 @@ export class FriendsManager {
             checkboxClass: 'friend-checkbox',
             badge: { label: 'Ami' },
             quick: [
-              { action: 'remove', label: "Retirer l'ami", theme: 'crimson', emoji: '<span class="icon icon-trash" aria-hidden="true"></span>' },
+              { action: 'remove', label: "Retirer l'ami", theme: 'crimson', emoji: '🚫' },
             ],
           })).join('')}
         </div>

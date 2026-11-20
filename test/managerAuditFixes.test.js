@@ -62,3 +62,22 @@ test('BUG-014 : executeCleaningMode agrège les statuts au lieu de tout compter 
     assert.ok(s.includes('showNotification(`${failures} opération(s) en échec lors du nettoyage`)'), `notification dans ${rel}`);
   }
 });
+
+test('BUG-002 : les nettoyages en lot MP/groupes exposent un bouton Arrêter câblé', () => {
+  for (const rel of ['src/components/DMManager.js', 'src/components/GroupManager.js']) {
+    const s = src(rel);
+    assert.ok(s.includes('cancelable: true'), `bouton Arrêter demandé dans ${rel}`);
+    assert.ok(s.includes('onCancel: () => { stop.value = true; }'), `annulation câblée dans ${rel}`);
+    assert.ok(s.includes('isStopSignal: () => stop.value'), `signal transmis à la suppression dans ${rel}`);
+    assert.ok(s.includes('if (stop.value) break;'), `boucle extérieure interrompue dans ${rel}`);
+  }
+});
+
+test('BUG-001 : les opérations longues prennent le verrou applicatif global', () => {
+  for (const rel of ['src/components/DMManager.js', 'src/components/GroupManager.js', 'src/components/ServerManager.js', 'src/components/PackageManager.js']) {
+    const s = src(rel);
+    assert.ok(s.includes("from '../utils/operationLock.js'"), `import du verrou dans ${rel}`);
+    assert.ok(s.includes('acquireOperation('), `acquisition dans ${rel}`);
+    assert.ok(s.includes('releaseOperation('), `relâchement dans ${rel}`);
+  }
+});

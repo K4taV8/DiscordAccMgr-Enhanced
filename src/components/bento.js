@@ -36,7 +36,7 @@ export function bentoCard(cfg) {
       </div>`;
   const foot = cfg.quick?.length
     ? `<div class="bento-foot">${cfg.quick.map(q => `
-        <button type="button" class="foot-btn${q.theme ? ' ' + q.theme : ''}" data-action="${q.action}"${q.attrs || ''}>${q.emoji ? q.emoji + ' ' : ''}${escHtml(q.label)}</button>`).join('')}</div>`
+        <button type="button" class="foot-btn${q.theme ? ' ' + q.theme : ''}" data-action="${q.action}"${q.attrs || ''}>${q.emoji ? `<span class="foot-icon" aria-hidden="true">${q.emoji}</span>` : ''}<span class="foot-label">${escHtml(q.label)}</span></button>`).join('')}</div>`
     : '';
   return `
     <div class="bento-card" data-id="${escHtml(cfg.id)}"${cfg.attrs || ''}>

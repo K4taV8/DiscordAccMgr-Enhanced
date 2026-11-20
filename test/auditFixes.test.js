@@ -45,7 +45,7 @@ test('BUG-001 : currentUid retombe sur unknown hors connexion', () => {
 test('BUG-008 : login borne par un timeout et candidat detruit en echec', () => {
   const src = mainSrc();
   assert.ok(src.includes('LOGIN_TIMEOUT_MS = 30000'), 'timeout de login');
-  assert.ok(src.includes('await Promise.race(['), 'race contre le timeout');
+  assert.ok(src.includes('await loginWithTimeout(suivant, token, LOGIN_TIMEOUT_MS)'), 'timeout délégué au module testé');
   assert.ok(src.includes('const ancien = discordClient;'), 'ancien client remplace APRES succes');
   assert.ok(src.includes('if (suivant) { try { const p = suivant.destroy();'), 'candidat detruit en echec');
 });

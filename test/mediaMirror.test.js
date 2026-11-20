@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import { Readable } from 'node:stream';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
@@ -492,6 +493,72 @@ test('downloadMirror : onProgress est notifie apres chaque fichier', async () =>
     assert.equal(evenements[evenements.length - 1].done, 4);
     assert.equal(evenements[evenements.length - 1].bytesDownloaded, 12);
     assert.ok(evenements.every(e => typeof e.current === 'string'));
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+// BUG-004 : le transport de production rend un FLUX. Le service doit l'écrire
+// au fur et à mesure, sans jamais matérialiser le fichier entier en mémoire.
+test('BUG-004 : un transport en flux écrit le fichier sans Buffer complet', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirror-stream-'));
+  try {
+    const morceau = Buffer.alloc(2 * 1024 * 1024, 0x41);
+    const attendu = morceau.length * 3;
+    const items = [{ url: 'gros.mp4', fileName: 'gros.mp4', kind: 'video', channelId: 'c' }];
+    const transport = {
+      head: async () => attendu,
+      get: async () => Readable.from([morceau, morceau, morceau]),
+    };
+    const res = await downloadMirror({ rootDir, key: 'k', items, transport, concurrency: 1 });
+
+    assert.equal(res.done, 1);
+    assert.equal(res.bytesDownloaded, attendu);
+    const cible = resolveMediaPath(rootDir, mediaRelPath('k', 'c', 'gros.mp4', 'gros.mp4'));
+    assert.equal(fs.statSync(cible).size, attendu, 'octets écrits depuis le flux');
+    assert.equal(readManifest(path.join(rootDir, 'k'))['gros.mp4'].state, 'done');
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('BUG-004 : une coupure de flux supprime le partiel', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirror-stream-'));
+  try {
+    let envoye = false;
+    const flux = new Readable({
+      read() {
+        if (envoye) return;
+        envoye = true;
+        this.push(Buffer.from('abc'));
+        this.destroy(new Error('coupure réseau'));
+      },
+    });
+    const items = [{ url: 'p.png', fileName: 'p.png', kind: 'image', channelId: 'c' }];
+    const transport = { head: async () => 10, get: async () => flux };
+    const res = await downloadMirror({ rootDir, key: 'k', items, transport, concurrency: 1 });
+
+    assert.equal(res.done, 0);
+    assert.equal(res.failed, 1);
+    const cible = resolveMediaPath(rootDir, mediaRelPath('k', 'c', 'p.png', 'p.png'));
+    assert.equal(fs.existsSync(cible), false, 'aucun fichier final');
+    assert.equal(fs.readdirSync(path.join(rootDir, 'k')).some(n => n.endsWith('.part')), false, 'aucun partiel');
+  } finally {
+    fs.rmSync(rootDir, { recursive: true, force: true });
+  }
+});
+
+test('BUG-004 : maxBytes interrompt un flux trop volumineux', async () => {
+  const rootDir = fs.mkdtempSync(path.join(os.tmpdir(), 'mirror-stream-'));
+  try {
+    const items = [{ url: 'gros.mp4', fileName: 'gros.mp4', kind: 'video', channelId: 'c' }];
+    const transport = { head: async () => 8, get: async () => Readable.from([Buffer.alloc(8, 1)]) };
+    const res = await downloadMirror({ rootDir, key: 'k', items, transport, concurrency: 1, maxBytes: 4 });
+
+    assert.equal(res.done, 0);
+    assert.equal(res.failed, 1);
+    const cible = resolveMediaPath(rootDir, mediaRelPath('k', 'c', 'gros.mp4', 'gros.mp4'));
+    assert.equal(fs.existsSync(cible), false);
   } finally {
     fs.rmSync(rootDir, { recursive: true, force: true });
   }

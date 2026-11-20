@@ -38,7 +38,7 @@ export function showHelpModal() {
         <h3><span class="help-step">3</span> Agir sur une fiche</h3>
         <div class="help-action-grid">
           <div class="help-action-card">
-            <h4><span class="icon icon-18 icon-trash" aria-hidden="true"></span> Supprimer les messages</h4>
+            <h4>🗑️ Supprimer les messages</h4>
             <p>Efface <strong>tes</strong> messages dans la conversation ou le serveur. Les messages des autres ne sont pas touchés.</p>
           </div>
           <div class="help-action-card">

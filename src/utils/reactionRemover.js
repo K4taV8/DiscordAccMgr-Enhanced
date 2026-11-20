@@ -145,33 +145,37 @@ export async function removeReactionsFromChannel({
   onComplete = () => {},
   skipRefresh = false,
   isGroup = false,
-  quiet = false
+  quiet = false,
+  isStopSignal = null
 }) {
   let modalOverlay = null;
   let progressBar = null;
 
   // BUG-006 : en mode lot (`quiet`) on ne crée AUCUNE modale — executeCleaningMode
-  // en empilait une par salon. ProgressBar lit `#progressContainer` au
-  // constructeur ET dans create() : il ne doit être construit qu'APRES que la
-  // modale soit rattachée au document, sinon `getElementById` rend null.
+  // en empilait une par salon. ProgressBar lit son conteneur au constructeur ET
+  // dans create() : il ne doit être construit qu'APRÈS que la modale soit
+  // rattachée au document, sinon la recherche rend null.
   if (!quiet) {
+    // BUG-001 : identifiant propre à l instance — plus de `#progressContainer`
+    // partagé entre deux étapes ou deux managers.
+    const uid = `progress-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     modalOverlay = document.createElement('div');
     modalOverlay.className = 'modal-overlay';
     modalOverlay.innerHTML = `
       <div class="modal-content">
         <h2>Retrait de vos réactions ${isGroup ? 'dans' : 'avec'} ${escHtml(channelName)}</h2>
-        <div id="progressContainer">
+        <div id="${uid}" data-progress-container>
           <div class="message-counter">
-            <span id="processedCount">0</span> / <span id="totalCount">0</span> traitées
-            — <span id="removedCount">0</span> retirées, <span id="failedCount">0</span> en échec
+            <span class="js-processed">0</span> / <span class="js-total">0</span> traitées
+            — <span class="js-removed">0</span> retirées, <span class="js-failed">0</span> en échec
           </div>
-          <div id="scanWarning" class="scan-warning"></div>
+          <div class="js-scan-warning scan-warning"></div>
         </div>
       </div>
     `;
     document.body.appendChild(modalOverlay);
 
-    progressBar = new ProgressBar('progressContainer', {
+    progressBar = new ProgressBar(uid, {
       showCancelButton: true
     });
     progressBar.create();
@@ -179,7 +183,9 @@ export async function removeReactionsFromChannel({
   }
 
   let shouldStop = false;
-  const isCancelled = () => shouldStop;
+  // BUG-002 : le signal externe (bouton Arrêter du panneau de lot) s ajoute au
+  // bouton Annuler de la modale.
+  const isCancelled = () => shouldStop || Boolean(isStopSignal?.());
 
   progressBar?.onCancel(() => {
     shouldStop = true;
@@ -201,12 +207,12 @@ export async function removeReactionsFromChannel({
     console.log(`[RmReactions] ${msg}`);
   };
 
-  const $ = (id) => (quiet ? null : document.getElementById(id));
-  const setText = (id, value) => { const el = $(id); if (el) el.textContent = value; };
+  const $ = (selector) => (quiet ? null : (modalOverlay?.querySelector?.(selector) || null));
+  const setText = (selector, value) => { const el = $(selector); if (el) el.textContent = value; };
   const refreshCounters = (processed, removed, failed) => {
-    setText('processedCount', processed.toString());
-    setText('removedCount', removed.toString());
-    setText('failedCount', failed.toString());
+    setText('.js-processed', processed.toString());
+    setText('.js-removed', removed.toString());
+    setText('.js-failed', failed.toString());
   };
 
   try {
@@ -215,7 +221,7 @@ export async function removeReactionsFromChannel({
     let scanComplete = true;
     const markScanIncomplete = () => {
       scanComplete = false;
-      const warning = $('scanWarning');
+      const warning = $('.js-scan-warning');
       if (warning) warning.textContent = '⚠ scan incomplet — certaines réactions peuvent ne pas avoir été traitées';
       showNotification('Scan incomplet : l’historique n’a pas pu être parcouru en entier');
     };
@@ -225,15 +231,15 @@ export async function removeReactionsFromChannel({
     const messages = firstScan.messages;
     if (!firstScan.complete) markScanIncomplete();
 
-    if (shouldStop) throw new Error('Opération annulée');
+    if (isCancelled()) return 'cancelled';
 
     const totalReactions = messages.reduce((acc, msg) => acc + msg.reactions.length, 0);
-    setText('totalCount', totalReactions.toString());
+    setText('.js-total', totalReactions.toString());
 
     if (totalReactions === 0) {
       progressBar?.update(100);
       safeTimeout(() => { modalOverlay?.remove(); onComplete(); }, 1000);
-      return;
+      return isCancelled() ? 'cancelled' : 'done';
     }
 
     // ---- Phase DELETE ----
@@ -249,14 +255,14 @@ export async function removeReactionsFromChannel({
     // Ne jamais annoncer « supprimé » sans que Discord confirme l'absence :
     // re-scan et re-supprime les réactions restantes (même principe que la
     // passe "ghost" du chemin serveur).
-    if (!shouldStop) {
+    if (!isCancelled()) {
       log(`first pass done: removed=${first.removed}, failed=${first.failed} — verifying`);
       const verifyScan = await scanOwnReactions(channelId, isGroup, electronAPI, isCancelled);
       if (!verifyScan.complete) markScanIncomplete();
       const ghosts = verifyScan.messages;
       const ghostTotal = ghosts.reduce((acc, msg) => acc + msg.reactions.length, 0);
 
-      if (ghostTotal > 0 && !shouldStop) {
+      if (ghostTotal > 0 && !isCancelled()) {
         log(`verification: ${ghostTotal} reaction(s) still present — retrying`);
         const second = await deleteReactionList(ghosts, channelId, electronAPI, isCancelled, (processed, r, f) => {
           refreshCounters(first.processed + processed, removed + r, failed + f);
@@ -273,10 +279,15 @@ export async function removeReactionsFromChannel({
     log(`Completed: removed=${removed}, failed=${failed}, total=${totalReactions}, scanComplete=${scanComplete}`);
     progressBar?.update(100);
     refreshCounters(totalReactions, removed, failed);
+    return isCancelled() ? 'cancelled' : 'done';
   } catch (error) {
+    if (isCancelled()) {
+      log('cancelled by user');
+      return 'cancelled';
+    }
     console.error('Erreur du retrait des réactions :', error);
     if (quiet) showNotification(`Réactions : ${error?.message || String(error)}`);
-    const progressContainer = document.getElementById('progressContainer');
+    const progressContainer = $('[data-progress-container]');
     if (progressContainer) progressContainer.innerHTML = `<p class="error">${escHtml(error?.message || String(error))}</p>`;
   } finally {
     clearTimers();

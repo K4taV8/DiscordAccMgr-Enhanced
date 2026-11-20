@@ -33,22 +33,26 @@ export async function deleteDMMessages({
   let progressBar = null;
 
   if (!quiet) {
+    // BUG-001 : un identifiant par instance. Les modales partageaient
+    // `#progressContainer`, donc l etape suivante (reactions) pouvait peindre sa
+    // barre dans la modale precedente, encore presente pendant 1 s.
+    const uid = `progress-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     modalOverlay = document.createElement('div');
     modalOverlay.className = 'modal-overlay';
     modalOverlay.innerHTML = `
       <div class="modal-content">
         <h2>Suppression des messages ${isGroup ? 'dans' : 'avec'} ${escHtml(username)}</h2>
-        <div id="progressContainer">
+        <div id="${uid}" data-progress-container>
           <div class="message-counter">
-            <span id="deletedCount">0</span> / <span id="totalCount">calcul en cours...</span> messages
-            <span id="etaText" class="eta-text"></span>
+            <span class="js-deleted">0</span> / <span class="js-total">calcul en cours...</span> messages
+            <span class="js-eta eta-text"></span>
           </div>
         </div>
       </div>
     `;
     document.body.appendChild(modalOverlay);
 
-    progressBar = new ProgressBar('progressContainer', {
+    progressBar = new ProgressBar(uid, {
       showCancelButton: true
     });
     progressBar.create();
@@ -61,6 +65,9 @@ export async function deleteDMMessages({
     progressBar.setCancelButtonText('Annulation...');
     progressBar.disableCancelButton();
   });
+
+  // BUG-001 : toutes les lectures de compteurs sont limites a CETTE modale.
+  const $ = (selector) => (modalOverlay?.querySelector?.(selector) || null);
 
   const timers = [];
   const clearTimers = () => { timers.forEach(clearTimeout); timers.length = 0; };
@@ -75,6 +82,10 @@ export async function deleteDMMessages({
     let currentUserId = null;
     let deletableMessages = [];
 
+    // CHOIX ASSUMÉ (audit POSSIBLE 4) : contrairement au chemin serveur, le
+    // scan MP/groupe n'écrit PAS de checkpoint. Une interruption pendant le scan
+    // oblige à rescanner au prochain lancement — aucune suppression partielle
+    // n'est perdue, mais le travail de scan n'est pas repris à mi-parcours.
     while (hasMore && !shouldStop && !(isStopSignal?.())) {
       // BUG-014 : un 429 au scan n'abandonne plus la suppression — on respecte
       // Retry-After et on retente (borné), comme pour les suppressions.
@@ -139,7 +150,7 @@ export async function deleteDMMessages({
       
       deletableMessages.push(...newDeletableMessages);
       totalMessages = deletableMessages.length;
-      const totalCountEl = document.getElementById('totalCount');
+      const totalCountEl = $('.js-total');
       if (totalCountEl) totalCountEl.textContent = totalMessages.toString();
       
       if (messages.length < 100) {
@@ -163,7 +174,7 @@ export async function deleteDMMessages({
     }
 
     const startedAt = Date.now();
-    const etaText = quiet ? null : document.getElementById('etaText');
+    const etaText = quiet ? null : $('.js-eta');
 
     for (const message of deletableMessages) {
       if (shouldStop || isStopSignal?.()) break;
@@ -198,7 +209,7 @@ export async function deleteDMMessages({
         }
         
         deletedCount++;
-        const deletedCountEl = document.getElementById('deletedCount');
+        const deletedCountEl = $('.js-deleted');
         if (deletedCountEl) deletedCountEl.textContent = deletedCount.toString();
         progressBar?.update((deletedCount / totalMessages) * 100);
 
@@ -236,7 +247,7 @@ export async function deleteDMMessages({
     console.error('Erreur de suppression des messages :', error);
     // BUG-014 : en mode `quiet` il n'y a pas de modale — l'échec ne doit pas
     // disparaître pour autant : on notifie l'utilisateur.
-    const progressContainer = quiet ? null : document.getElementById('progressContainer');
+    const progressContainer = quiet ? null : $('[data-progress-container]');
     if (progressContainer) {
       progressContainer.innerHTML = `<p class="error">${escHtml(error.message)}</p>`;
     } else {

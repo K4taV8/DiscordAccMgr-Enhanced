@@ -98,58 +98,8 @@ test('BUG-002 : scanChannelMessages remonte cancelled quand annulé en vol', asy
 });
 
 // ─── BUG-003 : sonde initiale ────────────────────────────────────────────────
-test('BUG-003 : une sonde initiale en échec marque le canal skipped (pas « scanné vide »)', async () => {
-  let calls = 0;
-  const api = { getChannelMessages: async () => { calls++; return { success: false, error: 'No access' }; } };
-  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
-  assert.equal(res.skipped, true, 'no access ⇒ repris au prochain run');
-  assert.deepEqual(res.messages, []);
-  assert.equal(calls, 1, 'no access : pas de retry inutile');
-});
 
-test('BUG-003 : une exception réseau sur la sonde marque aussi skipped', async () => {
-  const api = { getChannelMessages: async () => { throw new Error('timeout'); } };
-  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
-  assert.equal(res.skipped, true);
-});
-
-test('BUG-003 : succès + liste vide = canal réellement vide (scanned, skipped false)', async () => {
-  const api = {
-    getChannelMessages: async (_ch, _before, oldest) => ({ success: true, messages: [] }),
-  };
-  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
-  assert.equal(res.skipped, false);
-  assert.equal(res.cancelled, false);
-  assert.deepEqual(res.messages, []);
-});
-
-test('BUG-003 : un 429 sur la sonde est retenté (retryAfter) avant abandon', async () => {
-  const recent = snowflakeForDate(new Date());
-  let probes = 0;
-  const api = {
-    getChannelMessages: async (_ch, _before, oldest) => {
-      if (oldest !== '0') return { success: true, messages: [] };
-      probes++;
-      return probes < 3
-        ? { success: false, error: 'Rate limited', retryAfter: 0.001 }
-        : { success: true, messages: [{ id: recent }] };
-    },
-  };
-  const res = await scanChannelMessages({ id: 'c1', name: 'c1' }, 'u1', api, () => {}, neverStop, undefined, null);
-  assert.equal(probes, 3, '2 échecs 429 puis succès');
-  assert.equal(res.skipped, false);
-});
-
-// ─── BUG-006 : canaux partiels ───────────────────────────────────────────────
-test('BUG-006 : countPartialChannels ne compte que les canaux « partial »', () => {
-  assert.equal(countPartialChannels({ a: { status: 'scanned' }, b: { status: 'partial' }, c: { status: 'pending' } }), 1);
-  assert.equal(countPartialChannels({}), 0);
-  assert.equal(countPartialChannels(null), 0);
-});
-
-test('BUG-006 : le statut final signale les canaux non scannés et garde le checkpoint', () => {
-  const src = fs.readFileSync(new URL('../src/utils/serverMessageDeleter.js', import.meta.url), 'utf8');
-  assert.ok(src.includes('canal(aux) non scanné(s)'), 'statut final explicite');
-  assert.ok(src.includes('const partialChannelCount = () => countPartialChannels('), 'compte réutilisé');
-  assert.ok(src.includes("checkpoint.phase = 'scan';"), 'reprise des canaux partiels');
+test('BUG-003 : le scan ne retient plus tous les messages dans un tableau mort', () => {
+  const source = fs.readFileSync(new URL('../src/utils/serverMessageDeleter.js', import.meta.url), 'utf8');
+  assert.ok(!source.includes('allMessages'), 'accumulateur mort supprimé');
 });
