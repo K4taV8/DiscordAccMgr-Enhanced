@@ -60,10 +60,10 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/Bherl1/DiscordAccMgr.git"
+    "url": "git+https://github.com/K4taV8/DiscordAccMgr-Enhanced.git"
   },
   "bugs": {
-    "url": "https://github.com/Bherl1/DiscordAccMgr/issues"
+    "url": "https://github.com/K4taV8/DiscordAccMgr-Enhanced/issues"
   },
-  "homepage": "https://github.com/Bherl1/DiscordAccMgr"
+  "homepage": "https://github.com/K4taV8/DiscordAccMgr-Enhanced"
 }

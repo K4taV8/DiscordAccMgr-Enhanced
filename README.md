@@ -1,383 +1,244 @@
-# ` 🫐 `︲Discord Account Manager, fork amélioré (KataV8).
+# ` 📘 `︲Discord Account Manager, fork amélioré (KataV8).
 
 <p align="center">
-  <img src="assets/logo.png" alt="Logo" width="120">
+  <img src="assets/logo.png" alt="Logo Discord Account Manager" width="120">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/Electron-43-2C2E33?logo=electron&logoColor=white&style=for-the-badge">
-  <img src="https://img.shields.io/badge/Node.js-22-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
-  <img src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
-  <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Tests-572_verts-3ba55d?style=for-the-badge">
-  <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
+  <img alt="Electron 43.8.12" src="https://img.shields.io/badge/Electron-43.8.12-47848F?logo=electron&logoColor=white&style=for-the-badge">
+  <img alt="Node.js 22.18+" src="https://img.shields.io/badge/Node.js-22.18%2B-5FA04E?logo=nodedotjs&logoColor=white&style=for-the-badge">
+  <img alt="Version 1.5.6" src="https://img.shields.io/badge/Version-1.5.6-8E95E1?style=for-the-badge">
+  <img alt="Stack ESM et CJS" src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
+  <img alt="API Discord v9" src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
+  <img alt="Tests node:test" src="https://img.shields.io/badge/Tests-node%3Atest-3BA55D?style=for-the-badge">
+  <img alt="Licence MIT" src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
 ---
 
-Ce dépôt présente une application de bureau Electron pour gérer ton propre compte Discord : serveurs, amis, messages privés, groupes, réactions, import d'export de données, galerie média et nettoyage, sans passer par le client officiel. Tu y apprendras à te connecter, à nettoyer ton compte, à exploiter ton export `.zip` en local et à comprendre les garde-fous qui évitent les erreurs `429` !
+Application de bureau Electron pour gérer son propre compte Discord : serveurs, amis, messages privés, groupes, réactions, archives d'export et médias. Elle centralise les opérations répétitives dans une interface unique, avec contrôle du débit, reprise sur interruption et stockage local.
+
+> [!NOTE]
+> Code, outillage et documentation générés majoritairement par IA, sous supervision, tests et relecture humains. Basé sur Discord Account Manager par Bherl1, incluant les enrichissements de KataV8.<br>
+> Ce projet peut être ignoré si le développement assisté par IA ne correspond pas à vos exigences de confiance.
 
 ---
 
 > [!CAUTION]
-> **Outil non officiel, à usage personnel.** L'utilisation d'un **jeton utilisateur** avec l'API Discord (`discord.js-selfbot-v13`, API v9) **est contraire aux conditions d'utilisation de Discord** et peut entraîner la **suspension ou le bannissement du compte**.
-> Cette application sert à gérer **tes propres données** : pas d'abus, pas de spam. Utilisation sous ta entière responsabilité.
+> L'utilisation d'un **jeton utilisateur** avec l'API Discord (`discord.js-selfbot-v13`, API v9) est contraire aux conditions d'utilisation de Discord et peut entraîner une suspension ou un bannissement du compte. L'application est destinée à la gestion de ses propres données, sans spam ni usage abusif.
 
 ---
 
-## `📑`︲Sommaire (clique pour accéder directement à la section souhaitée)
+## ` 📑 `︲Sommaire.
 
-1. [`📘`︲Présentation.](#presentation)
+1. [`📘`︲Aperçu.](#apercu)
 
-   * [`❔`︲Contexte et objectifs.](#contexte-et-objectifs)
-   * [`🧰`︲Technologies et prérequis.](#technologies-prerequis)
-
-   ---
-
-2. [`✨`︲Fonctionnalités.](#fonctionnalites)
-
-   * [`🔑`︲Connexion, amis, serveurs, MP et groupes.](#fonctionnalites-comptes)
-   * [`🧹`︲Nettoyage en un geste.](#nettoyage)
-   * [`🖼️`︲Marquage « tout lu » et interface.](#interface)
+   * [`✨`︲Fonctionnalités.](#fonctionnalites)
+   * [`🧰`︲Stack technique.](#stack)
 
    ---
 
-3. [`🔌`︲Connexion à Discord.](#connexion)
+2. [`⚡`︲Démarrage.](#demarrage)
 
-   * [`🟣`︲Méthode A : connexion avec Discord.](#methode-a)
-   * [`🔑`︲Méthode B : jeton manuel.](#methode-b)
+   * [`📋`︲Prérequis.](#prerequis)
+   * [`🛠️`︲Installation et lancement.](#installation)
 
    ---
 
-4. [`📦`︲Le Data Package (import d'export).](#data-package)
+3. [`🧭`︲Utilisation.](#utilisation)
 
-   * [`📥`︲Importer l'archive.](#dp-import)
-   * [`💬`︲Vue Messages.](#dp-messages)
-   * [`🖼️`︲Vue Galerie.](#dp-galerie)
-   * [`💾`︲Miroir local et enregistrement.](#dp-miroir)
+   * [`🔌`︲Connexion.](#connexion)
+   * [`🧹`︲Gestion et nettoyage.](#nettoyage)
+   * [`📦`︲Archives et médias.](#archives)
+
+   ---
+
+4. [`⚙️`︲Configuration et données.](#configuration)
+
+   * [`📁`︲Données locales.](#donnees)
+   * [`🎨`︲Thèmes et langue.](#themes-langue)
 
    ---
 
 5. [`🔐`︲Sécurité.](#securite)
 
-   * [`🪪`︲Jetons.](#securite-jetons)
-   * [`🧪`︲Fenêtre de connexion native (session dédiée, auth purgée).](#securite-fenetre)
-   * [`🛡️`︲Isolation du renderer (CSP).](#securite-csp)
-   * [`📁`︲Portabilité, télémétrie et données d'export.](#securite-portable)
+   ---
+
+6. [`🏗️`︲Architecture et structure.](#architecture)
+
+   * [`📁`︲Structure du dépôt.](#structure)
 
    ---
 
-6. [`🏗️`︲Architecture.](#architecture)
+7. [`🧪`︲Tests et scripts.](#tests)
+
+   * [`📋`︲Scripts npm.](#scripts)
 
    ---
 
-7. [`⚡`︲Performances et anti rate-limit.](#performances)
+8. [`📦`︲Packaging Windows.](#packaging)
 
    ---
 
-8. [`🚀`︲Installation.](#installation)
-
-   * [`⬇️`︲Cloner et lancer.](#installation-lancer)
-   * [`🧪`︲Tests.](#installation-tests)
-   * [`📦`︲Packaging Windows.](#installation-package)
+9. [`🩹`︲Dépannage.](#depannage)
 
    ---
 
-9. [`🧭`︲Utilisation pas à pas.](#utilisation)
+10. [`📄`︲Licence et crédits.](#licence)
 
-   ---
+    ---
 
-10. [`⚙️`︲Configuration.](#configuration)
-
-   ---
-
-11. [`🚧`︲Garde-fous (Do Not Break).](#gardefous)
-
-   ---
-
-12. [`🩹`︲Dépannage / FAQ.](#depannage)
-
-   ---
-
-13. [`🧰`︲Crédits et licence.](#credits)
+11. [`🧰`︲Outils et ressources.](#outils)
 
 ---
 
-> [!TIP]
-> **Pour naviguer rapidement dans le dépôt, tu peux également utiliser le sommaire généré automatiquement par GitHub, situé en haut à droite de ce cadre !**
+<a id="apercu"></a>
+# ` 📘 `︲Aperçu.
 
 ---
 
-<a id="presentation"></a>
-# `📘`︲Présentation.
-
----
-
-<a id="contexte-et-objectifs"></a>
-### `❔`︲Contexte et objectifs.
-
-> [!NOTE]
-> **Discord Account Manager** est une application de bureau **Electron** qui pilote **ton propre compte Discord** (technique dite « selfbot ») pour te faire gagner du temps sur les tâches répétitives et la gestion de tes données.
-> L'objectif : une application légère, **sans bundler ni framework**, dont le **cœur réseau est piloté par les en-têtes de débit réels** de l'API (`X-RateLimit-*`), avec **cache local** et **reprise de scan** (checkpointing), pour ne jamais re-scanner inutilement.
-
-Ce que tu peux faire avec :
-
-* ` 🗂️ ` ︲**Lister et nettoyer** tes serveurs, messages privés, groupes et amis.
-* ` 🗑️ ` ︲**Supprimer tes messages** et **retirer tes réactions** (avec vérification).
-* ` 📦 ` ︲**Importer ton export Discord** (le `.zip` officiel) pour explorer tes messages, photos, vidéos et fichiers, et **télécharger tes médias** en local.
-* ` 🎨 ` ︲Profiter d'une **interface claire**, de **thèmes**, et d'un **contrôle du débit réseau** qui évite les erreurs `429`.
-
----
-
-<a id="technologies-prerequis"></a>
-### ` 🧰 `︲Technologies et prérequis.
-
-> [!IMPORTANT]
-> **Technologies et prérequis :**
-> - ` ⚡ `︲**Electron 43 :** application de bureau (renderer sandboxé, `contextIsolation`), icône de fenêtre personnalisée.
->
-> - ` 🟩 `︲**Node.js 22 :** moteur (main/preload en `.cjs`, renderer en ESM). **Prérequis :** Node.js LTS (≥ 22.18, nécessaire aux tests de parité qui importent les miroirs `.ts`).
->
-> - ` 🌐 `︲**axios :** HTTP vers l'API Discord (timeout 15 s).
->
-> - ` 🤖 `︲**discord.js-selfbot-v13 :** connexion WebSocket pour la session (les opérations passent par le REST).
->
-> - ` 🗜️ `︲**fflate :** lecture et création des archives ZIP (import / export).
->
-> - ` 📦 `︲**electron-builder :** packaging Windows (NSIS / dossier), 100 % portable.
->
-> - ` 🔷 `︲**TypeScript :** miroirs typés vérifiés par `npm test` (`tsc --noEmit` + parité JS/TS).
->
-> - ` 🧪 `︲**node:test (stdlib) :** **572 tests** (`npm test`), couverture via `npm run test:coverage`.
->
-> - ` 👤 `︲**Interface Chaise-Clavier fonctionnelle.** 🫵
-
----
+Discord Account Manager est une application Electron sans bundler ni framework front-end. Le renderer est écrit en JavaScript ESM, le processus principal et le preload en CommonJS. Les opérations réseau passent par un point unique dans le processus principal, ce qui permet d'appliquer un ordonnanceur conscient des en-têtes `X-RateLimit-*`.
 
 <a id="fonctionnalites"></a>
-# `✨`︲Fonctionnalités.
+### ` ✨ `︲Fonctionnalités.
 
 ---
 
-<a id="fonctionnalites-comptes"></a>
-### ` 🔑 `︲Connexion, amis, serveurs, MP et groupes.
+* **Comptes et listes** : connexion Discord native ou jeton manuel, comptes enregistrés, amis, serveurs, messages privés et groupes.
+* **Nettoyage** : suppression des messages, retrait des réactions, mode combiné et mode complet avec sortie du serveur ou du groupe.
+* **Traitement par lot** : sélection multiple, dock d'actions, progression, bouton d'arrêt et reprise par checkpoint pour les serveurs.
+* **Lecture et modération** : marquage de serveurs comme lus, mise en sourdine et copie d'identifiants.
+* **Archives Discord** : import d'un export `.zip`, exploration des messages par salon, galerie photos/vidéos/audio/fichiers et miroir média local.
+* **Thèmes et langue** : thèmes Sombre, Clair, Discord, Mono, OLED Lavande et Mono OLED ; interface FR/EN commutable avant ou après connexion.
+
+<a id="stack"></a>
+### ` 🧰 `︲Stack technique.
 
 ---
 
-` 🔌 `︲**Connexion.**
-
-* **Connexion avec Discord** (nouveau) : une fenêtre Discord s'ouvre, tu te connectes (mot de passe, 2FA ou **QR code**), **Discord gère le captcha et la 2FA**, et l'app récupère ta session. **Session dédiée, auth purgée** (voir [Sécurité](#securite)).
-* **Pas de popup Windows Hello** : la demande automatique de passkey (*conditional UI*) est neutralisée ; seuls les passkeys explicitement demandés restent disponibles.
-* **Jeton manuel** : colle un jeton utilisateur, bouton œil pour l'afficher / masquer. Reste disponible à tout moment.
-* **Enregistrement de compte** : enregistre un compte connecté pour le recharger plus tard, **chiffré au repos** (`safeStorage`).
-
----
-
-` 👫 `︲**Amis (`Friends`).**
-
-* Liste de tes amis (avatar, pseudo, identifiant).
-* **Retirer l'ami** (unitaire ou en lot).
-* Copie de l'ID en un clic.
+| Couche | Technologie | Version |
+|---|---|---|
+| Runtime desktop | Electron | 43.8.12 |
+| Processus principal | Node.js | 22.x |
+| Langages | JavaScript ESM/CJS, TypeScript (types) | TypeScript 7.0.2 |
+| Interface | HTML, CSS et JavaScript vanilla | — |
+| HTTP | axios | 1.21.1 |
+| Client Discord | discord.js-selfbot-v13 | 3.4.6 |
+| Archives ZIP | fflate | 0.8.3 |
+| Packaging | electron-builder | 26.18.1 |
+| Tests | node:test | fourni par Node.js |
 
 ---
 
-` 🏰 `︲**Serveurs (`Servers`).**
-
-* Liste de tes serveurs, avec badge **Propriétaire** pour ceux que tu possèdes.
-* **Mettre en sourdine** / réactiver les notifications.
-* **Supprimer les messages** (scan + suppression, reprise par checkpoint).
-* **Retirer les réactions** (scan complet + re-scan de vérification).
-* **Quitter le serveur**.
-* **Marquer comme lu** (avec progression live).
+<a id="demarrage"></a>
+# ` ⚡ `︲Démarrage.
 
 ---
 
-` ✉️ `︲**Messages privés (`DMs`).**
-
-* Liste de tes conversations privées.
-* **Supprimer les messages**, **Retirer les réactions**, **Messages + réactions** (combiné), **Fermer la conversation**.
+<a id="prerequis"></a>
+### ` 📋 `︲Prérequis.
 
 ---
 
-` 👥 `︲**Groupes (`Groups`).**
+| Élément | Valeur | Remarque |
+|---|---|---|
+| Node.js | **≥ 22.18** | Requis pour les tests qui importent les miroirs `.ts` |
+| npm | Fourni avec Node.js | Installation des dépendances |
+| Système | Windows | Cible de packaging définie dans `package.json` |
+| Compte Discord | Compte personnel | Connexion native ou jeton utilisateur |
 
-* Liste de tes groupes (DM de groupe), avec **avatar par défaut** si le groupe n'a pas d'icône.
-* **Supprimer les messages**, **Retirer les réactions**, **Quitter le groupe**.
-
----
-
-<a id="nettoyage"></a>
-### ` 🧹 `︲Nettoyage en un geste.
-
----
-
-Chaque carte propose un bouton **Nettoyer** qui ouvre **4 modes** :
-
-| Mode | Effet |
-|---|---|
-| **Messages** | supprime tes messages |
-| **Réactions** | retire tes réactions |
-| **Msg + Réac** | supprime messages **et** réactions |
-| **Tout + Quitter** | messages + réactions **puis** quitte le serveur / groupe / ferme le MP |
-
-Sélectionne plusieurs cartes, puis lance un mode : **tout s'exécute en séquence**, avec progression et annulation.
-
-> [!NOTE]
-> **Reprise :** les nettoyages de serveurs (checkpoints) et les imports sont reprenables. Les nettoyages de **MP/groupes** rescannent l'historique au lancement : une interruption ne reprend pas le scan à mi-parcours (choix assumé, pas de checkpoint côté MP).
+<a id="installation"></a>
+### ` 🛠️ `︲Installation et lancement.
 
 ---
 
-<a id="interface"></a>
-### ` 🖼️ `︲Marquage « tout lu » et interface.
+<!-- Dépôt du fork : https://github.com/K4taV8/DiscordAccMgr-Enhanced -->
+
+1️⃣︲**Récupérer le dépôt.**
+
+```bash
+git clone https://github.com/K4taV8/DiscordAccMgr-Enhanced.git
+cd DiscordAccMgr-Enhanced
+```
+
+2️⃣︲**Installer les dépendances.**
+
+```bash
+npm install
+```
+
+3️⃣︲**Lancer l'application.**
+
+```bash
+npm start
+```
 
 ---
 
-` ✅ `︲**Read All.**
-
-* Marque tous tes serveurs comme lus, débit gouverné, **progression live**.
-
-` 🎨 `︲**Interface.**
-
-* **Rail d'icônes** latéral (compact), **grille Bento** (cartes) ou **vue liste** (persistée).
-* **Dock flottant** de sélection multiple (actions groupées).
-* **Thèmes** : **Sombre**, **Clair**, **Discord** (Blurple), **Mono**, **OLED Lavande** et **Mono OLED**, bascule en un clic.
-* **Langue** : interface **Français / English** commutable depuis la page de connexion et le rail.
+<a id="utilisation"></a>
+# ` 🧭 `︲Utilisation.
 
 ---
 
 <a id="connexion"></a>
-# ` 🔌 `︲Connexion à Discord.
+### ` 🔌 `︲Connexion.
 
 ---
 
-> [!NOTE]
-> Deux méthodes, au choix.
-> Objectif : obtenir une session valide sans jamais saisir ton mot de passe dans l'application !
+La connexion native ouvre une fenêtre Discord dédiée : Discord gère le mot de passe, la 2FA et le captcha, puis l'application récupère la session. Un jeton utilisateur peut aussi être collé manuellement. Les comptes enregistrés sont chiffrés au repos et rechargés depuis la page de connexion.
+
+<a id="nettoyage"></a>
+### ` 🧹 `︲Gestion et nettoyage.
 
 ---
 
-<a id="methode-a"></a>
-### ` 🟣 `︲Méthode A : connexion avec Discord (recommandée).
+Chaque carte expose les actions disponibles pour son type : suppression des messages, retrait des réactions, mise en sourdine, copie d'identifiant, fermeture d'une conversation ou sortie d'un serveur/groupe. Le bouton **Nettoyer** regroupe quatre modes : messages, réactions, messages + réactions, ou nettoyage complet avec sortie.
 
----
-
-1️⃣︲**Lancer la connexion.**
-
-* Clique sur **« Connexion avec Discord »**.
-
----
-
-2️⃣︲**Te connecter dans la fenêtre Discord.**
-
-* Une fenêtre Discord s'ouvre : mot de passe / 2FA / **scan du QR**.
-* Discord gère le captcha.
-
----
-
-3️⃣︲**Validation automatique.**
-
-* Une fois connecté, la fenêtre se ferme et l'app te connecte.
-* Tu peux **enregistrer le compte** pour le réutiliser.
-
-> [!IMPORTANT]
-> **Cette fenêtre utilise une session isolée et éphémère : aucun cookie Discord n'est conservé, elle repart toujours vierge. Ton mot de passe ne transite jamais par l'application (il reste dans la page Discord).**
-
----
-
-<a id="methode-b"></a>
-### ` 🔑 `︲Méthode B : jeton manuel.
-
----
-
-1️⃣︲**Coller le jeton.**
-
-* Colle ton **jeton utilisateur** dans le champ, clique sur l'œil pour l'afficher.
-
----
-
-2️⃣︲**Se connecter.**
-
-* Clique sur **« Se connecter »**.
-
----
-
-3️⃣︲**Enregistrer (optionnel).**
-
-* Clique sur **« Enregistrer »** pour le conserver (chiffré).
-
-> [!TIP]
-> Pour obtenir ton jeton manuellement : dans le client Discord (navigateur), `DevTools → onglet Réseau →` une requête vers `discord.com/api` `→` en-tête `Authorization`.
+Une opération longue affiche sa progression et peut être arrêtée. Les nettoyages de serveurs utilisent des checkpoints, des watermarks et un ledger anti-fantômes ; les nettoyages de MP et de groupes relancent leur scan après une interruption.
 
 > [!WARNING]
-> **Ne partage jamais un jeton : il donne un accès complet à ton compte.**
+> Les suppressions sont **irréversibles**. Les confirmations destructives sont systématiques, mais aucune action ne peut annuler une suppression déjà envoyée à Discord.
+
+<a id="archives"></a>
+### ` 📦 `︲Archives et médias.
 
 ---
 
-<a id="data-package"></a>
-# ` 📦 `︲Le Data Package (import d'export).
+L'import accepte l'export Discord officiel au format `.zip` et le traite localement. La vue Messages permet de parcourir les échanges par salon ; la vue Galerie regroupe les photos, vidéos, fichiers audio et pièces jointes. Le bouton **Télécharger les médias** crée un miroir local dans `data/media`, servi par le protocole interne `media://`.
 
 ---
 
-> [!NOTE]
-> Le **Data Package** est l'onglet dédié à **l'exploitation locale d'un export de compte Discord** : le fichier `.zip` que Discord t'envoie sur demande (« Mes données » → « Demander mes données »).
-> **Tout est traité sur ta machine.**
+<a id="configuration"></a>
+# ` ⚙️ `︲Configuration et données.
 
 ---
 
-<a id="dp-import"></a>
-### ` 📥 `︲Importer l'archive.
+<a id="donnees"></a>
+### ` 📁 `︲Données locales.
 
 ---
 
-* Glisse-dépose ton `.zip` ou sélectionne-le.
-* L'app lit l'archive **par tranches** (les centaines de Mo ne sont pas copiés en mémoire) et affiche la progression.
+| Élément | Emplacement | Remarque |
+|---|---|---|
+| Données applicatives | `data/` à côté de l'exécutable | Mode portable |
+| Jetons | `data/userData/saved_tokens.json` | Chiffrés avec `safeStorage` |
+| Sessions et cache | `data/sessionData/`, `data/cache/` | Cache local |
+| Journaux du main | `data/logs/main.log` | Rotation de 5 Mo, 3 archives |
+| Miroir média | `data/media/` | Fichiers téléchargés localement |
+
+Les débits nominaux de secours sont définis dans `electron/rateLimiter.cjs` et appliqués dans `electron/main.cjs` :
+
+| Opération | Débit nominal | Burst | Concurrence |
+|---|---|---|---|
+| Lecture | 25 requêtes/s | 16 | 12 |
+| Suppression | 4 requêtes/s | 2 | 4 |
+
+<a id="themes-langue"></a>
+### ` 🎨 `︲Thèmes et langue.
 
 ---
 
-<a id="dp-messages"></a>
-### ` 💬 `︲Vue Messages.
-
----
-
-* ` 🗂️ ` ︲**Liste des salons** groupée (Messages directs, Groupes, puis un bloc par serveur) et triée par volume.
-* ` 🔎 ` ︲**Filtres** : par type (Tous / MP / Groupes / Serveurs) et options **« Masquer les MP vides »**, **« Masquer les groupes vides »**, **« Masquer les notifications système »**, **« Masquer les serveurs quittés »**.
-* ` 🔍 ` ︲**Recherche** dans les salons / messages.
-* ` ☑️ ` ︲**Sélection** (par message ou tout) et **suppression** des messages.
-* ` 📤 ` ︲**Export** de ce que tu veux en **ZIP** ou **JSON**.
-
----
-
-<a id="dp-galerie"></a>
-### ` 🖼️ `︲Vue Galerie.
-
----
-
-* ` 🧱 ` ︲**Mosaïque 4 colonnes** de **toutes** les pièces jointes : **photos, vidéos, audio et fichiers** (icônes par type).
-* ` 🔎 ` ︲**Filtres** : par genre (Tout / Photos / Vidéos / Audio / Fichiers) et par **salon**.
-* ` ↕️ ` ︲**Tri** : plus récents d'abord, avec bouton pour **inverser** (mémorisé).
-* ` ▶️ ` ︲**Clic sur une pièce jointe** → **lecteur** intégré : images, **vidéos** (lecture, plein écran de la visionneuse, navigation ‹ ›) et **audio**.
-
-> [!NOTE]
-> Les formats que le moteur ne sait pas lire (`.mov`, `.mkv`) affichent un message clair + un bouton **Enregistrer**.
-
----
-
-<a id="dp-miroir"></a>
-### ` 💾 `︲Miroir local et enregistrement.
-
----
-
-` 📥 `︲**Miroir local (optionnel).**
-
-* **« Télécharger les médias »** : télécharge toutes tes pièces jointes (jusqu'à **~1,8 Gio**) dans un dossier local `data/media`, **photos d'abord** (la galerie devient complète visuellement bien avant la fin), avec **reprise** après coupure, **annulation** et **progression**.
-* Une fois téléchargés, les médias sont servis **depuis le disque** (la galerie **fonctionne hors ligne**) ; sinon, repli automatique sur le CDN Discord.
-* **« Purger les médias »** : supprime les copies locales pour libérer l'espace.
-
----
-
-` 💾 `︲**Enregistrer une pièce jointe.**
-
-* Depuis la galerie ou le lecteur, **Enregistrer** ouvre une **boîte de dialogue native** et télécharge le fichier dans le dossier choisi (le téléchargement se fait côté application, pas dans l'interface).
+Le sélecteur de thème du rail propose Sombre, Clair, Discord, Mono, OLED Lavande et Mono OLED. Le choix est conservé dans `localStorage`. Le bouton de langue, disponible sur la page de connexion et dans le rail, bascule l'interface entre français et anglais ; la préférence est également persistée.
 
 ---
 
@@ -386,365 +247,153 @@ Sélectionne plusieurs cartes, puis lance un mode : **tout s'exécute en séquen
 
 ---
 
-> [!IMPORTANT]
-> Cette section décrit ce que l'application fait pour **protéger ton compte et tes données**.
-> Les invariants marqués sont des **zones rouges** : ne les casse pas !
+* **Jetons** : chiffrement au repos via `safeStorage`, enveloppe versionnée, écritures sérialisées et atomiques (`electron/tokenStore.cjs`, `electron/persist.cjs`).
+* **Renderer** : `sandbox`, `contextIsolation`, `nodeIntegration` désactivé et CSP stricte (`script-src 'self'`, `connect-src 'self'`) dans `index.html`.
+* **Réseau** : un seul chemin HTTP dans le processus principal (`discordFetch`), timeout global de 15 s, suivi des en-têtes de débit et `maxRedirects: 0` sur l'API Discord.
+* **Médias** : protocole `media://` avec validation lexicale, `realpath` et contrôle de sortie du dossier `data/media`.
+* **Liens externes** : allowlist d'URL pour `shell.openExternal` dans `electron/main.cjs`.
 
----
-
-<a id="securite-jetons"></a>
-### ` 🪪 `︲Jetons.
-
----
-
-* **Chiffrés au repos** via `safeStorage` (chiffrement lié au système), jamais en clair sur disque. Enveloppe de schéma **versionnée** + **écritures sérialisées** (mutex) et **atomiques**.
-* **Rédaction des IPC sensibles** : les appels `getTokens` / `connectDiscord` / `saveToken` sont masqués (`[redacted]`) dans les journaux internes.
-* **Le mot de passe n'est jamais saisi dans l'app** lors de la connexion native : il reste dans la page Discord.
-
----
-
-<a id="securite-fenetre"></a>
-### ` 🧪 `︲Fenêtre de connexion native : session dédiée, authentification purgée.
-
----
-
-* Session dédiée **`persist:dam-discord-login`** : seuls les **assets publics** sont mis en cache HTTP (ouverture ~2 s). **L'authentification n'est jamais conservée** : cookies + stockage sont purgés à **chaque ouverture et fermeture**, donc la fenêtre repart toujours vierge.
-* La purge est garantie dans **tous les cas** (succès, annulation, timeout, fermeture).
-* Preload **minimal** (neutralisation de la demande automatique de passkey Windows Hello), `contextIsolation`, `sandbox`, `nodeIntegration` désactivé : la page distante n'a **aucun accès** à Node ni au système, et le preload n'expose rien via `contextBridge`.
-
----
-
-<a id="securite-csp"></a>
-### ` 🛡️ `︲Isolation du renderer (CSP).
-
----
-
-* ` 🚫 ` ︲**`script-src 'self'`** : aucun script inline (handlers migrés vers `addEventListener` / délégation `data-action`).
-* ` 🔒 ` ︲**`connect-src 'self'`** : le renderer **ne peut pas** contacter le réseau directement (pas d'exfiltration des jetons par une XSS). Tous les appels Discord passent par le **main process**.
-* ` 🖼️ ` ︲**`img-src` / `media-src`** : limités à `'self'`, `data:`, le CDN Discord et le schéma interne `media:` (copies locales). **Le renderer ne peut pas lire `file://`.**
-* ` 🔗 ` ︲**Ouverture externe verrouillée** : `openExternal` n'autorise qu'une **liste blanche** (aucune URL arbitraire).
-
-> [!WARNING]
-> **Ne jamais réintroduire de script inline ni `'unsafe-inline'` dans `script-src`.**
-
----
-
-<a id="securite-portable"></a>
-### ` 📁 `︲Portabilité, télémétrie et données d'export.
-
----
-
-* ` 📦 ` ︲**100 % portable** : **toutes** les données (compte, cache, sessions, journaux) vivent dans un dossier **`data/` à côté de l'exécutable**. Rien n'est écrit dans `%APPDATA%`.
-* ` 📡 ` ︲**Zéro télémétrie** : aucune donnée n'est envoyée à un serveur tiers. Les seules communications sont celles vers **Discord** (pour ton compte) et **GitHub** (si tu cliques un lien du panneau info).
-* ` 📦 ` ︲**Data Package** traité **entièrement en local**. Le miroir média n'écrit que dans `data/media`.
+Les appels IPC sensibles (`connectDiscord`, `saveToken`, `getTokens`, `loginNative`) sont rédigés en `[redacted]` avant journalisation dans `electron/preload.cjs`.
 
 ---
 
 <a id="architecture"></a>
-# ` 🏗️ `︲Architecture.
+# ` 🏗️ `︲Architecture et structure.
 
 ---
-
-> [!NOTE]
-> Trois sous-systèmes isolés.
 
 | Sous-système | Fichiers | Rôle |
 |---|---|---|
-| **UI (renderer, ESM)** | `src/components/`, `src/utils/`, `src/styles/` | Interface, opérations lourdes (scan / suppression), galerie, rendu fluide |
-| **Pont (preload)** | `electron/preload.cjs` | `contextBridge` isolé, rédaction des IPC sensibles |
-| **Noyau (main, CJS)** | `electron/main.cjs`, `rateLimiter.cjs`, `persist.cjs`, `discordLogin.service.cjs` | Autorité du débit réseau, persistance atomique, sécurité des jetons, fenêtre de connexion native |
+| Renderer | `src/` | Interface ESM, managers, galerie, opérations de scan et de suppression |
+| Preload | `electron/preload.cjs` | Pont `contextBridge`, API IPC exposée au renderer |
+| Main | `electron/main.cjs` et services `electron/*.cjs` | Autorité réseau, persistance, jetons, protocole média et fenêtre de connexion |
 
-> [!IMPORTANT]
-> **Un seul chemin HTTP autorisé : `discordFetch()` dans le main process. Le renderer ne parle jamais directement à Discord, uniquement par IPC. C'est ce point unique qui garantit le contrôle du débit.**
-
-` 📐 `**︲Schéma `ASCII` récapitulatif :**
-
-```
-RENDERER (src/ — ESM, sandbox, contextIsolation)
-  components/  Managers (Serveurs, MP, Groupes, Amis, Data Package) · bento.js · HelpModal
-  utils/       deleters / removers, persist, progressPanel, theme
-        │  contextBridge · IPC (invoke / on)
-PRELOAD (preload.cjs)  electronAPI (wrappé) · persistAPI · [redacted] sur les appels sensibles
-        │
-MAIN PROCESS (electron/ — CJS)
-  discordFetch()  →  makeRouteScheduler (X-RateLimit-aware)
-  persist.cjs     →  JSON atomique (tmp + rename) : checkpoints, watermark, ledger
-  safeStorage     →  jetons chiffrés + mutex
-  discordLogin    →  fenêtre native + debugger CDP (session éphémère)
-        │  HTTPS · axios · timeout 15 s
-   DISCORD API v9  (X-RateLimit-Remaining / Reset-After / Global)
+```text
+renderer (src/, ESM)
+  │  contextBridge / IPC
+  ▼
+preload.cjs
+  │
+  ▼
+main.cjs (CJS)
+  ├─ discordFetch → route scheduler (X-RateLimit-*)
+  ├─ persist.cjs → JSON atomique
+  ├─ tokenStore.cjs → safeStorage
+  └─ media:// → data/media
 ```
 
----
-
-<a id="performances"></a>
-# ` ⚡ `︲Performances et anti rate-limit.
+<a id="structure"></a>
+### ` 📁 `︲Structure du dépôt.
 
 ---
 
-* ` 🧠 ` ︲**Ordonnanceur conscient des en-têtes :** avant chaque requête, le budget réel (`X-RateLimit-Remaining`) est consommé de façon optimiste ; si un bucket (route **ou** global) est à zéro, l'ordonnanceur **attend `X-RateLimit-Reset-After`**. Les `429` sont **évités par construction**.
-* ` 💥 ` ︲**Bursts sûrs :** quand le bucket annonce du budget, les requêtes partent en rafale jusqu'à `remaining`.
-* ` 🐢 ` ︲**Débits nominaux (repli) :** lecture **25 r/s**, suppression **4 r/s** (seuils sûrs pour un jeton utilisateur).
-* ` 🔀 ` ︲**Scan serveur parallèle segmenté :** jusqu'à 12 segments temporels par canal, 8 canaux en parallèle, débit global plafonné par l'ordonnanceur.
-* ` 🔁 ` ︲**Retry borné** (3 tentatives), **timeout global** `axios` 15 s.
-* ` 💾 ` ︲**Reprise :** **checkpoints** (par opération / serveur), **watermarks** (delta par canal, TTL 24 h), **ledger** anti-fantômes pour les réactions. Écritures **atomiques** (jamais de fichier tronqué).
-* ` 🖥️ ` ︲**Interface fluide :** rendu **chunké** (50 cartes / frame), scroll préservé, ETA temps réel, warm-up au démarrage, rendu galerie **virtualisé** (fenêtrage) et **recyclage des tuiles** au défilement.
+<details>
+<summary>📁︲Arborescence complète.</summary>
+
+```text
+electron/        processus principal, preload et services
+src/components/  managers, cartes Bento, modales et sélecteurs
+src/services/    import/export d'archives, stockage, galerie
+src/utils/       suppression, réactions, progression, thèmes, i18n
+src/styles/      app.css et thèmes
+src/types/       déclarations TypeScript globales
+shared/          types partagés
+scripts/         vérification de l'ASAR
+test/            suite node:test
+assets/          logo, avatars et icônes
+resources/       ressources de packaging
+index.html       document du renderer
+```
+
+</details>
 
 ---
 
-<a id="installation"></a>
-# ` 🚀 `︲Installation.
+<a id="tests"></a>
+# ` 🧪 `︲Tests et scripts.
 
 ---
 
-> [!NOTE]
-> **Prérequis :** Node.js LTS (≥ 20) et npm.
+La suite utilise `node:test` et couvre le renderer, les services d'import/export, la persistance, le rate limiting, les suppressions, les thèmes et l'i18n. `npm test` exécute d'abord `tsc --noEmit`, puis les tests.
+
+<a id="scripts"></a>
+### ` 📋 `︲Scripts npm.
 
 ---
 
-<a id="installation-lancer"></a>
-### ` ⬇️ `︲Cloner et lancer.
+| Commande | Rôle |
+|---|---|
+| `npm start` | Lance Electron |
+| `npm test` | Typecheck puis suite `node:test` |
+| `npm run typecheck` | Vérifie les types TypeScript |
+| `npm run test:coverage` | Exécute les tests avec couverture |
+| `npm run audit:sca` | Audit des dépendances de production |
+| `npm run verify:asar` | Vérifie l'import ESM depuis une archive ASAR |
+| `npm run package` | Construit l'installeur NSIS et le dossier Windows |
+| `npm run package:portable` | Construit le dossier portable |
 
 ---
 
-1️⃣︲**Cloner le dépôt et installer les dépendances.**
+<a id="packaging"></a>
+# ` 📦 `︲Packaging Windows.
+
+---
+
+La configuration `electron-builder` cible Windows avec deux sorties : un installeur NSIS et un dossier exécutable. Le dossier portable conserve ses données dans `data/`, à côté de l'exécutable, et peut être déplacé sans installation.
 
 ```bash
-git clone https://github.com/Bherl1/DiscordAccMgr.git
-cd DiscordAccMgr
-npm install
+npm run package
+npm run package:portable
+npm run verify:asar
 ```
 
----
-
-2️⃣︲**Lancer l'application.**
-
-```bash
-npm start
-```
-
----
-
-<a id="installation-tests"></a>
-### ` 🧪 `︲Tests.
-
----
-
-```bash
-npm test
-npm run test:coverage
-```
-
----
-
-<a id="installation-package"></a>
-### ` 📦 `︲Packaging Windows.
-
----
-
-```bash
-npm run package          # installeur NSIS + dossier
-npm run package:portable # dossier portable (data/ local)
-npm run verify:asar      # vérifie la lecture ESM dans l'archive packagée (gate)
-```
-
-> [!NOTE]
-> Un avertissement Windows Defender est possible sur l'exécutable non signé.
-
----
-
-<a id="utilisation"></a>
-# ` 🧭 `︲Utilisation pas à pas.
-
----
-
-1️⃣︲**Se connecter.**
-
-« Connexion avec Discord » (recommandé) ou jeton manuel (voir [Connexion](#connexion)).
-
----
-
-2️⃣︲**Naviguer.**
-
-Onglets **Amis / Serveurs / MP / Groupes** en **grille Bento** (ou vue liste).
-
----
-
-3️⃣︲**Agir.**
-
-Sur chaque carte : boutons d'action (Mute, Supprimer les messages, Retirer les réactions, Quitter...) ou **Nettoyer** pour tout faire d'un coup.
-
----
-
-4️⃣︲**Travailler en lot.**
-
-Coche plusieurs cartes : le **dock** du bas s'active (compteur, Tout sélectionner / Tout désélectionner, Nettoyer ▾).
-
----
-
-5️⃣︲**Exploiter le Data Package.**
-
-Glisse ton export `.zip`, puis explore **Messages** et **Galerie** (voir [Data Package](#data-package)).
-
----
-
-6️⃣︲**Créer le miroir.**
-
-Dans la galerie, **« Télécharger les médias »** pour tout avoir en local.
-
----
-
-> [!IMPORTANT]
-> **En cas d'interruption (Stop, perte réseau, fermeture), relancer la même opération propose « Reprendre / Repartir à zéro » : la reprise continue à l'élément près, sans re-scanner les canaux déjà analysés.**
-
-> [!CAUTION]
-> **Les suppressions sont irréversibles.** Les confirmations destructives sont systématiques, mais aucune application ne peut annuler une suppression déjà envoyée. Fais une sauvegarde si l'opération est critique.
-
----
-
-<a id="configuration"></a>
-# ` ⚙️ `︲Configuration.
-
----
-
-* ` 🐢 ` ︲**Débits nominaux** (`electron/rateLimiter.cjs`) : lecture **25 r/s** (burst 16, 12 concurrents), suppression **4 r/s** (burst 2, 4 concurrents). Ce sont des **planchers de sûreté** ; les en-têtes gouvernent ensuite les bursts réels.
-* ` ⏳ ` ︲**TTL :** watermark serveur 24 h · ledger réactions 24 h · cache serveurs 30 s · cache canaux 60 s · checkpoints nettoyés après 7 jours.
-* ` 🪪 ` ︲**Jetons :** chiffrés `safeStorage` (préfixe `enc:`), enveloppe `schemaVersion`, migration de l'ancien format, entrées corrompues marquées. Emplacement : `data/userData/saved_tokens.json`.
-* ` 📁 ` ︲**Portable :** `data/` à côté de l'exécutable (`userData`, `sessionData`, `cache`, `crashDumps`, `logs`, `media`). Variable `ELECTRON_DEV=1` force les DevTools.
-* ` 🎨 ` ︲**Thème :** bouton pinceau dans le rail (6 thèmes, dont OLED Lavande et Mono OLED), persisté en `localStorage`.
-
-> [!WARNING]
-> **Ne pas augmenter les débits nominaux sans preuve empirique.**
-
----
-
-<a id="gardefous"></a>
-# ` 🚧 `︲Garde-fous (Do Not Break).
-
----
-
-> [!CAUTION]
-> Ces zones protègent la **garantie zéro-429** et **l'intégrité des données**.
-> Les modifier sans comprendre peut provoquer des `429` en cascade, des jetons bloqués, des suppressions manquées ou des états corrompus.
-
----
-
-` 🌐 `︲**Réseau / Rate-limit.**
-
-| # | Zone | Si modifiée |
-|---|---|---|
-| **G1** | Tout appel HTTP DOIT passer par `discordFetch()` | `429`, restrictions, suspension de jeton |
-| **G2** | Ne pas contourner `makeRouteScheduler` | Perte de la lecture des `X-RateLimit-*` |
-| **G3** | Ne pas dépasser 25 r/s lecture / 4 r/s suppression sans preuve | Buckets user-token plus stricts |
-| **G4** | Garder le retry `429` (3 tentatives) + `Retry-After` | Suppressions perdues, drapeaux d'abus |
-| **G5** | Ne pas dépasser 12 segments / concurrence > 8 | Pics locaux sans gain |
-| **G6** | Garder `humanDelay` sur les DELETE MP / groupe | Détection comportementale |
-
----
-
-` 🔐 `︲**Sécurité.**
-
-| # | Zone | Si modifiée |
-|---|---|---|
-| **S1** | Garder `getTokens` / `connectDiscord` / `saveToken` dans `SENSITIVE_CALLS` | Jetons en clair dans la console |
-| **S2** | Jetons jamais en clair (`safeStorage` + mutex) | Fuite / perte de jeton |
-| **S3** | Ne pas élargir `openExternal` (liste blanche) ni `connect-src 'self'` | Exfiltration possible par XSS |
-| **S4** | Garder `script-src 'self'` (aucun script inline) | Réouverture d'une XSS |
-| **S5** | La fenêtre de connexion native garde sa **session dédiée** mais **purge l'auth** (cookies + stockage) à chaque ouverture/fermeture | La fenêtre se rouvrirait déjà connectée |
-
----
-
-` 💾 `︲**Persistance.**
-
-| # | Zone | Si modifiée |
-|---|---|---|
-| **P1** | Toute écriture passe par `persist.cjs` (atomique) | Fichier tronqué = état corrompu |
-| **P2** | Bumper `schemaVersion` + migration si format changé | Reprise cassée |
-| **P3** | Ledger : ne consigner que sur `204` / `404`, TTL 24 h | Fantômes ou réactions masquées à tort |
-| **P4** | Garder le prompt « Reprendre / Repartir à zéro » | Progression perdue |
-
----
-
-` 🖥️ `︲**UI / intégrité.**
-
-| # | Zone | Si modifiée |
-|---|---|---|
-| **U1** | Rendu chunké 50 / frame | Frame bloquée sur gros comptes |
-| **U2** | `attachments` / `embeds` / `snapshots` sont des **nombres** (`(x \|\| 0) > 0`) | Messages à pièce jointe seule non supprimés |
-| **U3** | `reactions` reste mappé **complet** | Retrait de réactions cassé |
+Les artefacts sont produits dans `dist/`. La signature de code n'est pas configurée dans `package.json` ; Windows Defender peut afficher un avertissement sur l'exécutable non signé.
 
 ---
 
 <a id="depannage"></a>
-# ` 🩹 `︲Dépannage / FAQ.
+# ` 🩹 `︲Dépannage.
 
 ---
 
-` 🔌 `︲**La connexion Discord reste bloquée sur la page de connexion.**
+**La connexion Discord reste bloquée.**  
+Le captcha et la 2FA sont gérés dans la fenêtre Discord. Si la fenêtre native ne se termine pas, utiliser la connexion par jeton manuel.
 
-Le captcha et la 2FA sont gérés par Discord : complète-les dans la fenêtre. Si besoin, utilise le jeton manuel.
+**Une vidéo ne se lit pas.**  
+Les formats `.mov` et `.mkv` ne sont pas décodés par Chromium. Le lecteur propose l'enregistrement du fichier ; les `.mp4` et `.webm` se lisent directement.
 
----
+**Où sont stockées les données ?**  
+Dans `data/`, à côté de l'exécutable en mode portable. Les jetons se trouvent dans `data/userData/saved_tokens.json` et sont chiffrés.
 
-` 🎬 `︲**Les vidéos ne se lisent pas.**
-
-Les formats `.mov` / `.mkv` ne sont pas décodables par le moteur : le lecteur propose **Enregistrer**. Les `.mp4` / `.webm` se lisent.
-
----
-
-` 🐌 `︲**La galerie rame / les images sautent.**
-
-Vérifie ta connexion (les images viennent du CDN). Lance « Télécharger les médias » pour un usage local hors ligne.
+**Un code 429 apparaît ?**  
+L'ordonnanceur doit éviter ces réponses par construction. Vérifier `data/logs/main.log` et s'assurer qu'aucun appel HTTP ne contourne `discordFetch`.
 
 ---
 
-` 📁 `︲**Où sont mes données ?**
-
-Dans `data/` à côté de l'exécutable (mode portable). Les jetons : `data/userData/saved_tokens.json` (chiffrés).
-
----
-
-` 🪵 `︲**Comment ouvrir le panneau de log ?**
-
-Ouvre les DevTools (`F12`) puis tape :
-
-```js
-window.toggleDebugLog()
-```
+<a id="licence"></a>
+# ` 📄 `︲Licence et crédits.
 
 ---
 
-` ⛔ `︲**Une erreur `429` ?**
+* **Application originale** : créée par **Bherl1** — [dépôt original](https://github.com/Bherl1/DiscordAccMgr).
+* **Fork et enrichissements** : **KataV8** — [dépôt du fork](https://github.com/K4taV8/DiscordAccMgr-Enhanced) (thèmes, interface Bento, Data Package, galerie média, miroir local, connexion Discord native, traduction FR/EN, logo).
+* **Licence** : MIT — voir [LICENSE](LICENSE). © 2024 Bherl1.
 
-L'app les évite par construction. Si tu en vois, un appel réseau ne passe pas par `discordFetch()` (voir **G1**).
-
----
-
-` ↩️ `︲**Puis-je annuler une suppression ?**
-
-Non. Les suppressions sont définitives côté Discord.
+Le dépôt ne définit pas de processus de contribution (`CONTRIBUTING` absent). Les modifications doivent conserver `npm test`, `npm run typecheck` et `npm run audit:sca` fonctionnels, ainsi que les garde-fous réseau, sécurité et persistance documentés dans le code.
 
 ---
 
-<a id="credits"></a>
-# ` 🧰 `︲Crédits et licence.
+<a id="outils"></a>
+# ` 🧰 `︲Outils et ressources.
 
 ---
 
-> [!TIP]
-> Vous trouverez ici les auteurs, la licence et le cadre d'utilisation du projet.
+* [Electron](https://www.electronjs.org/) — runtime desktop.
+* [Node.js](https://nodejs.org/) — runtime de développement et tests.
+* [axios](https://axios-http.com/) — client HTTP.
+* [discord.js-selfbot-v13](https://www.npmjs.com/package/discord.js-selfbot-v13) — client Discord.
+* [fflate](https://github.com/101arrowz/fflate) — archives ZIP.
+* [electron-builder](https://www.electron.build/) — packaging Windows.
+* [Boxicons](https://boxicons.com/) — pack d'icônes.
 
----
-
-* ` 🧑‍💻 ` ︲**Application originale :** créée par **Bherl1** ︲[`🌐`](https://github.com/Bherl1/DiscordAccMgr)
-
-* ` 🛠️ ` ︲**Fork et enrichissements :** **KataV8** (thèmes, design Bento, Data Package, galerie média, miroir local, connexion Discord native, logo...).
-
-* ` 📜 ` ︲**Licence MIT :** voir `LICENSE`. © 2024 Bherl1.
-
----
-
-> [!CAUTION]
-> **Outil non officiel : l'usage d'un jeton utilisateur avec l'API Discord contredit les conditions d'utilisation de Discord et peut entraîner le bannissement du compte. Tu es seul responsable de l'usage que tu en fais.**
-
----
+Les liens externes et le rendu des badges n'ont pas été vérifiés en ligne.
