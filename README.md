@@ -1,4 +1,4 @@
-# ` 📘 `︲Discord Account Manager, fork amélioré (KataV8).
+# ` 🫐 `︲Discord Account Manager, fork amélioré (KataV8).
 
 <p align="center">
   <img src="assets/logo.png" alt="Logo Discord Account Manager" width="120">
