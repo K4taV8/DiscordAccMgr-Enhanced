@@ -395,5 +395,3 @@ Le dépôt ne définit pas de processus de contribution (`CONTRIBUTING` absent).
 * [fflate](https://github.com/101arrowz/fflate) — archives ZIP.
 * [electron-builder](https://www.electron.build/) — packaging Windows.
 * [Boxicons](https://boxicons.com/) — pack d'icônes.
-
-Les liens externes et le rendu des badges n'ont pas été vérifiés en ligne.
