@@ -18,7 +18,7 @@ import { escHtml } from '../utils/emojiUtils.js';
 import { THEMES, applyTheme, currentTheme, themeLabel } from '../utils/theme.js';
 
 // Ordre d'affichage voulu pour la rangée unique : Light, Dark, Discord, Mono.
-const DISPLAY_ORDER = ['light', 'dark', 'discord', 'mono'];
+const DISPLAY_ORDER = ['light', 'dark', 'discord', 'mono', 'oled-lavender', 'oled-mono'];
 const MARGIN = 8; // px de marge minimale contre les bords de la fenetre
 const BOTTOM_MARGIN = 28; // px entre le bas de l'ilot et le bas de la fenetre
 

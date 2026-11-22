@@ -107,6 +107,24 @@ test('le theme mono est au registre et son bloc CSS existe', () => {
   assert.ok(tokensOf('mono'), 'le bloc :root[data-theme="mono"] est present');
 });
 
+test('les deux themes OLED sont enregistres et utilisent le noir pur', () => {
+  for (const id of ['oled-lavender', 'oled-mono']) {
+    assert.ok(THEMES.some((t) => t.id === id), `${id} est enregistre`);
+    const block = cssSource().split(`:root[data-theme="${id}"]`)[1]?.split('}')[0];
+    assert.ok(block, `le bloc :root[data-theme="${id}"] est present`);
+    assert.match(block, /--bg-body:\s*#000(?:000)?\s*;/i, `${id} part du noir pur`);
+    assert.match(block, /--text-primary\s*:/, `${id} definit text-primary`);
+    assert.match(block, /--brand-text\s*:/, `${id} definit brand-text`);
+  }
+});
+
+test('l icone active du rail utilise la couleur de texte de marque', () => {
+  const app = readFileSync(new URL('../src/styles/app.css', import.meta.url), 'utf8');
+  const regle = /\.nav-item\.active \.icon\s*\{([^}]*)\}/.exec(app);
+  assert.ok(regle, 'regle .nav-item.active .icon presente');
+  assert.match(regle[1], /background(?:-color)?:\s*var\(--brand-text\)/, 'icone active lisible sur le fond de marque');
+});
+
 test('le theme mono n utilise aucun noir pur', () => {
   const block = cssSource().split(':root[data-theme="mono"]')[1].split('}')[0];
   assert.ok(!/#000\b/i.test(block), 'pas de #000 ni #000000');

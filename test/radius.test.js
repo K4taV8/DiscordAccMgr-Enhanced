@@ -68,3 +68,12 @@ test('les CTA qui déclarent un rayon utilisent --radius-sharp (ou un token qui 
   }
   assert.deepEqual(problemes, [], `Rayon de CTA non tokenisé :\n${problemes.join('\n')}`);
 });
+
+test('la case de sélection des cartes est un petit carré, pas un cercle', () => {
+  const bloc = blocs(APP).find((b) => b.selector === '.bento-head input[type="checkbox"]');
+  assert.ok(bloc, 'règle de la case de sélection présente');
+  assert.match(bloc.body, /width:\s*16px/, 'largeur compacte');
+  assert.match(bloc.body, /height:\s*16px/, 'hauteur compacte');
+  assert.match(bloc.body, /border-radius:\s*4px/, 'carré à peine adouci');
+  assert.doesNotMatch(bloc.body, /border-radius:\s*(?:50%|999px|9999px)/, 'plus de cercle');
+});

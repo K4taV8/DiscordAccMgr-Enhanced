@@ -41,6 +41,16 @@ export const THEMES = [
     label: 'Mono',
     icon: svg('<circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 3a9 9 0 0 0 0 18V3z"/>'),
   },
+  {
+    id: 'oled-lavender',
+    label: 'OLED Lavande',
+    icon: svg('<rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7l1.35 3.65L17 12l-3.65 1.35L12 17l-1.35-3.65L7 12l3.65-1.35z"/>'),
+  },
+  {
+    id: 'oled-mono',
+    label: 'Mono OLED',
+    icon: svg('<rect x="3" y="3" width="18" height="18" rx="4" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="M12 7a5 5 0 0 0 0 10z"/>'),
+  },
 ];
 
 // Icone d'action du bouton, distincte des icones de theme : le bouton ouvre

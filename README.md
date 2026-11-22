@@ -9,7 +9,7 @@
   <img src="https://img.shields.io/badge/Node.js-22-blue?logo=nodedotjs&logoColor=white&style=for-the-badge">
   <img src="https://img.shields.io/badge/Stack-ESM_%7C_CJS-8E95E1?style=for-the-badge">
   <img src="https://img.shields.io/badge/API-Discord_v9-5865F2?style=for-the-badge">
-  <img src="https://img.shields.io/badge/Tests-559_verts-3ba55d?style=for-the-badge">
+  <img src="https://img.shields.io/badge/Tests-572_verts-3ba55d?style=for-the-badge">
   <img src="https://img.shields.io/badge/License-MIT-lightgrey?style=for-the-badge">
 </p>
 
@@ -148,7 +148,7 @@ Ce que tu peux faire avec :
 >
 > - ` 🔷 `︲**TypeScript :** miroirs typés vérifiés par `npm test` (`tsc --noEmit` + parité JS/TS).
 >
-> - ` 🧪 `︲**node:test (stdlib) :** **559 tests** (`npm test`), couverture via `npm run test:coverage`.
+> - ` 🧪 `︲**node:test (stdlib) :** **572 tests** (`npm test`), couverture via `npm run test:coverage`.
 >
 > - ` 👤 `︲**Interface Chaise-Clavier fonctionnelle.** 🫵
 
@@ -240,7 +240,8 @@ Sélectionne plusieurs cartes, puis lance un mode : **tout s'exécute en séquen
 
 * **Rail d'icônes** latéral (compact), **grille Bento** (cartes) ou **vue liste** (persistée).
 * **Dock flottant** de sélection multiple (actions groupées).
-* **Thèmes** : **Sombre**, **Clair**, **Discord** (Blurple), bascule en un clic.
+* **Thèmes** : **Sombre**, **Clair**, **Discord** (Blurple), **Mono**, **OLED Lavande** et **Mono OLED**, bascule en un clic.
+* **Langue** : interface **Français / English** commutable depuis la page de connexion et le rail.
 
 ---
 
@@ -610,7 +611,7 @@ Dans la galerie, **« Télécharger les médias »** pour tout avoir en local.
 * ` ⏳ ` ︲**TTL :** watermark serveur 24 h · ledger réactions 24 h · cache serveurs 30 s · cache canaux 60 s · checkpoints nettoyés après 7 jours.
 * ` 🪪 ` ︲**Jetons :** chiffrés `safeStorage` (préfixe `enc:`), enveloppe `schemaVersion`, migration de l'ancien format, entrées corrompues marquées. Emplacement : `data/userData/saved_tokens.json`.
 * ` 📁 ` ︲**Portable :** `data/` à côté de l'exécutable (`userData`, `sessionData`, `cache`, `crashDumps`, `logs`, `media`). Variable `ELECTRON_DEV=1` force les DevTools.
-* ` 🎨 ` ︲**Thème :** bouton dans le rail (Sombre → Clair → Discord), persisté en `localStorage`.
+* ` 🎨 ` ︲**Thème :** bouton pinceau dans le rail (6 thèmes, dont OLED Lavande et Mono OLED), persisté en `localStorage`.
 
 > [!WARNING]
 > **Ne pas augmenter les débits nominaux sans preuve empirique.**

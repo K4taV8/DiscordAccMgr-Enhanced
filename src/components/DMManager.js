@@ -48,11 +48,15 @@ export class DMManager {
         const listMode = listView.isOn('dms');
         this.listTotal = (dms || []).length;
         preservePageScroll(this.contentArea, () => `
-        <div class="list-toolbar">
-          <h2 class="page-title">Liste des MP <span class="list-count">${dms.length}</span></h2>
-          <div class="toolbar-actions">
+        <div class="list-toolbar list-toolbar-stacked">
+          <div class="list-toolbar-head">
+            <h2 class="page-title">Liste des MP <span class="list-count">${dms.length}</span></h2>
+            <div class="toolbar-actions">
+              ${listView.button('dms')}
+            </div>
+          </div>
+          <div class="list-toolbar-search">
             ${listSearchHtml('dms', this.searchQuery)}
-            ${listView.button('dms')}
           </div>
         </div>
         <div id="dmsList" class="bento-grid${listMode ? ' list-view' : ''}">

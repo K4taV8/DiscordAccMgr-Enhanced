@@ -42,11 +42,15 @@ export class FriendsManager {
         const listMode = listView.isOn('friends');
         this.listTotal = result.friends.length;
         preservePageScroll(this.contentArea, () => `
-        <div class="list-toolbar">
-          <h2 class="page-title">Liste des amis <span class="list-count">${result.friends.length}</span></h2>
-          <div class="toolbar-actions">
+        <div class="list-toolbar list-toolbar-stacked">
+          <div class="list-toolbar-head">
+            <h2 class="page-title">Liste des amis <span class="list-count">${result.friends.length}</span></h2>
+            <div class="toolbar-actions">
+              ${listView.button('friends')}
+            </div>
+          </div>
+          <div class="list-toolbar-search">
             ${listSearchHtml('friends', this.searchQuery)}
-            ${listView.button('friends')}
           </div>
         </div>
         <div id="friendsList" class="bento-grid${listMode ? ' list-view' : ''}">

@@ -38,7 +38,7 @@ export async function deleteDMMessages({
     // barre dans la modale precedente, encore presente pendant 1 s.
     const uid = `progress-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     modalOverlay = document.createElement('div');
-    modalOverlay.className = 'modal-overlay';
+    modalOverlay.className = 'modal-overlay progress-overlay';
     modalOverlay.innerHTML = `
       <div class="modal-content">
         <h2>Suppression des messages ${isGroup ? 'dans' : 'avec'} ${escHtml(username)}</h2>

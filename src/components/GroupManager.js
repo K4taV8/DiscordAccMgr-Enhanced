@@ -58,9 +58,11 @@ export class GroupManager {
           return `<img src="${escHtml(GROUP_DEFAULT_AVATAR)}" alt="${escHtml(g.name)}" loading="lazy">`;
         };
         preservePageScroll(this.contentArea, () => `
-        <div class="list-toolbar">
-          <h2 class="page-title">Liste des groupes <span class="list-count">${result.groups.length}</span></h2>
-          <div class="toolbar-actions">${listView.button('groups')}</div>
+        <div class="list-toolbar list-toolbar-stacked">
+          <div class="list-toolbar-head">
+            <h2 class="page-title">Liste des groupes <span class="list-count">${result.groups.length}</span></h2>
+            <div class="toolbar-actions">${listView.button('groups')}</div>
+          </div>
         </div>
         <div id="groupsList" class="bento-grid${listMode ? ' list-view' : ''}">
           ${result.groups.map(group => bentoCard({

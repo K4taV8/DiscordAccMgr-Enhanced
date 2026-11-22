@@ -160,7 +160,7 @@ export async function removeReactionsFromChannel({
     // partagé entre deux étapes ou deux managers.
     const uid = `progress-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
     modalOverlay = document.createElement('div');
-    modalOverlay.className = 'modal-overlay';
+    modalOverlay.className = 'modal-overlay progress-overlay';
     modalOverlay.innerHTML = `
       <div class="modal-content">
         <h2>Retrait de vos réactions ${isGroup ? 'dans' : 'avec'} ${escHtml(channelName)}</h2>

@@ -92,16 +92,16 @@ export class ServerManager {
         const listMode = listView.isOn('servers');
         this.listTotal = servers.length;
         this.contentArea.innerHTML = `
-        <div class="list-toolbar list-toolbar-servers">
+        <div class="list-toolbar list-toolbar-stacked">
           <div class="list-toolbar-head">
             <h2 class="page-title">Liste des serveurs <span class="list-count">${servers.length}</span></h2>
             <div class="toolbar-actions">
-              <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Tout marquer comme lu</button>
               ${listView.button('servers')}
             </div>
           </div>
           <div class="list-toolbar-search">
             ${listSearchHtml('servers', this.searchQuery)}
+            <button id="readAllBtn" class="btn btn-primary" data-action="readAll">Tout marquer comme lu</button>
           </div>
         </div>
         <div id="serversList" class="bento-grid${listMode ? ' list-view' : ''}"></div>

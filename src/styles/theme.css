@@ -227,19 +227,104 @@
    GRIS et non par teinte : sans hue, c est la seule hierarchie qui reste
    lisible entre "quitter le serveur" et "supprimer des messages". */
 :root[data-theme="mono"] {
-  --bg-body:          #0b0b0b;
-  --bg-sidebar:       #101010;
-  --bg-surface:       #131313;
-  --bg-card:          #1a1a1a;
-  --bg-card-hover:    #242424;
-  --bg-bento:         #161616;
-  --bg-input:         #202020;
-  --bg-modal:         #1a1a1a;
-  --bg-spotlight:     #161616;
+  --bg-body:          #080808;
+  --bg-sidebar:       #0d0d0d;
+  --bg-surface:       #101010;
+  --bg-card:          #171717;
+  --bg-card-hover:    #222222;
+  --bg-bento:         #121212;
+  --bg-input:         #1d1d1d;
+  --bg-modal:         #171717;
+  --bg-spotlight:     #121212;
 
-  --text-primary:     #f0f0f0;
-  --text-secondary:   #a6a6a6;
-  --text-muted:       #7a7a7a;
+  --text-primary:     #f5f5f5;
+  --text-secondary:   #bdbdbd;
+  --text-muted:       #8c8c8c;
+
+  --border-color:     rgba(255, 255, 255, 0.12);
+  --border-card:      rgba(255, 255, 255, 0.08);
+  --border-subtle:    rgba(255, 255, 255, 0.06);
+  --border-strong:    rgba(255, 255, 255, 0.26);
+  --hover-overlay:    rgba(255, 255, 255, 0.05);
+
+  --brand:            #f0f0f0;
+  --brand-text:       #080808;
+  --brand-glow:       rgba(240, 240, 240, 0.20);
+  --brand-dim:        rgba(240, 240, 240, 0.10);
+  --brand-border:     rgba(240, 240, 240, 0.34);
+  --btn-primary-bg:   #a6a6a6;
+  --accent:           #f0f0f0;
+  --accent-hover:     #d8d8d8;
+  --accent-light:     #1f1f1f;
+
+  --success:          #d0d0d0;
+  --success-glow:     rgba(208, 208, 208, 0.20);
+  --on-success:       #080808;
+  --danger:           #f5f5f5;
+  --danger-glow:      rgba(245, 245, 245, 0.24);
+  --danger-bg:        rgba(255, 255, 255, 0.10);
+  --danger-text:      #f5f5f5;
+  --danger-border:    rgba(255, 255, 255, 0.30);
+
+  --btn-neutre-bg:        #242424;
+  --btn-neutre-text:      #f0f0f0;
+  --btn-neutre-border:    rgba(255, 255, 255, 0.12);
+
+  --btn-danger-bg:        rgba(255, 255, 255, 0.08);
+  --btn-danger-text:      #f0f0f0;
+  --btn-danger-border:    rgba(255, 255, 255, 0.26);
+  --btn-danger-hover-bg:  #f5f5f5;
+  --btn-danger-hover-text:#080808;
+  --btn-danger-hover-border:#f5f5f5;
+
+  --btn-amber-bg:        rgba(255, 255, 255, 0.06);
+  --btn-amber-text:      #c8c8c8;
+  --btn-amber-border:    rgba(255, 255, 255, 0.20);
+  --btn-amber-hover-bg:  #c8c8c8;
+  --btn-amber-hover-text:#080808;
+  --btn-amber-hover-border:#c8c8c8;
+
+  --btn-crimson-bg:        rgba(255, 255, 255, 0.12);
+  --btn-crimson-text:      #f5f5f5;
+  --btn-crimson-border:    rgba(255, 255, 255, 0.36);
+  --btn-crimson-hover-bg:  #f5f5f5;
+  --btn-crimson-hover-text:#080808;
+  --btn-crimson-hover-border:#f5f5f5;
+
+  --owner-badge-bg:       rgba(255, 255, 255, 0.08);
+  --owner-badge-text:     #f0f0f0;
+  --owner-badge-border:   rgba(255, 255, 255, 0.28);
+
+  --action-grid-bg:       rgba(255, 255, 255, 0.03);
+  --action-grid-border:   rgba(255, 255, 255, 0.08);
+
+  --checkbox-border:      rgba(255, 255, 255, 0.50);
+  --dock-bg:              rgba(8, 8, 8, 0.86);
+
+  --card-shadow:          0 2px 10px rgba(4, 4, 4, 0.60);
+  --modal-shadow:         0 12px 32px rgba(4, 4, 4, 0.70);
+  --shadow-1:             var(--card-shadow);
+  --shadow-2:             var(--modal-shadow);
+  --shadow-convex:        3px 3px 8px rgba(4, 4, 4, 0.55), -2px -2px 6px rgba(255, 255, 255, 0.03);
+  --shadow-concave:       inset 2px 2px 6px rgba(4, 4, 4, 0.55), inset -2px -2px 6px rgba(255, 255, 255, 0.03);
+  --shadow-brand:         0 4px 22px rgba(4, 4, 4, 0.65);
+}
+
+/* OLED LAVANDE — noir pur, accents lavande historiques. */
+:root[data-theme="oled-lavender"] {
+  --bg-body:          #000000;
+  --bg-sidebar:       #050507;
+  --bg-surface:       #07070c;
+  --bg-card:          #0c0c14;
+  --bg-card-hover:    #16161f;
+  --bg-bento:         #090910;
+  --bg-input:         #13131b;
+  --bg-modal:         #0b0b12;
+  --bg-spotlight:     #16161f;
+
+  --text-primary:     #f4f4f5;
+  --text-secondary:   #a1a1aa;
+  --text-muted:       #7c7c86;
 
   --border-color:     rgba(255, 255, 255, 0.10);
   --border-card:      rgba(255, 255, 255, 0.07);
@@ -247,67 +332,104 @@
   --border-strong:    rgba(255, 255, 255, 0.22);
   --hover-overlay:    rgba(255, 255, 255, 0.04);
 
-  --brand:            #d4d4d4;
-  --brand-text:       #0b0b0b;
-  --brand-glow:       rgba(212, 212, 212, 0.18);
-  --brand-dim:        rgba(212, 212, 212, 0.10);
-  --brand-border:     rgba(212, 212, 212, 0.30);
-  --btn-primary-bg:   #9e9e9e;
-  --accent:           #d4d4d4;
-  --accent-hover:     #bfbfbf;
-  --accent-light:     #1f1f1f;
+  --brand:            #8E95E1;
+  --brand-text:       #0B0B0C;
+  --brand-glow:       rgba(142, 149, 225, 0.22);
+  --brand-dim:        rgba(142, 149, 225, 0.10);
+  --brand-border:     rgba(142, 149, 225, 0.24);
 
-  --success:          #8f8f8f;
-  --success-glow:     rgba(143, 143, 143, 0.20);
-  --on-success:       #0b0b0b;
-  --danger:           #e8e8e8;
-  --danger-glow:      rgba(232, 232, 232, 0.24);
-  --danger-bg:        rgba(255, 255, 255, 0.08);
-  --danger-text:      #ededed;
-  --danger-border:    rgba(255, 255, 255, 0.28);
+  --checkbox-border:  rgba(255, 255, 255, 0.40);
+  --dock-bg:          rgba(0, 0, 5, 0.82);
+  --card-shadow:      0 4px 24px rgba(0, 0, 0, 0.55);
+  --modal-shadow:     0 12px 32px rgba(0, 0, 0, 0.65);
+  --shadow-1:         var(--card-shadow);
+  --shadow-2:         var(--modal-shadow);
+  --shadow-brand:     0 4px 22px rgba(142, 149, 225, 0.26);
+}
 
-  --btn-neutre-bg:        #262626;
-  --btn-neutre-text:      #e0e0e0;
-  --btn-neutre-border:    rgba(255, 255, 255, 0.10);
+/* MONO OLED — noir pur, monochrome strict. */
+:root[data-theme="oled-mono"] {
+  --bg-body:          #000000;
+  --bg-sidebar:       #000000;
+  --bg-surface:       #050505;
+  --bg-card:          #0a0a0a;
+  --bg-card-hover:    #141414;
+  --bg-bento:         #050505;
+  --bg-input:         #101010;
+  --bg-modal:         #0a0a0a;
+  --bg-spotlight:     #141414;
+
+  --text-primary:     #ffffff;
+  --text-secondary:   #c8c8c8;
+  --text-muted:       #969696;
+
+  --border-color:     rgba(255, 255, 255, 0.14);
+  --border-card:      rgba(255, 255, 255, 0.10);
+  --border-subtle:    rgba(255, 255, 255, 0.07);
+  --border-strong:    rgba(255, 255, 255, 0.30);
+  --hover-overlay:    rgba(255, 255, 255, 0.05);
+
+  --brand:            #f5f5f5;
+  --brand-text:       #000000;
+  --brand-glow:       rgba(255, 255, 255, 0.22);
+  --brand-dim:        rgba(255, 255, 255, 0.10);
+  --brand-border:     rgba(255, 255, 255, 0.36);
+  --btn-primary-bg:   #f5f5f5;
+  --accent:           #f5f5f5;
+  --accent-hover:     #d8d8d8;
+  --accent-light:     #1a1a1a;
+
+  --success:          #d8d8d8;
+  --success-glow:     rgba(216, 216, 216, 0.20);
+  --on-success:       #000000;
+  --danger:           #ffffff;
+  --danger-glow:      rgba(255, 255, 255, 0.24);
+  --danger-bg:        rgba(255, 255, 255, 0.10);
+  --danger-text:      #ffffff;
+  --danger-border:    rgba(255, 255, 255, 0.30);
+
+  --btn-neutre-bg:        #181818;
+  --btn-neutre-text:      #f5f5f5;
+  --btn-neutre-border:    rgba(255, 255, 255, 0.14);
 
   --btn-danger-bg:        rgba(255, 255, 255, 0.08);
-  --btn-danger-text:      #e6e6e6;
-  --btn-danger-border:    rgba(255, 255, 255, 0.26);
-  --btn-danger-hover-bg:  #ededed;
-  --btn-danger-hover-text:#0b0b0b;
-  --btn-danger-hover-border:#ededed;
+  --btn-danger-text:      #f5f5f5;
+  --btn-danger-border:    rgba(255, 255, 255, 0.28);
+  --btn-danger-hover-bg:  #ffffff;
+  --btn-danger-hover-text:#000000;
+  --btn-danger-hover-border:#ffffff;
 
   --btn-amber-bg:        rgba(255, 255, 255, 0.06);
-  --btn-amber-text:      #b0b0b0;
-  --btn-amber-border:    rgba(255, 255, 255, 0.16);
-  --btn-amber-hover-bg:  #b0b0b0;
-  --btn-amber-hover-text:#0b0b0b;
-  --btn-amber-hover-border:#b0b0b0;
+  --btn-amber-text:      #d0d0d0;
+  --btn-amber-border:    rgba(255, 255, 255, 0.20);
+  --btn-amber-hover-bg:  #d0d0d0;
+  --btn-amber-hover-text:#000000;
+  --btn-amber-hover-border:#d0d0d0;
 
   --btn-crimson-bg:        rgba(255, 255, 255, 0.12);
-  --btn-crimson-text:      #ededed;
-  --btn-crimson-border:    rgba(255, 255, 255, 0.32);
-  --btn-crimson-hover-bg:  #ededed;
-  --btn-crimson-hover-text:#0b0b0b;
-  --btn-crimson-hover-border:#ededed;
+  --btn-crimson-text:      #f5f5f5;
+  --btn-crimson-border:    rgba(255, 255, 255, 0.36);
+  --btn-crimson-hover-bg:  #f5f5f5;
+  --btn-crimson-hover-text:#000000;
+  --btn-crimson-hover-border:#f5f5f5;
 
   --owner-badge-bg:       rgba(255, 255, 255, 0.08);
-  --owner-badge-text:     #d0d0d0;
-  --owner-badge-border:   rgba(255, 255, 255, 0.24);
+  --owner-badge-text:     #f5f5f5;
+  --owner-badge-border:   rgba(255, 255, 255, 0.28);
 
-  --action-grid-bg:       rgba(255, 255, 255, 0.02);
-  --action-grid-border:   rgba(255, 255, 255, 0.06);
+  --action-grid-bg:       rgba(255, 255, 255, 0.03);
+  --action-grid-border:   rgba(255, 255, 255, 0.08);
 
-  --checkbox-border:      rgba(255, 255, 255, 0.36);
-  --dock-bg:              rgba(16, 16, 16, 0.82);
+  --checkbox-border:      rgba(255, 255, 255, 0.55);
+  --dock-bg:              rgba(0, 0, 0, 0.90);
 
-  --card-shadow:          0 2px 10px rgba(6, 6, 6, 0.55);
-  --modal-shadow:         0 12px 32px rgba(6, 6, 6, 0.65);
+  --card-shadow:          0 2px 12px rgba(0, 0, 0, 0.70);
+  --modal-shadow:         0 12px 32px rgba(0, 0, 0, 0.80);
   --shadow-1:             var(--card-shadow);
   --shadow-2:             var(--modal-shadow);
-  --shadow-convex:        3px 3px 8px rgba(6, 6, 6, 0.50), -2px -2px 6px rgba(255, 255, 255, 0.02);
-  --shadow-concave:       inset 2px 2px 6px rgba(6, 6, 6, 0.50), inset -2px -2px 6px rgba(255, 255, 255, 0.02);
-  --shadow-brand:         0 4px 22px rgba(6, 6, 6, 0.60);
+  --shadow-convex:        3px 3px 8px rgba(0, 0, 0, 0.60), -2px -2px 6px rgba(255, 255, 255, 0.03);
+  --shadow-concave:       inset 2px 2px 6px rgba(0, 0, 0, 0.60), inset -2px -2px 6px rgba(255, 255, 255, 0.03);
+  --shadow-brand:         0 4px 22px rgba(255, 255, 255, 0.10);
 }
 :root {
   /* Style carré et saillant : toutes les surfaces/buttons partagent ce rayon.
@@ -395,6 +517,11 @@ p, span, label, input {
   font-weight: 600;
   box-shadow: 0 2px 10px rgba(142, 149, 225, 0.25);
 }
+
+/* Un libellé dans un bouton suit la couleur DU BOUTON. Sans ça, la règle
+   globale `span { color: var(--text-primary) }` rendait « Se connecter »
+   blanc sur un bouton primaire clair (Mono OLED, OLED Lavande…). */
+.btn span { color: inherit; }
 
 .btn-primary:hover {
   filter: brightness(1.1);

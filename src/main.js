@@ -12,6 +12,8 @@ import { showUserProfileModal } from './components/UserProfileModal.js';
 import { showHelpModal } from './components/HelpModal.js';
 import { toggleThemeSelector } from './components/ThemeSelector.js';
 import { applyTheme, readStoredTheme, THEME_BUTTON_ICON } from './utils/theme.js';
+import { initLanguage } from './i18n/index.js';
+import { bindLanguageButtons } from './components/LanguageSelector.js';
 import { PackageManager } from './components/PackageManager.js';
 import { configurePreloads, preloadPage, preloadPages, isPageCachedFresh, clearPageCaches } from './utils/pagePreloader.js';
 
@@ -39,6 +41,9 @@ window.__logs = [];
 // Son icône est fixe (pinceau) : c'est une action « personnaliser », pas la
 // représentation du thème courant. Le libellé est dans index.html.
 const themeToggleBtn = document.getElementById('themeToggleBtn');
+
+initLanguage();
+bindLanguageButtons();
 applyTheme(readStoredTheme());
 if (themeToggleBtn) themeToggleBtn.innerHTML = THEME_BUTTON_ICON;
 themeToggleBtn?.addEventListener('click', () => toggleThemeSelector(themeToggleBtn));
