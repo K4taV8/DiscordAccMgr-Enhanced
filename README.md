@@ -445,7 +445,7 @@ Les modifications doivent conserver `npm test`, `npm run typecheck`, `npm run au
 | Élément | Détail |
 |---|---|
 | ` 🧑‍💻 `︲**Application originale** | Créée par **Bherl1** ([dépôt original](https://github.com/Bherl1/DiscordAccMgr)). **(Grand merci pour son travail !)** |
-| ` 🛠️ `︲**Fork et enrichissements** | **KataV8** ([dépôt du fork](https://github.com/K4taV8/DiscordAccMgr-Enhanced)) : thèmes, interface Bento, Data Package, galerie média, miroir local, connexion Discord native, traduction FR/EN, logo. |
+| ` 🛠️ `︲**Fork et enrichissements** | **KataV8** ([dépôt du fork](https://github.com/K4taV8/DiscordAccMgr-Enhanced)) : interface Bento, 6 thèmes, FR/EN, Data Package, galerie et miroir média, connexion Discord native, nettoyage complet, rate-limit, sécurité renforcée et 602 tests. [Comparaison détaillée](COMPARISON.md). |
 | ` 📜 `︲**Licence** | MIT, voir [LICENSE](LICENSE). © 2024 Bherl1. |
 
 ---
