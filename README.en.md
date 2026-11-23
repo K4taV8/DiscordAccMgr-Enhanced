@@ -109,6 +109,8 @@ A desktop Electron application for managing your own Discord account: servers, f
 
 ---
 
+An Electron-based desktop application designed for efficient management of Discord servers, contacts, and mass message deletion. Based on **DiscordAccMgr** by **Bherl1**.
+
 Discord Account Manager - Enhanced is an Electron application built without a front-end framework or bundler. The renderer uses JavaScript ESM, while the main process and preload use CommonJS. Network operations go through a single entry point in the main process, which applies a scheduler aware of the `X-RateLimit-*` headers.
 
 The interface is available in French and English, with six themes including two OLED variants. Application data stays in a `data/` directory next to the executable.
@@ -472,9 +474,12 @@ The scheduler is designed to avoid these responses. Check `data/logs/main.log` a
 
 ---
 
-* **Original application**: created by **Bherl1**: [original repository](https://github.com/Bherl1/DiscordAccMgr).
-* **Fork and enhancements**: **KataV8**: [fork repository](https://github.com/K4taV8/DiscordAccMgr-Enhanced) (themes, Bento interface, Data Package, media gallery, local mirror, native Discord sign-in, French/English translation, logo).
-* **License**: MIT: see [LICENSE](LICENSE). © 2024 Bherl1. The repository has no `CONTRIBUTING` file; changes must keep `npm test`, `npm run typecheck` and `npm run audit:sca` working.
+| Item | Detail |
+|---|---|
+| ` 🧑‍💻 `︲**Original application** | Created by **Bherl1** ([original repository](https://github.com/Bherl1/DiscordAccMgr)). **(Many thanks for their work!)** |
+| ` 🛠️ `︲**Fork and enhancements** | **KataV8** ([fork repository](https://github.com/K4taV8/DiscordAccMgr-Enhanced)): themes, Bento interface, Data Package, media gallery, local mirror, native Discord sign-in, French/English translation, logo. |
+| ` 📜 `︲**License** | MIT, see [LICENSE](LICENSE). © 2024 Bherl1. |
+| ` 🤝 `︲**Contributions** | The repository has no `CONTRIBUTING` file; changes must keep `npm test`, `npm run typecheck` and `npm run audit:sca` working. |
 
 ---
 

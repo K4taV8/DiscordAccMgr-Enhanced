@@ -79,6 +79,8 @@ Application de bureau Electron pour gérer son propre compte Discord : serveurs,
 
 ---
 
+Application de bureau basée sur Electron, conçue pour la gestion efficace des serveurs, des contacts et la suppression massive de messages sur Discord. Basée sur **DiscordAccMgr** par **Bherl1**.
+
 Discord Account Manager - Enhanced est une application Electron sans bundler ni framework front-end. Le renderer est écrit en JavaScript ESM, le processus principal et le preload en CommonJS. Les appels à l'API Discord passent par `discordFetch` dans le processus principal, avec un ordonnanceur qui tient compte des en-têtes `X-RateLimit-*`. Les téléchargements de médias Discord utilisent des transports contrôlés dans le même processus, avec allowlist CDN et limite de taille.
 
 <a id="fonctionnalites"></a>
@@ -440,9 +442,11 @@ Les modifications doivent conserver `npm test`, `npm run typecheck`, `npm run au
 
 ---
 
-* **Application originale** : créée par **Bherl1** ([dépôt original](https://github.com/Bherl1/DiscordAccMgr)).
-* **Fork et enrichissements** : **KataV8** ([dépôt du fork](https://github.com/K4taV8/DiscordAccMgr-Enhanced)) : thèmes, interface Bento, Data Package, galerie média, miroir local, connexion Discord native, traduction FR/EN, logo.
-* **Licence** : MIT, voir [LICENSE](LICENSE). © 2024 Bherl1.
+| Élément | Détail |
+|---|---|
+| ` 🧑‍💻 `︲**Application originale** | Créée par **Bherl1** ([dépôt original](https://github.com/Bherl1/DiscordAccMgr)). **(Grand merci pour son travail !)** |
+| ` 🛠️ `︲**Fork et enrichissements** | **KataV8** ([dépôt du fork](https://github.com/K4taV8/DiscordAccMgr-Enhanced)) : thèmes, interface Bento, Data Package, galerie média, miroir local, connexion Discord native, traduction FR/EN, logo. |
+| ` 📜 `︲**Licence** | MIT, voir [LICENSE](LICENSE). © 2024 Bherl1. |
 
 ---
 
