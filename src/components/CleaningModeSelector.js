@@ -45,7 +45,7 @@ export function openCleaningModeSelector(anchor, cfg = {}) {
     <div class="theme-popover-header">
       <span class="theme-popover-title">Mode de nettoyage</span>
     </div>
-    <div class="theme-grid">
+    <div class="theme-grid clean-mode-grid">
       ${MODES.map(m => `
         <button type="button" class="theme-tile" role="menuitemradio" aria-checked="false" data-mode="${m.id}" title="${escHtml(m.title)}">
           <span class="theme-tile-icon">${escHtml(m.icon)}</span>

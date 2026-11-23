@@ -36,6 +36,7 @@ A desktop Electron application for managing your own Discord account: servers, f
 
    * [`✨`︲Features.](#features)
    * [`🧰`︲Tech stack.](#stack)
+   * [`📸`︲Gallery.](#gallery)
 
    ---
 
@@ -122,14 +123,86 @@ The interface is available in French and English, with six themes including two 
 | Layer | Technology | Version |
 |---|---|---|
 | Desktop runtime | Electron | 43.8.12 |
-| Main process | Node.js | 22.x |
-| Languages | JavaScript ESM/CJS, TypeScript (types) | TypeScript 7.0.2 |
-| Interface | HTML, CSS and vanilla JavaScript | — |
+| Test runtime | Node.js | 22.18+ |
+| Languages | JavaScript ESM/CJS, TypeScript | TypeScript 7.0.2 |
+| Interface | HTML, CSS and vanilla JavaScript | not applicable |
 | HTTP | axios | 1.21.1 |
 | Discord client | discord.js-selfbot-v13 | 3.4.6 |
 | ZIP archives | fflate | 0.8.3 |
 | Packaging | electron-builder | 26.18.1 |
 | Tests | node:test | provided by Node.js |
+
+---
+
+<a id="gallery"></a>
+### ` 📸 `︲Gallery.
+
+---
+
+The screenshots below show the main screens with demo data. Names and avatars are anonymized, and the interface is shown in French. Click a screenshot to open it full size.
+
+<table>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/01-connexion.png"><img src="README-SCREENSHOTS/01-connexion.png" alt="Sign-in screen" width="410"></a>
+      <br>
+      <strong>Sign-in.</strong> Token sign-in or the native Discord window. Saved accounts are encrypted at rest.
+    </td>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/02-amis.png"><img src="README-SCREENSHOTS/02-amis.png" alt="Friend list" width="410"></a>
+      <br>
+      <strong>Friends.</strong> Friend list with multi-select, ID copy and individual removal.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/03-serveurs.png"><img src="README-SCREENSHOTS/03-serveurs.png" alt="Server list" width="410"></a>
+      <br>
+      <strong>Servers.</strong> Servers with bulk actions: mute, delete messages, remove reactions and leave.
+    </td>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/04-messages-prives.png"><img src="README-SCREENSHOTS/04-messages-prives.png" alt="Direct message list" width="410"></a>
+      <br>
+      <strong>Direct messages.</strong> Private conversations: delete messages, remove reactions and close the conversation.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/05-groupes.png"><img src="README-SCREENSHOTS/05-groupes.png" alt="Group list" width="410"></a>
+      <br>
+      <strong>Groups.</strong> Groups with the cleaning actions and leaving the group.
+    </td>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/06-archives.png"><img src="README-SCREENSHOTS/06-archives.png" alt="Discord archive import" width="410"></a>
+      <br>
+      <strong>Archives.</strong> Local import of a Discord ZIP export, without sending data.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/07-profil.png"><img src="README-SCREENSHOTS/07-profil.png" alt="Connected profile card" width="410"></a>
+      <br>
+      <strong>Profile.</strong> Connected account card: name, handle, copyable ID and creation date.
+    </td>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/08-informations.png"><img src="README-SCREENSHOTS/08-informations.png" alt="Information modal" width="410"></a>
+      <br>
+      <strong>Information.</strong> Version, technologies, fork and original repositories, MIT license.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/09-nettoyage.png"><img src="README-SCREENSHOTS/09-nettoyage.png" alt="Cleaning modes" width="410"></a>
+      <br>
+      <strong>Cleaning.</strong> Combined cleaning modes and a contextual action bar for selected items.
+    </td>
+    <td width="50%" valign="top">
+      <a href="README-SCREENSHOTS/10-themes.png"><img src="README-SCREENSHOTS/10-themes.png" alt="Theme selector" width="410"></a>
+      <br>
+      <strong>Themes.</strong> Six themes, including OLED Lavender and Mono OLED variants.
+    </td>
+  </tr>
+</table>
 
 ---
 
@@ -302,6 +375,7 @@ shared/          shared types
 scripts/         ASAR verification
 test/            node:test suite
 assets/          logo, avatars and icons
+README-SCREENSHOTS/ gallery captures
 resources/       packaging resources
 index.html       renderer document
 ```
@@ -376,9 +450,9 @@ The scheduler is designed to avoid these responses. Check `data/logs/main.log` a
 
 ---
 
-* **Original application**: created by **Bherl1** — [original repository](https://github.com/Bherl1/DiscordAccMgr).
-* **Fork and enhancements**: **KataV8** — [fork repository](https://github.com/K4taV8/DiscordAccMgr-Enhanced) (themes, Bento interface, Data Package, media gallery, local mirror, native Discord sign-in, French/English translation, logo).
-* **License**: MIT — see [LICENSE](LICENSE). © 2024 Bherl1. The repository has no `CONTRIBUTING` file; changes must keep `npm test`, `npm run typecheck` and `npm run audit:sca` working.
+* **Original application**: created by **Bherl1**: [original repository](https://github.com/Bherl1/DiscordAccMgr).
+* **Fork and enhancements**: **KataV8**: [fork repository](https://github.com/K4taV8/DiscordAccMgr-Enhanced) (themes, Bento interface, Data Package, media gallery, local mirror, native Discord sign-in, French/English translation, logo).
+* **License**: MIT: see [LICENSE](LICENSE). © 2024 Bherl1. The repository has no `CONTRIBUTING` file; changes must keep `npm test`, `npm run typecheck` and `npm run audit:sca` working.
 
 ---
 
@@ -387,12 +461,12 @@ The scheduler is designed to avoid these responses. Check `data/logs/main.log` a
 
 ---
 
-* [Electron](https://www.electronjs.org/) — desktop runtime.
-* [Node.js](https://nodejs.org/) — development and test runtime.
-* [axios](https://axios-http.com/) — HTTP client.
-* [discord.js-selfbot-v13](https://www.npmjs.com/package/discord.js-selfbot-v13) — Discord client.
-* [fflate](https://github.com/101arrowz/fflate) — ZIP archives.
-* [electron-builder](https://www.electron.build/) — Windows packaging.
-* [Boxicons](https://boxicons.com/) — icon pack.
+* [Electron](https://www.electronjs.org/): desktop runtime.
+* [Node.js](https://nodejs.org/): development and test runtime.
+* [axios](https://axios-http.com/): HTTP client.
+* [discord.js-selfbot-v13](https://www.npmjs.com/package/discord.js-selfbot-v13): Discord client.
+* [fflate](https://github.com/101arrowz/fflate): ZIP archives.
+* [electron-builder](https://www.electron.build/): Windows packaging.
+* [Boxicons](https://boxicons.com/): icon pack.
 
 External links and badge rendering were not verified online.

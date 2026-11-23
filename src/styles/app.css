@@ -580,9 +580,23 @@ body.is-maximized .tb-btn .icon-restore { display: block; }
 /* Mêmes tuiles que le thème, mais le header ne porte qu'un titre : sans ça il
    restait collé à gauche (le space-between du thème existe pour le libellé
    courant à droite). Ici tout est centré. */
+.clean-mode-popover {
+  width: 480px;
+  max-width: calc(100vw - 32px);
+}
+
+.clean-mode-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .clean-mode-popover .theme-popover-header {
   justify-content: center;
   text-align: center;
+}
+
+@media (max-width: 560px) {
+  .clean-mode-popover { width: calc(100vw - 24px); }
+  .clean-mode-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 }
 
 /* --- Bouton Aide (?) --- */
@@ -1729,7 +1743,7 @@ body.login-active .main-content {
   font-weight: 600;
   letter-spacing: 0.02em;
   padding: 3px 8px;
-  border-radius: var(--radius-pill);
+  border-radius: 4px;
   background: var(--brand-dim);
   color: var(--brand);
   border: 1px solid var(--brand-border);
@@ -2195,10 +2209,11 @@ input[type="checkbox"]:focus-visible {
 }
 
 .version-badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: center;
   margin: 0 auto;
-  padding: 4px 14px;
-  border-radius: 999px;
+  padding: 3px 10px;
+  border-radius: 4px;
   background: var(--brand-dim);
   border: 1px solid var(--brand-border);
   color: var(--brand);
@@ -2220,18 +2235,33 @@ input[type="checkbox"]:focus-visible {
 }
 
 .info-links a {
-  color: var(--brand);
-  text-decoration: none;
-  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border-color);
   border-radius: var(--radius-sharp);
-  transition: background var(--transition-fast), color var(--transition-fast);
-  display: inline-block;
-  font-weight: 500;
-  font-size: 13px;
+  background: var(--bg-body);
+  color: var(--text-secondary);
+  text-decoration: none;
+  font-weight: 600;
+  font-size: 12px;
+  transition: background-color var(--transition-fast), border-color var(--transition-fast), color var(--transition-fast);
 }
 
 .info-links a:hover {
   background: var(--brand-dim);
+  border-color: var(--brand-border);
+  color: var(--brand);
+}
+
+.info-link-icon {
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
+  display: block;
 }
 
 .info-head { display: flex; align-items: center; gap: 12px; text-align: left; }
@@ -2773,7 +2803,7 @@ a.info-author-card:hover { border-color: var(--brand-border); background: var(--
 .task-phase {
   display: inline-block;
   padding: 2px 8px;
-  border-radius: var(--radius-sharp);
+  border-radius: 4px;
   font-size: 11px;
   font-weight: 600;
   background: var(--brand);

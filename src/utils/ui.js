@@ -107,9 +107,9 @@ export const showProgressModal = (title, total, options = {}) => {
 };
 
 export const showInfoModal = async () => {
-  // Liens des depots. Original : Bherl1. Fork : a renseigner (vide = pas de lien).
+  // Liens des depots. Original : Bherl1. Fork : KataV8.
   const ORIGINAL_REPO_URL = 'https://github.com/Bherl1/DiscordAccMgr';
-  const FORK_REPO_URL = '';
+  const FORK_REPO_URL = 'https://github.com/K4taV8/DiscordAccMgr-Enhanced';
 
   const modal = document.createElement('div');
   modal.className = 'modal-overlay';
@@ -131,7 +131,8 @@ export const showInfoModal = async () => {
       : `<div class="info-author-card info-author-card-static">${inner}</div>`;
   };
 
-  const forkLink = FORK_REPO_URL ? `<a href="#" data-url="${FORK_REPO_URL}">Dépôt (fork)</a>` : '';
+  const repoLink = (url, label) => `<a href="#" data-url="${url}"><svg class="info-link-icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M4 2h6v6M10 2L2 10" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/></svg><span>${label}</span></a>`;
+  const forkLink = FORK_REPO_URL ? repoLink(FORK_REPO_URL, 'Dépôt (fork)') : '';
 
   content.innerHTML = `
     <div class="info-head">
@@ -150,7 +151,7 @@ export const showInfoModal = async () => {
       <div class="info-footer">
         <div class="info-links">
           ${forkLink}
-          <a href="#" data-url="${ORIGINAL_REPO_URL}">Dépôt original</a>
+          ${repoLink(ORIGINAL_REPO_URL, 'Dépôt original')}
         </div>
         <p class="info-license">Licence MIT · © 2024 Bherl1</p>
         <div class="info-divider"></div>

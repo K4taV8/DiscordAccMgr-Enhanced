@@ -13,6 +13,17 @@ export function autoConcurrency(n) {
   return 8;
 }
 
+export function setTaskActionClose(button, onClose) {
+  if (!button) return;
+  button.textContent = 'Fermer';
+  button.className = 'btn btn-secondary';
+  button.style.background = '';
+  button.style.borderColor = '';
+  button.style.color = '';
+  button.disabled = false;
+  button.onclick = onClose;
+}
+
 export function createTaskPanel(serverName, logPrefix) {
   const existing = document.getElementById('taskPanel');
   if (existing) existing.remove(); // BUG-09 : un seul panneau — la tâche la plus récente gagne

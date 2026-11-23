@@ -1,4 +1,4 @@
-import { fmt, autoConcurrency, createTaskPanel } from './serverTaskUtils.js';
+import { fmt, autoConcurrency, createTaskPanel, setTaskActionClose } from './serverTaskUtils.js';
 import { scanLimiter, deleteLimiter } from './rateLimiter.js';
 import { confirmAction } from './ui.js';
 import {
@@ -306,10 +306,7 @@ export async function deleteServerMessages({
           if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
           updateBar(100);
           if (details) details.textContent = 'Relancez pour scanner les canaux restants';
-          actionBtn.textContent = 'Fermer';
-          actionBtn.style.background = '#faa81a';
-          actionBtn.disabled = false;
-          actionBtn.onclick = () => cleanExit(onComplete);
+          setTaskActionClose(actionBtn, () => cleanExit(onComplete));
           checkpoint = touch(checkpoint);
           await saveCheckpoint(OP_MESSAGES, serverId, checkpoint);
           safeTimeout(() => cleanExit(onComplete), 3000);
@@ -319,10 +316,7 @@ export async function deleteServerMessages({
         if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
         updateBar(100);
         if (details) details.textContent = 'Rien à supprimer';
-        actionBtn.textContent = 'Fermer';
-        actionBtn.style.background = '#3ba55d';
-        actionBtn.disabled = false;
-        actionBtn.onclick = () => cleanExit(onComplete);
+        setTaskActionClose(actionBtn, () => cleanExit(onComplete));
         await finalizeWatermark();
         await clearCheckpoint(OP_MESSAGES, serverId);
         safeTimeout(() => cleanExit(onComplete), 3000);
@@ -423,10 +417,7 @@ export async function deleteServerMessages({
       if (phase) { phase.textContent = 'Incomplet'; phase.style.background = '#ed4245'; }
       if (status) status.textContent = `Supprimés ${deleted} / ${total} — ${failed} échec(s) (reprise possible)`;
       if (details) details.textContent = 'Des suppressions ont échoué — relancez pour réessayer';
-      actionBtn.textContent = 'Fermer';
-      actionBtn.style.background = '#ed4245';
-      actionBtn.disabled = false;
-      actionBtn.onclick = () => cleanExit(onComplete);
+      setTaskActionClose(actionBtn, () => cleanExit(onComplete));
       safeTimeout(() => cleanExit(onComplete), 5000);
       return;
     }
@@ -448,10 +439,7 @@ export async function deleteServerMessages({
       if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
       if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
       if (details) details.textContent = `${deleted} supprimés — relancez pour scanner les canaux restants`;
-      actionBtn.textContent = 'Fermer';
-      actionBtn.style.background = '#faa81a';
-      actionBtn.disabled = false;
-      actionBtn.onclick = () => cleanExit(onComplete);
+      setTaskActionClose(actionBtn, () => cleanExit(onComplete));
       safeTimeout(() => cleanExit(onComplete), 5000);
       return;
     }
@@ -459,10 +447,7 @@ export async function deleteServerMessages({
     updateBar(100);
     if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
     if (status) status.textContent = `${deleted} message(s) supprimé(s)`;
-    actionBtn.textContent = 'Fermer';
-    actionBtn.style.background = '#3ba55d';
-    actionBtn.disabled = false;
-    actionBtn.onclick = () => cleanExit(onComplete);
+    setTaskActionClose(actionBtn, () => cleanExit(onComplete));
 
     await finalizeWatermark();
     await clearCheckpoint(OP_MESSAGES, serverId);

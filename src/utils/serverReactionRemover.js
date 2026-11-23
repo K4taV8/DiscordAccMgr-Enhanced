@@ -1,5 +1,5 @@
 import { formatEmojiForApi } from './emojiUtils.js';
-import { autoConcurrency, createTaskPanel } from './serverTaskUtils.js';
+import { autoConcurrency, createTaskPanel, setTaskActionClose } from './serverTaskUtils.js';
 import { scanLimiter, deleteLimiter } from './rateLimiter.js';
 import { confirmAction } from './ui.js';
 import { countPartialChannels } from './serverMessageDeleter.js';
@@ -226,10 +226,7 @@ export async function removeServerReactions({
           if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
           updateBar(100);
           if (details) details.textContent = 'Relancez pour scanner les canaux restants';
-          actionBtn.textContent = 'Fermer';
-          actionBtn.style.background = '#faa81a';
-          actionBtn.disabled = false;
-          actionBtn.onclick = () => cleanExit(onComplete);
+          setTaskActionClose(actionBtn, () => cleanExit(onComplete));
           checkpoint = touch(checkpoint);
           await saveCheckpoint(OP_REACTIONS, serverId, checkpoint);
           safeTimeout(() => cleanExit(onComplete), 3000);
@@ -239,10 +236,7 @@ export async function removeServerReactions({
         if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
         updateBar(100);
         if (details) details.textContent = 'Rien à retirer';
-        actionBtn.textContent = 'Fermer';
-        actionBtn.style.background = '#3ba55d';
-        actionBtn.disabled = false;
-        actionBtn.onclick = () => cleanExit(onComplete);
+        setTaskActionClose(actionBtn, () => cleanExit(onComplete));
         await clearCheckpoint(OP_REACTIONS, serverId);
         safeTimeout(() => cleanExit(onComplete), 3000);
         return;
@@ -389,10 +383,7 @@ export async function removeServerReactions({
       if (phase) { phase.textContent = 'Partiel'; phase.style.background = '#faa81a'; }
       if (status) status.textContent = `Terminé, ${partialCount} canal(aux) non scanné(s)`;
       if (details) details.textContent = `${removed} supprimées — relancez pour scanner les canaux restants`;
-      actionBtn.textContent = 'Fermer';
-      actionBtn.style.background = '#faa81a';
-      actionBtn.disabled = false;
-      actionBtn.onclick = () => cleanExit(onComplete);
+      setTaskActionClose(actionBtn, () => cleanExit(onComplete));
       safeTimeout(() => cleanExit(onComplete), 5000);
       return;
     }
@@ -401,10 +392,7 @@ export async function removeServerReactions({
     if (phase) { phase.textContent = 'Terminé'; phase.style.background = '#3ba55d'; }
     if (status) status.textContent = `Retirées ${removed} / ${removed + failed}${failed > 0 ? ` (${failed} en échec)` : ''}`;
     if (details) details.textContent = `${removed} retirée(s)${failed > 0 ? `, ${failed} en échec` : ''}`;
-    actionBtn.textContent = 'Fermer';
-    actionBtn.style.background = '#3ba55d';
-    actionBtn.disabled = false;
-    actionBtn.onclick = () => cleanExit(onComplete);
+    setTaskActionClose(actionBtn, () => cleanExit(onComplete));
 
     await clearCheckpoint(OP_REACTIONS, serverId);
     safeTimeout(() => cleanExit(onComplete), 5000);

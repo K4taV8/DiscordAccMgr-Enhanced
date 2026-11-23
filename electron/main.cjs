@@ -529,7 +529,7 @@ ipcMain.handle('discord:readAll', async () => {
 });
 
 // External links — whitelist: only GitHub repository (single known usage)
-const EXTERNAL_URL_ALLOWLIST = /^https:\/\/github\.com\/Bherl1\/DiscordAccMgr(\/|$)/;
+const EXTERNAL_URL_ALLOWLIST = /^https:\/\/github\.com\/(?:Bherl1\/DiscordAccMgr|K4taV8\/DiscordAccMgr-Enhanced)(?:\/|$)/;
 ipcMain.handle('app:openExternal', async (_, url) => {
   if (typeof url !== 'string' || !EXTERNAL_URL_ALLOWLIST.test(url)) {
     return { success: false, error: 'URL non autorisée' };
