@@ -19,6 +19,9 @@ Application de bureau Electron pour gérer son propre compte Discord : serveurs,
 
 > **English version:** [README.en.md](README.en.md).
 
+> [!NOTE]
+> Le code, l'outillage et la documentation sont majoritairement générés par IA, sous supervision, tests et relecture humains. Ce projet est basé sur Discord Account Manager de Bherl1, avec les enrichissements de KataV8. Il peut être ignoré si le développement assisté par IA ne correspond pas à vos exigences de confiance.
+
 ---
 
 ## ` 📑 `︲Sommaire.
@@ -41,6 +44,7 @@ Application de bureau Electron pour gérer son propre compte Discord : serveurs,
    * [`📁`︲Données locales.](#donnees)
    * [`🎨`︲Thèmes et langue.](#themes-langue)
 5. [`🔐`︲Sécurité.](#securite)
+   * [`🔒`︲Confidentialité et données.](#confidentialite)
 6. [`🏗️`︲Architecture et structure.](#architecture)
    * [`📁`︲Structure du dépôt.](#structure)
 
@@ -62,7 +66,7 @@ Application de bureau Electron pour gérer son propre compte Discord : serveurs,
 > [!CAUTION]
 > L'utilisation d'un **jeton utilisateur** avec l'API Discord (`discord.js-selfbot-v13`, API v9) est contraire aux conditions d'utilisation de Discord et peut entraîner une suspension ou un bannissement du compte. L'application est destinée à la gestion de ses propres données, sans spam ni usage abusif.
 >
-> **Made with care but with AI.**
+> **Fait avec soin, mais avec l'IA.**
 
 ---
 
@@ -284,6 +288,18 @@ Le sélecteur de thème du rail propose Sombre, Clair, Discord, Mono, OLED Lavan
 * **Médias et CDN** : téléchargements dans le processus principal, allowlist des domaines Discord, limite de 2 GiB, flux et validation du chemin `media://` avec `realpath`.
 * **Liens externes** : allowlist d'URL pour `shell.openExternal` dans `electron/main.cjs`.
 * **IPC** : les appels sensibles (`connectDiscord`, `saveToken`, `getTokens`, `loginNative`) sont rédigés en `[redacted]` avant journalisation dans `electron/preload.cjs`.
+
+<a id="confidentialite"></a>
+### ` 🔒 `︲Confidentialité et données.
+
+---
+
+> [!IMPORTANT]
+> **L'application n'envoie vos données à aucun service tiers en dehors de Discord.** Elle n'a aucun backend : en dehors des appels nécessaires à l'API Discord (HTTPS), rien ne quitte votre PC. Aucune requête n'est faite vers GitHub par l'application ; un lien externe ouvre votre navigateur uniquement si vous cliquez dessus. Aucune télémétrie, aucun analytics, aucun serveur de collecte.
+
+* **Tout reste en local** : archives importées, médias, caches, préférences et journaux sont stockés dans `data/`, à côté de l'exécutable en mode portable. Le jeton est la seule donnée sensible chiffrée au repos.
+* **Jeton** : chiffré au repos avec `safeStorage`, jamais renvoyé au renderer ni envoyé à un tiers. Il ne circule qu'en HTTPS vers Discord, pour les seuls appels nécessaires à l'action demandée ; les appels IPC sensibles sont masqués dans les journaux.
+* **Médias** : les téléchargements passent par le processus principal, avec allowlist des domaines Discord et validation du chemin local.
 
 ---
 
