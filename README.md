@@ -1,4 +1,4 @@
-# ` 🫐 `︲Discord Account Manager, fork amélioré (KataV8).
+# ` 📘 `︲Discord Account Manager - Enhanced.
 
 <p align="center">
   <img src="assets/logo.png" alt="Logo Discord Account Manager" width="120">
@@ -17,6 +17,8 @@
 ---
 
 Application de bureau Electron pour gérer son propre compte Discord : serveurs, amis, messages privés, groupes, réactions, archives d'export et médias. Elle centralise les opérations répétitives dans une interface unique, avec contrôle du débit, reprise sur interruption et stockage local.
+
+> **English version:** [README.en.md](README.en.md).
 
 > [!NOTE]
 > Code, outillage et documentation générés majoritairement par IA, sous supervision, tests et relecture humains. Basé sur Discord Account Manager par Bherl1, incluant les enrichissements de KataV8.<br>
@@ -377,9 +379,7 @@ L'ordonnanceur doit éviter ces réponses par construction. Vérifier `data/logs
 
 * **Application originale** : créée par **Bherl1** — [dépôt original](https://github.com/Bherl1/DiscordAccMgr).
 * **Fork et enrichissements** : **KataV8** — [dépôt du fork](https://github.com/K4taV8/DiscordAccMgr-Enhanced) (thèmes, interface Bento, Data Package, galerie média, miroir local, connexion Discord native, traduction FR/EN, logo).
-* **Licence** : MIT — voir [LICENSE](LICENSE). © 2024 Bherl1.
-
-Le dépôt ne définit pas de processus de contribution (`CONTRIBUTING` absent). Les modifications doivent conserver `npm test`, `npm run typecheck` et `npm run audit:sca` fonctionnels, ainsi que les garde-fous réseau, sécurité et persistance documentés dans le code.
+* **Licence** : MIT — voir [LICENSE](LICENSE). © 2024 Bherl1. Le dépôt n’a pas de fichier `CONTRIBUTING` ; les modifications doivent conserver `npm test`, `npm run typecheck` et `npm run audit:sca` fonctionnels.
 
 ---
 
@@ -395,3 +395,5 @@ Le dépôt ne définit pas de processus de contribution (`CONTRIBUTING` absent).
 * [fflate](https://github.com/101arrowz/fflate) — archives ZIP.
 * [electron-builder](https://www.electron.build/) — packaging Windows.
 * [Boxicons](https://boxicons.com/) — pack d'icônes.
+
+Les liens externes et le rendu des badges n'ont pas été vérifiés en ligne.

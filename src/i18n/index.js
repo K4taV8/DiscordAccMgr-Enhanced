@@ -11,8 +11,8 @@ export const LANGUAGES = [
   { id: 'en', label: 'English', short: 'EN' },
 ];
 
-const TITLE_FR = 'Discord Account Manager — Édition améliorée par KataV8';
-const TITLE_EN = 'Discord Account Manager — Enhanced Edition by KataV8';
+const TITLE_FR = 'Discord Account Manager - Enhanced';
+const TITLE_EN = 'Discord Account Manager - Enhanced';
 
 // Le contenu produit par l'utilisateur ou Discord ne doit jamais être traduit.
 const SKIP_SELECTOR = [

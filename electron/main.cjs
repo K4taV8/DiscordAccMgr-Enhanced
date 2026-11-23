@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, protocol, session } = require('electron');
+const { app, BrowserWindow, ipcMain, shell, dialog, safeStorage, protocol, session, Menu } = require('electron');
 
 // Switches Chromium pour accélérer le cold boot et limiter la VRAM.
 app.commandLine.appendSwitch('disable-gpu-shader-disk-cache');
@@ -174,6 +174,9 @@ function createWindow() {
   });
 
   mainWindow.loadFile('./index.html');
+  // La barre de titre est rendue par le renderer (frame:false) : aucun menu
+  // natif ne doit subsister, même caché.
+  Menu.setApplicationMenu(null);
   mainWindow.webContents.setBackgroundThrottling(false);
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   // C1a : l'app est une page locale : aucune navigation externe (anti-exfiltration).
@@ -186,6 +189,15 @@ function createWindow() {
   mainWindow.once('ready-to-show', () => {
     mainWindow.show();
   });
+
+  // État maximisé : le renderer bascule l'icône agrandir/restaurer et le
+  // double-clic de la zone de drag. On pousse l'état à chaque transition.
+  mainWindow.on('maximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('window:maximized-state', true);
+  });
+  mainWindow.on('unmaximize', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('window:maximized-state', false);
+  });
   // La fenetre de login n'est plus une fenetre enfant : on la detruit
   // explicitement si la fenetre principale se ferme, sinon elle maintiendrait
   // l'app en vie (window-all-closed ne se declencherait pas).
@@ -194,13 +206,25 @@ function createWindow() {
   });
 }
 
-ipcMain.on('window:minimize', () => mainWindow?.minimize());
-ipcMain.on('window:maximize', () => {
-  if (!mainWindow) return;
-  if (mainWindow.isMaximized()) mainWindow.unmaximize();
-  else mainWindow.maximize();
+ipcMain.on('window:minimize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (win && !win.isDestroyed()) win.minimize();
 });
-ipcMain.on('window:close', () => mainWindow?.close());
+ipcMain.handle('window:maximize', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (!win || win.isDestroyed()) return false;
+  if (win.isMaximized()) win.unmaximize();
+  else win.maximize();
+  return win.isMaximized();
+});
+ipcMain.handle('window:isMaximized', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  return !!(win && !win.isDestroyed() && win.isMaximized());
+});
+ipcMain.on('window:close', (event) => {
+  const win = BrowserWindow.fromWebContents(event.sender) || mainWindow;
+  if (win && !win.isDestroyed()) win.close();
+});
 
 // ponytail: proxy REST unique — tout handler HTTP passe ici.
 // Casse les doublons axios (Authorization / validateStatus / 429) de ce fichier.

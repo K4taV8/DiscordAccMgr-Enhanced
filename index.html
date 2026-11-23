@@ -16,37 +16,51 @@
     connect-src 'self' comme zones rouges ; aucun des deux n est touche ici.
   -->
   <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https://cdn.discordapp.com media:; media-src 'self' https://cdn.discordapp.com media:; connect-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'">
-  <title>Discord Account Manager — Édition améliorée par KataV8</title>
+  <title>Discord Account Manager - Enhanced</title>
   <link rel="stylesheet" href="src/styles/app.css">
 </head>
 <body>
   <div class="app-container">
-    <div class="title-bar">
-      <div class="title">
-        Discord Account Manager — Édition améliorée par KataV8
+    <header class="titlebar" id="titlebar">
+      <div class="titlebar-drag" id="titlebar-drag">
+        <div class="titlebar-logo">
+          <img src="assets/logo.png" width="18" height="18" alt="" draggable="false">
+          <span class="titlebar-name">Discord Account Manager - Enhanced</span>
+        </div>
       </div>
-      <div class="window-controls">
-        <button class="info-button" id="infoBtn">
-          <span class="icon icon-14 icon-info" aria-hidden="true"></span>
-        </button>
-        <button id="minimizeBtn">
-          <svg viewBox="0 0 12 12">
-            <rect width="10" height="1" x="1" y="6" stroke="currentColor"></rect>
+
+      <div class="titlebar-buttons">
+        <button class="tb-btn" id="settingsBtn" type="button" title="Informations" aria-label="Informations">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false">
+            <path d="M11 11h2v6h-2zm0-4h2v2h-2z"/>
+            <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2m0 16H5V5h14z"/>
           </svg>
         </button>
-        <button id="maximizeBtn">
-          <svg viewBox="0 0 12 12">
-            <rect width="9" height="9" x="1.5" y="1.5" fill="none" stroke="currentColor"></rect>
+
+        <button class="tb-btn" id="minimizeBtn" type="button" title="Réduire" aria-label="Réduire">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+            <line x1="2" y1="6" x2="10" y2="6" stroke="currentColor" stroke-width="1.5"/>
           </svg>
         </button>
-        <button id="closeBtn">
-          <svg viewBox="0 0 12 12">
-            <line x1="1" y1="1" x2="11" y2="11" stroke="currentColor" stroke-width="1"/>
-            <line x1="1" y1="11" x2="11" y2="1" stroke="currentColor" stroke-width="1"/>
+
+        <button class="tb-btn" id="maximizeBtn" type="button" title="Agrandir / restaurer" aria-label="Agrandir / restaurer">
+          <svg class="icon-max" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+            <rect x="2.5" y="2.5" width="7" height="7" fill="none" stroke="currentColor" stroke-width="1.3"/>
           </svg>
-        </button>        
+          <svg class="icon-restore" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+            <rect x="4" y="2.5" width="5.5" height="5.5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+            <path d="M6.5 4H2.5v5.5H8V6.5" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          </svg>
+        </button>
+
+        <button class="tb-btn tb-close" id="closeBtn" type="button" title="Fermer la fenêtre" aria-label="Fermer la fenêtre">
+          <svg width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false">
+            <line x1="2.5" y1="2.5" x2="9.5" y2="9.5" stroke="currentColor" stroke-width="1.5"/>
+            <line x1="9.5" y1="2.5" x2="2.5" y2="9.5" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
       </div>
-    </div>
+    </header>
 
     <div class="main-wrapper">
       <!-- Navigation Sidebar -->
@@ -76,7 +90,7 @@
 
         <!-- User Profile -->
         <div class="user-profile" id="userProfile">
-          <button class="nav-item language-btn" id="languageBtnRail" data-tooltip="Langue" aria-label="Langue" aria-haspopup="menu" aria-expanded="false" title="Langue">
+          <button class="nav-item language-btn" id="languageBtnRail" data-tooltip="Langue" aria-label="Langue" title="Langue">
             <span class="icon icon-24 icon-translate" aria-hidden="true"></span>
           </button>
           <button class="nav-item theme-toggle" id="themeToggleBtn" data-tooltip="Changer de thème" aria-label="Changer de thème" aria-haspopup="true" aria-expanded="false" title="Changer de thème"></button>
@@ -102,7 +116,7 @@
         <div class="page-container active" id="login-page">
           <div class="login-container">
             <div class="login-box">
-              <button type="button" id="languageBtnLogin" class="language-pill" aria-haspopup="menu" aria-expanded="false" title="Langue" aria-label="Langue">
+              <button type="button" id="languageBtnLogin" class="language-pill" title="Langue" aria-label="Langue">
                 <span class="icon icon-16 icon-translate" aria-hidden="true"></span>
                 <span class="language-code">FR</span>
               </button>

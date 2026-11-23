@@ -307,11 +307,27 @@ function warmUpPages() {
   }));
 }
 
-// Window controls
+// Window controls — barre de titre custom OA-DESK.
+const setMaximized = (maximized) => {
+  document.body.classList.toggle('is-maximized', Boolean(maximized));
+};
+
 document.getElementById('minimizeBtn').addEventListener('click', () => window.electronAPI.minimize());
-document.getElementById('maximizeBtn').addEventListener('click', () => window.electronAPI.maximize());
+document.getElementById('maximizeBtn').addEventListener('click', async () => {
+  setMaximized(await window.electronAPI.maximize());
+});
 document.getElementById('closeBtn').addEventListener('click', () => window.electronAPI.close());
-document.getElementById('infoBtn').addEventListener('click', showInfoModal);
+document.getElementById('settingsBtn').addEventListener('click', showInfoModal);
+
+// Double-clic de secours sur la zone de drag (le comportement natif Windows
+// est conservé, mais cette écoute reste fiable selon les versions).
+document.getElementById('titlebar-drag').addEventListener('dblclick', async () => {
+  setMaximized(await window.electronAPI.maximize());
+});
+
+window.electronAPI.isMaximized().then(setMaximized).catch(() => {});
+window.electronAPI.onMaximized(setMaximized);
+
 document.getElementById('saveTokenBtn').addEventListener('click', () => saveToken(tokenInput.value, status));
 
 // Disconnect handler

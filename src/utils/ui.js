@@ -137,25 +137,30 @@ export const showInfoModal = async () => {
     <div class="info-head">
       <div class="modal-icon"><img class="modal-logo" src="assets/logo.png" alt="" loading="lazy"></div>
       <div class="info-head-copy">
-        <h2>Discord Account Manager</h2>
+        <h2>Discord Account Manager - Enhanced</h2>
         <span class="version-badge">Version ${escHtml(versionText || '1.5.6')}</span>
       </div>
     </div>
-    <div class="info-authors">
-      ${authorCard('KataV8', 'Développement & enrichissement (fork)', 'K', 'assets/kataV8.jpg', FORK_REPO_URL)}
-      ${authorCard('Bherl1', 'Auteur original', 'B', 'assets/bherl1.jpg', ORIGINAL_REPO_URL)}
+    <p class="info-description">Application de bureau pour gérer son propre compte Discord : nettoyage, serveurs, MP, groupes, archives et médias. Basé sur Discord Account Manager, créé par Bherl1.</p>
+    <div class="info-left">
+      <div class="info-authors">
+        ${authorCard('KataV8', 'Développement & enrichissement (fork)', 'K', 'assets/kataV8.jpg', FORK_REPO_URL)}
+        ${authorCard('Bherl1', 'Auteur original', 'B', 'assets/bherl1.jpg', ORIGINAL_REPO_URL)}
+      </div>
+      <div class="info-footer">
+        <div class="info-links">
+          ${forkLink}
+          <a href="#" data-url="${ORIGINAL_REPO_URL}">Dépôt original</a>
+        </div>
+        <p class="info-license">Licence MIT · © 2024 Bherl1</p>
+        <div class="info-divider"></div>
+        <button type="button" class="btn btn-secondary info-close-btn" id="infoCloseBtn"><svg class="info-close-icon" width="12" height="12" viewBox="0 0 12 12" aria-hidden="true" focusable="false"><path d="M2 2l8 8M10 2l-8 8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg><span>Fermer</span></button>
+      </div>
     </div>
     <div class="info-section">
       <h3>Technologies</h3>
       ${techStackHtml()}
     </div>
-    <div class="info-links">
-      ${forkLink}
-      <a href="#" data-url="${ORIGINAL_REPO_URL}">Dépôt original</a>
-    </div>
-    <p class="info-license">Licence MIT · © 2024 Bherl1</p>
-    <div class="info-divider"></div>
-    <button type="button" class="btn btn-secondary" id="infoCloseBtn">Fermer</button>
   `;
 
   const close = () => {

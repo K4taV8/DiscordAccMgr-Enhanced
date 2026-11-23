@@ -77,3 +77,13 @@ test('la case de sélection des cartes est un petit carré, pas un cercle', () =
   assert.match(bloc.body, /border-radius:\s*4px/, 'carré à peine adouci');
   assert.doesNotMatch(bloc.body, /border-radius:\s*(?:50%|999px|9999px)/, 'plus de cercle');
 });
+
+test('les compteurs des listes sont de vrais petits carrés', () => {
+  const bloc = blocs(APP).find((b) => b.selector === '.list-count' && /border-radius/.test(b.body));
+  assert.ok(bloc, 'règle .list-count avec rayon présente');
+  assert.match(bloc.body, /display:\s*inline-flex/, 'centrage fiable du nombre');
+  assert.match(bloc.body, /min-width:\s*26px/, 'largeur minimale carrée');
+  assert.match(bloc.body, /height:\s*26px/, 'hauteur carrée');
+  assert.match(bloc.body, /border-radius:\s*4px/, 'rayon de petit carré, comme la case de sélection');
+  assert.doesNotMatch(bloc.body, /border-radius:\s*(?:10px|6px|var\(--radius-sharp\)|50%|999px|9999px|var\(--radius-pill\))/, 'plus de pilule ni de rayon global');
+});

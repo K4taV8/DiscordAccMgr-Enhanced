@@ -87,8 +87,16 @@ function onMediaMirrorProgress(callback) {
 contextBridge.exposeInMainWorld('electronAPI', {
   toggleDevTools: () => ipcRenderer.invoke('app:toggleDevTools'),
   minimize: () => ipcRenderer.send('window:minimize'),
-  maximize: () => ipcRenderer.send('window:maximize'),
+  maximize: () => ipcRenderer.invoke('window:maximize'),
   close: () => ipcRenderer.send('window:close'),
+  isMaximized: () => ipcRenderer.invoke('window:isMaximized'),
+  // Abonnement à l'état de la fenêtre : le preload retire le listener au
+  // désabonnement, et ne transmet que la valeur booléenne au renderer.
+  onMaximized: (callback) => {
+    const handler = (_event, value) => callback(!!value);
+    ipcRenderer.on('window:maximized-state', handler);
+    return () => ipcRenderer.removeListener('window:maximized-state', handler);
+  },
 
   getTokens: wrap('getTokens', () => ipcRenderer.invoke('tokens:get')),
   saveToken: wrap('saveToken', (name, token) => ipcRenderer.invoke('tokens:save', name, token)),

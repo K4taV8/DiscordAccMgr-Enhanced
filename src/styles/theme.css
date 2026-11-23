@@ -72,6 +72,17 @@
   --shadow-convex:   3px 3px 8px rgba(0, 0, 0, 0.45), -2px -2px 6px rgba(255, 255, 255, 0.02);
   --shadow-concave:  inset 2px 2px 6px rgba(0, 0, 0, 0.4), inset -2px -2px 6px rgba(255, 255, 255, 0.02);
   --shadow-brand:    0 4px 22px rgba(142, 149, 225, 0.22);
+
+  /* Barre de titre OA-DESK — thème sombre par défaut. */
+  --titlebar-bg: #151515;
+  --titlebar-border: rgba(255, 255, 255, 0.06);
+  --titlebar-hover: #26262A;
+  --titlebar-active: #303036;
+  --titlebar-text: #E0E0E6;
+  --titlebar-icon: #98989F;
+  --titlebar-icon-hover: #E0E0E6;
+  --titlebar-close-bg: #8E95E1;
+  --titlebar-close-icon: #FFFFFF;
 }
 
 :root[data-theme="light"], .light-theme {
@@ -149,6 +160,17 @@
   --shadow-convex:        0 2px 6px rgba(0, 0, 0, 0.05);
   --shadow-concave:       inset 0 1px 3px rgba(0, 0, 0, 0.06);
   --shadow-brand:         0 4px 14px rgba(88, 101, 242, 0.18);
+
+  /* Barre claire : mêmes proportions, contraste inversé. */
+  --titlebar-bg: #f6f7f9;
+  --titlebar-border: rgba(0, 0, 0, 0.08);
+  --titlebar-hover: #e7e9ee;
+  --titlebar-active: #dcdfe6;
+  --titlebar-text: #1e1f22;
+  --titlebar-icon: #5c5f66;
+  --titlebar-icon-hover: #1e1f22;
+  --titlebar-close-bg: #5865F2;
+  --titlebar-close-icon: #FFFFFF;
 }
 
 :root[data-theme="discord"] {
@@ -220,6 +242,16 @@
   --shadow-convex:   3px 3px 8px rgba(0, 0, 0, 0.45), -2px -2px 6px rgba(255, 255, 255, 0.02);
   --shadow-concave:  inset 2px 2px 6px rgba(0, 0, 0, 0.4), inset -2px -2px 6px rgba(255, 255, 255, 0.02);
   --shadow-brand:    0 4px 22px rgba(88, 101, 242, 0.3);
+
+  --titlebar-bg: #232428;
+  --titlebar-border: rgba(255, 255, 255, 0.06);
+  --titlebar-hover: #35373c;
+  --titlebar-active: #3f4147;
+  --titlebar-text: #f2f3f5;
+  --titlebar-icon: #b5bac1;
+  --titlebar-icon-hover: #f2f3f5;
+  --titlebar-close-bg: #5865F2;
+  --titlebar-close-icon: #FFFFFF;
 }
 
 /* Monochrome : nuances de gris, aucun accent colore, aucun noir pur.
@@ -308,6 +340,16 @@
   --shadow-convex:        3px 3px 8px rgba(4, 4, 4, 0.55), -2px -2px 6px rgba(255, 255, 255, 0.03);
   --shadow-concave:       inset 2px 2px 6px rgba(4, 4, 4, 0.55), inset -2px -2px 6px rgba(255, 255, 255, 0.03);
   --shadow-brand:         0 4px 22px rgba(4, 4, 4, 0.65);
+
+  --titlebar-bg: #0d0d0d;
+  --titlebar-border: rgba(255, 255, 255, 0.10);
+  --titlebar-hover: #222222;
+  --titlebar-active: #2a2a2a;
+  --titlebar-text: #f5f5f5;
+  --titlebar-icon: #bdbdbd;
+  --titlebar-icon-hover: #ffffff;
+  --titlebar-close-bg: #f0f0f0;
+  --titlebar-close-icon: #080808;
 }
 
 /* OLED LAVANDE — noir pur, accents lavande historiques. */
@@ -345,6 +387,16 @@
   --shadow-1:         var(--card-shadow);
   --shadow-2:         var(--modal-shadow);
   --shadow-brand:     0 4px 22px rgba(142, 149, 225, 0.26);
+
+  --titlebar-bg: #050507;
+  --titlebar-border: rgba(255, 255, 255, 0.08);
+  --titlebar-hover: #16161f;
+  --titlebar-active: #1d1d29;
+  --titlebar-text: #f4f4f5;
+  --titlebar-icon: #a1a1aa;
+  --titlebar-icon-hover: #f4f4f5;
+  --titlebar-close-bg: #8E95E1;
+  --titlebar-close-icon: #FFFFFF;
 }
 
 /* MONO OLED — noir pur, monochrome strict. */
@@ -430,8 +482,20 @@
   --shadow-convex:        3px 3px 8px rgba(0, 0, 0, 0.60), -2px -2px 6px rgba(255, 255, 255, 0.03);
   --shadow-concave:       inset 2px 2px 6px rgba(0, 0, 0, 0.60), inset -2px -2px 6px rgba(255, 255, 255, 0.03);
   --shadow-brand:         0 4px 22px rgba(255, 255, 255, 0.10);
+
+  --titlebar-bg: #050505;
+  --titlebar-border: rgba(255, 255, 255, 0.12);
+  --titlebar-hover: #141414;
+  --titlebar-active: #1c1c1c;
+  --titlebar-text: #ffffff;
+  --titlebar-icon: #c8c8c8;
+  --titlebar-icon-hover: #ffffff;
+  --titlebar-close-bg: #f5f5f5;
+  --titlebar-close-icon: #000000;
 }
 :root {
+  /* Hauteur de la barre de titre custom (38 px, rendu OA-DESK). */
+  --title-bar-height: 38px;
   /* Style carré et saillant : toutes les surfaces/buttons partagent ce rayon.
      Les vrais cercles (avatars, fermetures rondes, pastilles, points d'état)
      gardent 50% / 999px explicitement. */
