@@ -83,6 +83,8 @@ Application de bureau basée sur Electron, conçue pour la gestion efficace des 
 
 Discord Account Manager - Enhanced est une application Electron sans bundler ni framework front-end. Le renderer est écrit en JavaScript ESM, le processus principal et le preload en CommonJS. Les appels à l'API Discord passent par `discordFetch` dans le processus principal, avec un ordonnanceur qui tient compte des en-têtes `X-RateLimit-*`. Les téléchargements de médias Discord utilisent des transports contrôlés dans le même processus, avec allowlist CDN et limite de taille.
 
+L'application est **100 % portable** : elle se lance depuis son dossier et conserve ses données dans `data/`, sans installation ni passage par `%APPDATA%`.
+
 <a id="fonctionnalites"></a>
 ### ` ✨ `︲Fonctionnalités.
 
@@ -191,19 +193,63 @@ Les captures ci-dessous présentent les écrans principaux avec des données de 
 
 ---
 
+> [!TIP]
+> **Pas d'installation requise pour utiliser l'application.** La version portable se lance depuis son dossier et conserve toutes ses données dans `data/`, à côté de l'exécutable. Aucun installateur, aucun passage par `%APPDATA%`.
+
 <a id="prerequis"></a>
 ### ` 📋 `︲Prérequis.
 
+Ces prérequis concernent la **génération** de `DAM-E-P` et le **développement**. Pour utiliser une version portable déjà générée, aucun prérequis n'est nécessaire : ni Node.js, ni npm, ni Git.
+
 | Élément | Valeur | Remarque |
 |---|---|---|
-| Node.js | **≥ 22.18** | Requis pour les tests qui importent les miroirs `.ts` |
-| npm | Fourni avec Node.js | Installation des dépendances |
-| Git | Version récente | Récupération du dépôt |
-| Système | Windows | Cible de packaging définie dans `package.json` |
-| Compte Discord | Compte personnel | Connexion native ou jeton utilisateur |
+| Node.js | **≥ 22.18** | Nécessaire uniquement pour générer `DAM-E-P` ou lancer les tests ; inutile pour exécuter la version portable. |
+| npm | Fourni avec Node.js | Installation des dépendances pour la génération. |
+| Git | Optionnel | Le téléchargement du dépôt en ZIP suffit. |
+| Système | Windows | Cible de génération et d'exécution de `DAM-E-P`. |
+| Compte Discord | Compte personnel | Connexion native ou jeton utilisateur. |
 
 <a id="installation"></a>
 ### ` 🛠️ `︲Installation et lancement.
+
+---
+
+#### ` 📦 `︲Option A — Générer la version portable `DAM-E-P`.
+
+1️⃣︲**Télécharger le dépôt en ZIP.**
+Sur GitHub, cliquer sur **Code** → **Download ZIP**.
+
+2️⃣︲**Extraire le ZIP.**
+Décompresser l'archive dans un dossier de travail.
+
+3️⃣︲**Ouvrir un terminal dans le dossier.**
+Dans l'Explorateur Windows, ouvrir le dossier extrait, faire un clic droit dans un espace vide → **Ouvrir dans le Terminal** (Windows 11) ou **Ouvrir une fenêtre PowerShell ici** (Windows 10).
+
+4️⃣︲**Installer les dépendances.**
+Copier-coller :
+
+```bash
+npm install
+```
+
+5️⃣︲**Construire la version portable.**
+Copier-coller :
+
+```bash
+npm run package:portable
+```
+
+6️⃣︲**Créer le dossier `DAM-E-P`.**
+Ouvrir `dist`, copier le dossier `win-unpacked` à la racine du dépôt, puis le renommer **`DAM-E-P`**.
+
+7️⃣︲**Lancer l'application.**
+Ouvrir `DAM-E-P` et double-cliquer sur **`Discord Account Manager.exe`**. Le dossier peut être déplacé, copié sur une clé USB ou supprimé sans installation.
+
+> [!NOTE]
+> La génération demande deux commandes à copier-coller ; ensuite, `DAM-E-P` se lance sans commande ni installation. `DAM-E-P\data` contient toutes les données locales : comptes, jetons chiffrés, caches, journaux et médias. Pour sauvegarder ou déplacer l'application, copier le dossier `DAM-E-P` en entier.
+
+<details>
+<summary>💻︲Option B — Lancer depuis les sources (développement).</summary>
 
 1️⃣︲**Récupérer le dépôt.**
 
@@ -223,6 +269,8 @@ npm install
 ```bash
 npm start
 ```
+
+</details>
 
 ---
 
@@ -358,7 +406,7 @@ docs/            plans et spécifications internes
 index.html       document du renderer
 ```
 
-Les dossiers `data/`, `dist/`, `node_modules/` et `DAME-VERSION-PORTABLE/` sont générés localement et ne font pas partie de l'arborescence source.
+Les dossiers `data/`, `dist/`, `node_modules/`, `DAME-VERSION-PORTABLE/` et `DAM-E-P/` sont générés localement et ne font pas partie de l'arborescence source.
 
 </details>
 

@@ -113,7 +113,7 @@ An Electron-based desktop application designed for efficient management of Disco
 
 Discord Account Manager - Enhanced is an Electron application built without a front-end framework or bundler. The renderer uses JavaScript ESM, while the main process and preload use CommonJS. Network operations go through a single entry point in the main process, which applies a scheduler aware of the `X-RateLimit-*` headers.
 
-The interface is available in French and English, with six themes including two OLED variants. Application data stays in a `data/` directory next to the executable.
+The interface is available in French and English, with six themes including two OLED variants. The application is **100% portable**: it runs from its folder and keeps its data in `data/`, with no installation and no `%APPDATA%`.
 
 <a id="features"></a>
 ### ` ✨ `︲Features.
@@ -223,22 +223,65 @@ The screenshots below show the main screens with demo data. Names and avatars ar
 
 ---
 
+> [!TIP]
+> **No installation required to use the application.** The portable version runs from its folder and keeps all data in `data/`, next to the executable. No installer, no `%APPDATA%`.
+
 <a id="prerequisites"></a>
 ### ` 📋 `︲Prerequisites.
 
 ---
 
+These prerequisites are for **building** `DAM-E-P` and for **development**. To use an already-built portable version, nothing is required: no Node.js, no npm, no Git.
+
 | Item | Value | Note |
 |---|---|---|
-| Node.js | **≥ 22.18** | Required by the tests that import the `.ts` mirrors |
-| npm | Bundled with Node.js | Dependency installation |
-| System | Windows | Packaging target defined in `package.json` |
-| Discord account | Personal account | Native sign-in or user token |
+| Node.js | **≥ 22.18** | Only needed to build `DAM-E-P` or run tests; not needed to run the portable app. |
+| npm | Bundled with Node.js | Dependency installation for the build. |
+| Git | Optional | Downloading the repository as a ZIP is enough. |
+| System | Windows | Build and run target for `DAM-E-P`. |
+| Discord account | Personal account | Native sign-in or user token. |
 
 <a id="installation"></a>
 ### ` 🛠️ `︲Installation and launch.
 
 ---
+
+#### ` 📦 `︲Option A — Build the portable `DAM-E-P` folder.
+
+1️⃣︲**Download the repository as a ZIP.**
+On GitHub, click **Code** → **Download ZIP**.
+
+2️⃣︲**Extract the ZIP.**
+Unpack the archive into a working folder.
+
+3️⃣︲**Open a terminal in that folder.**
+In Windows Explorer, open the extracted folder, right-click an empty area → **Open in Terminal** (Windows 11) or **Open PowerShell window here** (Windows 10).
+
+4️⃣︲**Install dependencies.**
+Copy-paste:
+
+```bash
+npm install
+```
+
+5️⃣︲**Build the portable version.**
+Copy-paste:
+
+```bash
+npm run package:portable
+```
+
+6️⃣︲**Create the `DAM-E-P` folder.**
+Open `dist`, copy the `win-unpacked` folder to the repository root, then rename it **`DAM-E-P`**.
+
+7️⃣︲**Launch the application.**
+Open `DAM-E-P` and double-click **`Discord Account Manager.exe`**. The folder can be moved, copied to a USB drive or deleted without installation.
+
+> [!NOTE]
+> The build requires two copy-paste commands; after that, `DAM-E-P` runs with no command and no installation. `DAM-E-P\data` contains all local data: accounts, encrypted tokens, caches, logs and media. To back up or move the application, copy the entire `DAM-E-P` folder.
+
+<details>
+<summary>💻︲Option B — Run from source (development).</summary>
 
 1️⃣︲**Get the repository.**
 
@@ -258,6 +301,8 @@ npm install
 ```bash
 npm start
 ```
+
+</details>
 
 ---
 
