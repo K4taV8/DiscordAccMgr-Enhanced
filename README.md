@@ -61,6 +61,8 @@ Application de bureau Electron pour gérer son propre compte Discord : serveurs,
 
 > [!CAUTION]
 > L'utilisation d'un **jeton utilisateur** avec l'API Discord (`discord.js-selfbot-v13`, API v9) est contraire aux conditions d'utilisation de Discord et peut entraîner une suspension ou un bannissement du compte. L'application est destinée à la gestion de ses propres données, sans spam ni usage abusif.
+>
+> **Made with care but with AI.**
 
 ---
 
@@ -470,6 +472,10 @@ Les outils, technologies et références associés au projet sont regroupés ci-
 ---
 
 * ` 🤖 `︲**Assistance par IA :**
+  * ` 🧠 `︲**Modèles utilisés :** Claude Opus 5.5, DeepSeek V4.1, GML 5.3.
+  * ` 💻 `︲**Harness :** OpenCode ︲[`🌐`](https://opencode.ai/)
+  * ` 🧩 `︲**Plugin :** Superpowers ︲[`🌐`](https://github.com/obra/superpowers)
+  * ` 📚 `︲**Skills :** Matt Pocock ︲[`🌐`](https://github.com/mattpocock/skills)
 
   > Code, outillage et documentation générés majoritairement par IA, sous supervision, tests et relecture humains.
   > Ce projet peut être ignoré si le développement assisté par IA ne correspond pas à vos exigences de confiance.
