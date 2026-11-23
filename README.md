@@ -4,6 +4,9 @@
   <img src="assets/logo.png" alt="Logo Discord Account Manager - Enhanced" width="120">
 </p>
 <p align="center">
+  <sub>Logo généré par Gemini (Nano-Banana)</sub>
+</p>
+<p align="center">
   <img alt="Electron 43.8.12" src="https://img.shields.io/badge/Electron-43.8.12-47848F?logo=electron&logoColor=white&style=for-the-badge">
   <img alt="Node.js 22.18+" src="https://img.shields.io/badge/Node.js-22.18%2B-5FA04E?logo=nodedotjs&logoColor=white&style=for-the-badge">
   <img alt="Version 1.5.6" src="https://img.shields.io/badge/Version-1.5.6-8E95E1?style=for-the-badge">
@@ -60,6 +63,7 @@ Application de bureau Electron pour gérer son propre compte Discord : serveurs,
 10. [`🤝`︲Contribution.](#contribution)
 11. [`📄`︲Licence et crédits.](#licence)
 12. [`🧰`︲Outils et ressources utilisées.](#outils)
+13. [`🗺️`︲Micro Roadmap.](#roadmap)
 
 ---
 
@@ -488,12 +492,27 @@ Les outils, technologies et références associés au projet sont regroupés ci-
 ---
 
 * ` 🤖 `︲**Assistance par IA :**
-  * ` 🧠 `︲**Modèles utilisés :** Claude Opus 5.5, DeepSeek V4.1, GML 5.3.
+  * ` 🧠 `︲**Modèles utilisés :** Claude Opus 5.5, DeepSeek V4.1, GML 5.3, Gemini (Nano-Banana).
   * ` 💻 `︲**Harness :** OpenCode ︲[`🌐`](https://opencode.ai/)
   * ` 🧩 `︲**Plugin :** Superpowers ︲[`🌐`](https://github.com/obra/superpowers)
   * ` 📚 `︲**Skills :** Matt Pocock ︲[`🌐`](https://github.com/mattpocock/skills)
 
   > Code, outillage et documentation générés majoritairement par IA, sous supervision, tests et relecture humains.
   > Ce projet peut être ignoré si le développement assisté par IA ne correspond pas à vos exigences de confiance.
+
+---
+
+<a id="roadmap"></a>
+# ` 🗺️ `︲Micro Roadmap.
+
+---
+
+* ` 📦 `︲**Data Package** : peaufiner la fonction, actuellement instable.
+* ` 🦀 `︲**Tauri** : porter l'application vers Tauri et quitter l'écosystème Electron lourd. *(Gros chantier)*
+
+> [!NOTE]
+> Il n'existe pas à proprement parler de feuille de route officielle. Ces pistes d'évolution sont identifiées à partir du code actuel.
+
+---
 
 Les liens externes et le rendu des badges n'ont pas été vérifiés en ligne.
