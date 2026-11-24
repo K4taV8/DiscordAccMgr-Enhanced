@@ -523,6 +523,7 @@ The scheduler is designed to avoid these responses. Check `data/logs/main.log` a
 |---|---|
 | ` 🧑‍💻 `︲**Original application** | Created by **Bherl1** ([original repository](https://github.com/Bherl1/DiscordAccMgr)). **(Many thanks for their work!)** |
 | ` 🛠️ `︲**Fork and enhancements** | **KataV8** ([fork repository](https://github.com/K4taV8/DiscordAccMgr-Enhanced)): Bento interface, 6 themes, FR/EN, Data Package, gallery and media mirror, native Discord sign-in, full cleanup, rate-limit, hardened security and 602 tests. [Detailed comparison](COMPARISON.en.md). |
+| ` 💡 `︲**Feature inspiration** | [Discorch](https://discorch.org/) and [Discrub](https://github.com/pratherbytecraft/discrub): inspiration for some features. Thanks to their authors. |
 | ` 📜 `︲**License** | MIT, see [LICENSE](LICENSE). © 2024 Bherl1. |
 | ` 🤝 `︲**Contributions** | The repository has no `CONTRIBUTING` file; changes must keep `npm test`, `npm run typecheck` and `npm run audit:sca` working. |
 
