@@ -1,4 +1,4 @@
-# ` 📘 `︲Discord Account Manager - Enhanced.
+# ` 🫐 `︲Discord Account Manager - Enhanced.
 
 <p align="center">
   <img src="assets/logo.png" alt="Logo Discord Account Manager - Enhanced" width="120">
